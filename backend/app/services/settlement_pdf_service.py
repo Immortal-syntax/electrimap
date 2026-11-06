@@ -47,6 +47,7 @@ from app.services.infrastructure_service import (
     get_project_settings_state,
     list_project_infrastructure,
 )
+from app.services.planning_service import get_project_scenarios
 from app.services.project_service import get_owned_project_or_404
 from app.services.settlement_service import (
     get_project_settlement_state,
@@ -272,13 +273,120 @@ def _draw_page_frame_and_watermark(canvas: Canvas, doc: SimpleDocTemplate) -> No
     canvas.restoreState()
 
 
+def _render_single_line_diagram_png(
+    *,
+    project_name: str,
+    scenario: Any,
+) -> bytes:
+    """Render a vector-style Preliminary Single-Line Diagram (SLD) schematic as high-DPI PNG."""
+    fig, ax = plt.subplots(figsize=(7.2, 3.2), dpi=180)
+    ax.set_facecolor("#FAF8F4")
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 50)
+    ax.axis("off")
+
+    # Main 11 kV Header Bus at top (y = 42)
+    ax.plot([8, 92], [42, 42], color="#9B2C2C", linewidth=2.6, zorder=3)
+    ax.text(
+        8,
+        44.5,
+        f"11 kV 3-Ph 50 Hz Feeder Bus (ACSR Rabbit 50 mm²) — {project_name[:42]}",
+        fontsize=7.5,
+        fontweight="bold",
+        color="#9B2C2C",
+    )
+    ax.text(
+        92,
+        44.5,
+        "PRELIMINARY ENGINEERING — NOT FOR CONSTRUCTION",
+        fontsize=6.5,
+        fontweight="bold",
+        color="#64748B",
+        ha="right",
+    )
+
+    clusters = list(scenario.clusters)[:5]
+    n_cl = max(1, len(clusters))
+    step_x = 80.0 / n_cl
+
+    for idx, cl in enumerate(clusters):
+        cx = 10.0 + (idx + 0.5) * step_x
+        if cl.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"}:
+            # Drop from 11 kV bus to DT symbol
+            ax.plot([cx, cx], [42, 29], color="#9B2C2C", linewidth=1.5)
+            circle1 = mpatches.Circle(
+                (cx, 26.8), 2.2, fill=False, edgecolor="#1E3A5F", linewidth=1.4
+            )
+            circle2 = mpatches.Circle(
+                (cx, 24.2), 2.2, fill=False, edgecolor="#0F766E", linewidth=1.4
+            )
+            ax.add_patch(circle1)
+            ax.add_patch(circle2)
+            ax.plot([cx, cx], [22, 13], color="#0F766E", linewidth=1.5)
+            box_color = "#E0F2FE"
+            title_tag = f"{cl.dt_count}x DT ({cl.total_dt_rating_kva:.0f} kVA)"
+            sub_tag = f"HT {cl.ht_length_m:.0f}m | LT {cl.lt_total_length_m:.0f}m"
+            v_tag = f"dV: {cl.ht_drop_pct:.1f}%/{cl.lt_drop_pct:.1f}%"
+        elif cl.modality == "SOLAR_MINIGRID":
+            # Isolated Solar PV + BESS Mini-Grid bus
+            ax.plot([cx - 6, cx + 6], [34, 34], color="#D97706", linewidth=2.2)
+            ax.text(
+                cx,
+                35.5,
+                f"PV {cl.solar_pv_kwp:.1f} kWp + BESS {cl.bess_capacity_kwh:.0f} kWh",
+                fontsize=5.8,
+                fontweight="bold",
+                color="#B45309",
+                ha="center",
+            )
+            ax.plot([cx, cx], [34, 13], color="#0F766E", linewidth=1.5)
+            box_color = "#FEF3C7"
+            title_tag = f"PCU {cl.inverter_kva:.0f} kVA Mini-Grid"
+            sub_tag = f"415V LT {cl.lt_total_length_m:.0f}m ({cl.lt_poles_count}p)"
+            v_tag = f"LT dV: {cl.lt_drop_pct:.1f}%"
+        else:
+            # Standalone SHS
+            box_color = "#F1F5F9"
+            title_tag = f"{cl.shs_kits_count}x Standalone SHS"
+            sub_tag = f"PV {cl.solar_pv_kwp:.2f} kWp | {cl.bess_capacity_kwh:.1f} kWh"
+            v_tag = "Off-Grid DC/AC Kits"
+
+        rect = mpatches.FancyBboxPatch(
+            (cx - 7.8, 3.5),
+            15.6,
+            9.5,
+            boxstyle="round,pad=0.4",
+            facecolor=box_color,
+            edgecolor="#334155",
+            linewidth=0.9,
+        )
+        ax.add_patch(rect)
+        ax.text(
+            cx,
+            10.8,
+            f"{cl.cluster_label} ({cl.est_households} HH)",
+            fontsize=6.2,
+            fontweight="bold",
+            color="#0F172A",
+            ha="center",
+        )
+        ax.text(cx, 8.3, title_tag, fontsize=5.6, color="#1E293B", ha="center")
+        ax.text(cx, 6.2, sub_tag, fontsize=5.3, color="#334155", ha="center")
+        ax.text(cx, 4.3, v_tag, fontsize=5.3, color="#0F766E", ha="center")
+
+    out = io.BytesIO()
+    fig.savefig(out, format="png", bbox_inches="tight", dpi=180)
+    plt.close(fig)
+    return out.getvalue()
+
+
 def generate_preliminary_settlement_pdf(
     db: Session,
     *,
     project_id: str,
     user: User,
 ) -> bytes:
-    """Generate a 2-page PDF DPR skeleton covering Sections 1-5 and the UTM Map Plate."""
+    """Generate a PDF DPR covering Sections 1-14, UTM Map Plate, and Single-Line Diagram."""
     proj = get_owned_project_or_404(db, project_id, user)
     settlements = get_project_settlement_state(db, project_id=proj.id, user=user)
     ledger = get_project_verification_ledger(db, project_id=proj.id, user=user)
@@ -287,6 +395,8 @@ def generate_preliminary_settlement_pdf(
     gap = compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
     settings_state = get_project_settings_state(db, project_id=proj.id, user=user)
     demand = compute_and_persist_project_demand(db, project_id=proj.id, user=user)
+    scenarios_state = get_project_scenarios(db, project_id=proj.id, user=user)
+    active_scenario = scenarios_state.active_scenario
 
     aoi_row = db.execute(
         select(ProjectAoi).where(ProjectAoi.project_id == proj.id)
@@ -729,6 +839,187 @@ def generate_preliminary_settlement_pdf(
         )
     )
     story.append(t9)
+
+    # Page 3: Sections 10-14 (Network Layout Routing, Voltage Drop, Off-Grid Sizing & SLD)
+    story.append(PageBreak())
+    story.append(
+        Paragraph(
+            f"10. ELECTRIFICATION MODALITY SELECTION & SCENARIO SUMMARY "
+            f"({active_scenario.scenario_key})",
+            sec_style,
+        )
+    )
+    scen_summary_rows = [
+        [
+            "Active Scenario",
+            active_scenario.name[:38],
+            "Voltage Drop Compliance",
+            "CEA COMPLIANT (<=5% HT, <=6% LT)"
+            if active_scenario.vdrop_compliance_ok
+            else "NON-COMPLIANT WARNING",
+        ],
+        [
+            "11 kV HT Feeder Total",
+            f"{active_scenario.total_ht_length_m:.1f} m ({active_scenario.total_ht_poles} poles)",
+            "415 V LT Radial MST Total",
+            f"{active_scenario.total_lt_length_m:.1f} m ({active_scenario.total_lt_poles} poles)",
+        ],
+        [
+            "Distribution Transformers",
+            (
+                f"{active_scenario.total_dt_count} units "
+                f"({active_scenario.total_dt_capacity_kva:.0f} kVA)"
+            ),
+            "Max Voltage Drop (HT / LT)",
+            (
+                f"{active_scenario.max_ht_vdrop_pct:.2f}% HT / "
+                f"{active_scenario.max_lt_vdrop_pct:.2f}% LT"
+            ),
+        ],
+        [
+            "Off-Grid Solar PV + BESS",
+            (
+                f"{active_scenario.total_solar_kwp:.2f} kWp PV / "
+                f"{active_scenario.total_bess_kwh:.1f} kWh BESS"
+            ),
+            "Annual Technical Losses",
+            (
+                f"{active_scenario.total_loss_mwh_yr:.3f} MWh/yr | "
+                f"{active_scenario.total_shs_kits} SHS Kits"
+            ),
+        ],
+    ]
+    t10 = Table(scen_summary_rows, colWidths=[38 * mm, 50 * mm, 38 * mm, 50 * mm])
+    t10.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F1F5F9")),
+                ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#F1F5F9")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("PADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
+    story.append(t10)
+
+    # Section 11 & 12: Network Schedule, Voltage Drop & Technical Losses
+    story.append(
+        Paragraph(
+            "11–12. 11 KV HT / 415 V LT NETWORK SCHEDULE, VOLTAGE DROP & TECHNICAL LOSSES",
+            sec_style,
+        )
+    )
+    net_rows = [
+        [
+            "Cluster",
+            "Modality",
+            "DTs (kVA)",
+            "11kV HT (m / poles)",
+            "415V LT (m / poles)",
+            "VDrop (HT / LT)",
+            "Loss (MWh/yr)",
+        ]
+    ]
+    for cl_lay in active_scenario.clusters:
+        net_rows.append(
+            [
+                cl_lay.cluster_label,
+                cl_lay.modality,
+                f"{cl_lay.dt_count}x ({cl_lay.total_dt_rating_kva:.0f} kVA)"
+                if cl_lay.dt_count > 0
+                else "—",
+                f"{cl_lay.ht_length_m:.0f} m / {cl_lay.ht_poles_count}p"
+                if cl_lay.ht_length_m > 0
+                else ("UNSET TIE-IN" if cl_lay.requires_tie_in else "0 m"),
+                f"{cl_lay.lt_total_length_m:.0f} m / {cl_lay.lt_poles_count}p"
+                if cl_lay.lt_total_length_m > 0
+                else "0 m",
+                f"{cl_lay.ht_drop_pct:.2f}% / {cl_lay.lt_drop_pct:.2f}%",
+                f"{cl_lay.total_loss_mwh_yr:.3f} ({cl_lay.technical_loss_pct:.1f}%)",
+            ]
+        )
+    t11 = Table(
+        net_rows,
+        colWidths=[16 * mm, 32 * mm, 24 * mm, 28 * mm, 28 * mm, 24 * mm, 24 * mm],
+    )
+    t11.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("PADDING", (0, 0), (-1, -1), 2.5),
+            ]
+        )
+    )
+    story.append(t11)
+
+    # Section 13: Off-Grid Solar PV, LiFePO4 BESS & Standalone SHS Sizing Schedule
+    story.append(
+        Paragraph(
+            "13. OFF-GRID SOLAR PV, LIFEPO4 BESS & STANDALONE SHS SIZING SCHEDULE",
+            sec_style,
+        )
+    )
+    solar_rows = [
+        [
+            "Cluster",
+            "Modality",
+            "Horizon Energy (kWh/d)",
+            "Solar PV (kWp)",
+            "LiFePO4 BESS (kWh)",
+            "Inverter (kVA)",
+            "SHS Kits",
+        ]
+    ]
+    for cl_lay in active_scenario.clusters:
+        solar_rows.append(
+            [
+                cl_lay.cluster_label,
+                cl_lay.modality,
+                f"{cl_lay.energy_kwh_day_horizon:.1f} kWh/d",
+                f"{cl_lay.solar_pv_kwp:.2f} kWp" if cl_lay.solar_pv_kwp > 0 else "—",
+                f"{cl_lay.bess_capacity_kwh:.1f} kWh" if cl_lay.bess_capacity_kwh > 0 else "—",
+                f"{cl_lay.inverter_kva:.1f} kVA" if cl_lay.inverter_kva > 0 else "—",
+                str(cl_lay.shs_kits_count) if cl_lay.shs_kits_count > 0 else "—",
+            ]
+        )
+    t13 = Table(
+        solar_rows,
+        colWidths=[16 * mm, 34 * mm, 30 * mm, 26 * mm, 28 * mm, 22 * mm, 20 * mm],
+    )
+    t13.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("PADDING", (0, 0), (-1, -1), 2.5),
+            ]
+        )
+    )
+    story.append(t13)
+
+    # Section 14: Preliminary Single-Line Diagram (SLD) Schematic
+    story.append(
+        Paragraph(
+            "14. PRELIMINARY SINGLE-LINE DIAGRAM (SLD) SCHEMATIC — PRELIMINARY ENGINEERING",
+            sec_style,
+        )
+    )
+    sld_png_bytes = _render_single_line_diagram_png(
+        project_name=proj.name,
+        scenario=active_scenario,
+    )
+    sld_img = Image(io.BytesIO(sld_png_bytes), width=174 * mm, height=78 * mm)
+    story.append(sld_img)
 
     doc.build(
         story,

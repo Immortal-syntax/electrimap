@@ -146,3 +146,4 @@ class ProjectDemandEstimate(Base, TimestampMixin):
     category_breakdown: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, default=list, nullable=False
     )
+

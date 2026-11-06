@@ -17,6 +17,7 @@ export interface MapCanvasProps {
   onSelectCluster?: (clusterId: string) => void;
   infrastructureAssets?: GeoJSON.FeatureCollection | null;
   gapCorridors?: GeoJSON.FeatureCollection | null;
+  networkLayout?: GeoJSON.FeatureCollection | null;
   placeTieInModeActive?: boolean;
   onPlaceTieInPoint?: (lon: number, lat: number) => void;
   rasterOverlayUrl?: string | null;
@@ -121,6 +122,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   onSelectCluster,
   infrastructureAssets = null,
   gapCorridors = null,
+  networkLayout = null,
   placeTieInModeActive = false,
   onPlaceTieInPoint,
   rasterOverlayUrl = null,
@@ -589,6 +591,62 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         },
       });
     }
+
+    // 11. Milestone M5 Network Layout (11 kV HT Feeders, 415 V LT MST & DTs / Mini-Grid Hubs)
+    const netFc: GeoJSON.FeatureCollection = networkLayout ?? {
+      type: 'FeatureCollection',
+      features: [],
+    };
+    const existingNet = map.getSource('network-layout-source') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (existingNet) {
+      existingNet.setData(netFc);
+    } else {
+      map.addSource('network-layout-source', { type: 'geojson', data: netFc });
+      map.addLayer({
+        id: 'network-layout-ht-lines',
+        type: 'line',
+        source: 'network-layout-source',
+        filter: ['==', ['get', 'feature_kind'], 'HT_11KV_FEEDER'],
+        paint: {
+          'line-color': '#9B2C2C',
+          'line-width': 3,
+        },
+      });
+      map.addLayer({
+        id: 'network-layout-lt-lines',
+        type: 'line',
+        source: 'network-layout-source',
+        filter: ['==', ['get', 'feature_kind'], 'LT_415V_MST'],
+        paint: {
+          'line-color': '#0F766E',
+          'line-width': 2,
+        },
+      });
+      map.addLayer({
+        id: 'network-layout-dt-points',
+        type: 'circle',
+        source: 'network-layout-source',
+        filter: [
+          'in',
+          ['get', 'feature_kind'],
+          ['literal', ['DISTRIBUTION_TRANSFORMER', 'MINIGRID_HUB']],
+        ],
+        paint: {
+          'circle-radius': 6,
+          'circle-color': [
+            'match',
+            ['get', 'feature_kind'],
+            'MINIGRID_HUB',
+            '#D97706',
+            '#1E3A5F',
+          ],
+          'circle-stroke-color': '#FFFFFF',
+          'circle-stroke-width': 2,
+        },
+      });
+    }
   };
 
   useEffect(() => {
@@ -699,6 +757,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     selectedClusterId,
     infrastructureAssets,
     gapCorridors,
+    networkLayout,
     rasterOverlayUrl,
     rasterOpacity,
   ]);

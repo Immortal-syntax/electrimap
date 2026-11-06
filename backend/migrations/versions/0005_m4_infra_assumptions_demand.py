@@ -227,3 +227,4 @@ def downgrade() -> None:
         table_name="infrastructure_assets",
     )
     op.drop_table("infrastructure_assets")
+

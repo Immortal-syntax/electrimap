@@ -10,7 +10,7 @@
 - [x] **PROMPT-1:** Product Discovery, Requirements Validation & PRD *(Approved 2026-11-05)*
 - [x] **PROMPT-2:** Technical Architecture, UI/UX Design System & Roadmap *(Approved 2026-11-06)*
 - [x] **PROMPT-3:** Environment Inspection, Git/GitHub Setup & Permanent Instructions *(Approved 2026-11-06)*
-- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M4 Completed)*
+- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M5 Completed)*
 - [ ] **PROMPT-5:** Production Readiness, Debugging & Handover
 
 ---
@@ -74,14 +74,14 @@
 ---
 
 ## Milestone M5: Network Layout Routing & Engineering Engine
-- [ ] **M5-1:** Engineering constants table verification against REC/IS standards
-- [ ] **M5-2:** Distribution transformer placement and radial distance constraints
-- [ ] **M5-3:** 11 kV HT feeder least-cost path routing algorithm
-- [ ] **M5-4:** 415V LT radial network Minimum Spanning Tree and pole allocation
-- [ ] **M5-5:** Deterministic engineering calculations (voltage drop, technical losses, solar/BESS sizing)
-- [ ] **M5-6:** Synchronous scenario planning and recalculation engine
-- [ ] **M5-7:** Planning and Network Layout interactive editing UI
-- [ ] **M5-8:** DPR engineering calculations and Single-Line Diagram export
+- [x] **M5-1:** Engineering constants table verification against REC/IS standards
+- [x] **M5-2:** Distribution transformer placement and radial distance constraints
+- [x] **M5-3:** 11 kV HT feeder least-cost path routing algorithm
+- [x] **M5-4:** 415V LT radial network Minimum Spanning Tree and pole allocation
+- [x] **M5-5:** Deterministic engineering calculations (voltage drop, technical losses, solar/BESS sizing)
+- [x] **M5-6:** Synchronous scenario planning and recalculation engine
+- [x] **M5-7:** Planning and Network Layout interactive editing UI
+- [x] **M5-8:** DPR engineering calculations and Single-Line Diagram export
 
 ---
 

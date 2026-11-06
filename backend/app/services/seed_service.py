@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password
 from app.db.models.auth import User
 from app.db.models.project import Project, ProjectAoi
-from app.db.models.reference import AdminUnit, CensusVillage
+from app.db.models.reference import AdminUnit, CensusVillage, EngineeringConstant
+from app.domain.engineering.constants import STANDARD_ENGINEERING_CONSTANTS
 from app.domain.gis.crs import compute_metric_area_km2
 
 DEMO_PROJECT_ID = "00000000-0000-4000-8000-000000000001"
@@ -346,5 +347,23 @@ def ensure_seed_data(db: Session) -> None:
             warnings=[],
         )
         db.add_all([proj, aoi])
+
+    # Seed verified REC/IS/CEA engineering constants
+    existing_const_keys = {
+        row.key for row in db.execute(select(EngineeringConstant)).scalars().all()
+    }
+    for spec in STANDARD_ENGINEERING_CONSTANTS:
+        if spec.key not in existing_const_keys:
+            db.add(
+                EngineeringConstant(
+                    key=spec.key,
+                    value=spec.value,
+                    unit=spec.unit,
+                    description=spec.description,
+                    citation=spec.citation,
+                    status=spec.status,
+                    updated_by="system_seed",
+                )
+            )
 
     db.commit()

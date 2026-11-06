@@ -156,3 +156,4 @@ def run_or_get_project_demand(
     return compute_and_persist_project_demand(
         db, project_id=project_id, user=user
     )
+

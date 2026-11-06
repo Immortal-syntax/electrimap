@@ -8,6 +8,7 @@ from app.db.models.infrastructure import (
     ProjectSetting,
 )
 from app.db.models.ops import AuditEvent, Job
+from app.db.models.planning import ClusterEngineeringLayout, PlanningScenario
 from app.db.models.project import Project, ProjectAoi, ProjectLayer
 from app.db.models.reference import AdminUnit, CensusVillage, Dataset, EngineeringConstant
 from app.db.models.settlement import (
@@ -23,6 +24,7 @@ __all__ = [
     "AuditEvent",
     "Building",
     "CensusVillage",
+    "ClusterEngineeringLayout",
     "ClusterGapAnalysis",
     "ClusterRun",
     "Dataset",
@@ -30,6 +32,7 @@ __all__ = [
     "InfrastructureAsset",
     "Job",
     "OsmFeature",
+    "PlanningScenario",
     "Project",
     "ProjectAoi",
     "ProjectDemandEstimate",

@@ -7,8 +7,9 @@ import { JobProgress } from '../components/ui/JobProgress';
 import { DataManagementPanel } from '../components/workspace/DataManagementPanel';
 import { SettlementAssessmentPanel } from '../components/workspace/SettlementAssessmentPanel';
 import { InfrastructureAndDemandPanel } from '../components/workspace/InfrastructureAndDemandPanel';
+import { NetworkEngineeringPanel } from '../components/workspace/NetworkEngineeringPanel';
 
-describe('Milestone M1, M2, M3 & M4 Frontend Components', () => {
+describe('Milestone M1, M2, M3, M4 & M5 Frontend Components', () => {
   it('renders LoginPage with Survey Sheet header and default planner credentials button', () => {
     render(
       <MemoryRouter>
@@ -387,5 +388,118 @@ describe('Milestone M1, M2, M3 & M4 Frontend Components', () => {
       screen.getByRole('button', { name: /\+ Place Assumed 11 kV Tie-In on Map/i }),
     );
     expect(onToggleTieIn).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders NetworkEngineeringPanel with scenario KPIs, voltage drop compliance, SLD schematic, and REC/IS/CEA constants drawer', () => {
+    const mockScenario = {
+      id: 'scen-1',
+      project_id: '00000000-0000-4000-8000-000000000001',
+      scenario_key: 'HYBRID_OPTIMAL',
+      name: 'Hybrid Least-Cost Optimal (Grid + Solar Mini-Grid + SHS)',
+      is_active: true,
+      requires_tie_in_warning: false,
+      total_ht_length_m: 1420.0,
+      total_lt_length_m: 685.0,
+      total_dt_count: 1,
+      total_dt_capacity_kva: 63.0,
+      total_ht_poles: 23,
+      total_lt_poles: 17,
+      max_ht_vdrop_pct: 1.42,
+      max_lt_vdrop_pct: 3.18,
+      vdrop_compliance_ok: true,
+      total_loss_mwh_yr: 2.145,
+      total_solar_kwp: 45.0,
+      total_bess_kwh: 150.0,
+      total_shs_kits: 8,
+      network_geojson: { type: 'FeatureCollection' as const, features: [] },
+      updated_at: '2026-11-06T00:00:00Z',
+      clusters: [
+        {
+          id: 'lay-1',
+          scenario_id: 'scen-1',
+          project_id: '00000000-0000-4000-8000-000000000001',
+          cluster_id: 'cl-1',
+          cluster_label: 'CL-01',
+          cluster_name: 'Bheja Main Village Core',
+          est_households: 56,
+          modality: 'GRID_EXTENSION',
+          is_manual_override: false,
+          requires_tie_in: false,
+          peak_kw_horizon: 32.3,
+          peak_kva_horizon: 38.0,
+          energy_kwh_day_horizon: 220.0,
+          annual_energy_mwh_horizon: 80.3,
+          dt_count: 1,
+          total_dt_rating_kva: 63.0,
+          max_dt_loading_pct: 60.3,
+          placed_dts: [],
+          ht_length_m: 1420.0,
+          ht_poles_count: 23,
+          lt_3ph_length_m: 410.0,
+          lt_1ph_length_m: 275.0,
+          lt_total_length_m: 685.0,
+          max_lt_branch_m: 240.0,
+          lt_poles_count: 17,
+          ht_current_a: 1.99,
+          ht_drop_v: 156.2,
+          ht_drop_pct: 1.42,
+          ht_vdrop_compliant: true,
+          lt_current_a: 52.87,
+          lt_drop_v: 13.2,
+          lt_drop_pct: 3.18,
+          lt_vdrop_compliant: true,
+          overall_vdrop_compliant: true,
+          load_factor: 0.284,
+          load_loss_factor: 0.142,
+          ht_line_loss_kwh_yr: 85.0,
+          lt_line_loss_kwh_yr: 410.0,
+          dt_no_load_loss_kwh_yr: 1401.6,
+          dt_copper_loss_kwh_yr: 248.4,
+          total_loss_mwh_yr: 2.145,
+          technical_loss_pct: 2.6,
+          solar_pv_kwp: 0.0,
+          bess_capacity_kwh: 0.0,
+          inverter_kva: 0.0,
+          shs_kits_count: 0,
+          engineering_notes: ['11 kV HT feeder routed via MCP_Geometric.'],
+          updated_at: '2026-11-06T00:00:00Z',
+        },
+      ],
+    };
+
+    render(
+      <NetworkEngineeringPanel
+        projectId="00000000-0000-4000-8000-000000000001"
+        onScenariosUpdated={async () => {}}
+        scenariosState={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          active_scenario_key: 'HYBRID_OPTIMAL',
+          active_scenario: mockScenario,
+          scenarios: [mockScenario],
+        }}
+        constants={{
+          count: 1,
+          items: [
+            {
+              key: 'ht_11kv_r_ohm_per_km',
+              value: 0.5426,
+              unit: 'ohm/km',
+              description: '11 kV 3-phase overhead ACSR Rabbit AC resistance at 20°C',
+              citation: 'IS 398 (Part 2):1996 / REC F-1',
+              status: 'SOURCE_VERIFIED',
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText(/1420 m/i).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/CEA Compliant/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: /Preliminary Single-Line Diagram/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /REC\/IS\/CEA Constants/i }));
+    expect(screen.getByText('ht_11kv_r_ohm_per_km')).toBeInTheDocument();
   });
 });

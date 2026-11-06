@@ -20,6 +20,11 @@ import {
   ProjectGapAnalysisDto,
   ProjectSettingsListDto,
 } from '../components/workspace/InfrastructureAndDemandPanel';
+import {
+  EngineeringConstantListDto,
+  NetworkEngineeringPanel,
+  PlanningScenarioListDto,
+} from '../components/workspace/NetworkEngineeringPanel';
 import { ClassificationBadge } from '../components/ui/Badge';
 import { Callout } from '../components/ui/Callout';
 import { StatTile } from '../components/ui/StatTile';
@@ -35,9 +40,9 @@ interface ReferenceGeoJsonPayload {
 const WORKFLOW_STEPS = [
   { key: 'data', label: '1. Data & AOI', state: 'READY' },
   { key: 'settlements', label: '2. Settlements', state: 'READY' },
-  { key: 'infrastructure', label: '3. Infrastructure', state: 'ACTIVE' },
-  { key: 'planning', label: '4. Planning', state: 'READY' },
-  { key: 'engineering', label: '5. Engineering', state: 'READY' },
+  { key: 'infrastructure', label: '3. Infrastructure', state: 'READY' },
+  { key: 'planning', label: '4. Planning', state: 'ACTIVE' },
+  { key: 'engineering', label: '5. Engineering', state: 'ACTIVE' },
   { key: 'cost', label: '6. Cost & BOQ', state: 'READY' },
   { key: 'compare', label: '7. Compare & DPR', state: 'READY' },
 ];
@@ -59,6 +64,9 @@ export const WorkspacePage: React.FC = () => {
   const [gapAnalysis, setGapAnalysis] = useState<ProjectGapAnalysisDto | null>(null);
   const [settings, setSettings] = useState<ProjectSettingsListDto | null>(null);
   const [demand, setDemand] = useState<ProjectDemandSummaryDto | null>(null);
+  const [scenariosState, setScenariosState] = useState<PlanningScenarioListDto | null>(null);
+  const [engineeringConstants, setEngineeringConstants] =
+    useState<EngineeringConstantListDto | null>(null);
   const [placeTieInModeActive, setPlaceTieInModeActive] = useState<boolean>(false);
 
   const [visibleVectorLayers, setVisibleVectorLayers] = useState<Record<string, boolean>>({
@@ -71,18 +79,31 @@ export const WorkspacePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchInfraAndDemand = useCallback(async (projectId: string) => {
-    const [infraData, gapData, settingsData, demandData] = await Promise.all([
-      apiRequest<InfrastructureListDto>(`/api/v1/projects/${projectId}/infrastructure`),
-      apiRequest<ProjectGapAnalysisDto>(`/api/v1/projects/${projectId}/gap-analysis`),
-      apiRequest<ProjectSettingsListDto>(`/api/v1/projects/${projectId}/settings`),
-      apiRequest<ProjectDemandSummaryDto>(`/api/v1/projects/${projectId}/demand`),
+  const fetchScenariosAndConstants = useCallback(async (projectId: string) => {
+    const [scenData, constData] = await Promise.all([
+      apiRequest<PlanningScenarioListDto>(`/api/v1/projects/${projectId}/scenarios`),
+      apiRequest<EngineeringConstantListDto>('/api/v1/engineering-constants'),
     ]);
-    setInfrastructure(infraData);
-    setGapAnalysis(gapData);
-    setSettings(settingsData);
-    setDemand(demandData);
+    setScenariosState(scenData);
+    setEngineeringConstants(constData);
   }, []);
+
+  const fetchInfraAndDemand = useCallback(
+    async (projectId: string) => {
+      const [infraData, gapData, settingsData, demandData] = await Promise.all([
+        apiRequest<InfrastructureListDto>(`/api/v1/projects/${projectId}/infrastructure`),
+        apiRequest<ProjectGapAnalysisDto>(`/api/v1/projects/${projectId}/gap-analysis`),
+        apiRequest<ProjectSettingsListDto>(`/api/v1/projects/${projectId}/settings`),
+        apiRequest<ProjectDemandSummaryDto>(`/api/v1/projects/${projectId}/demand`),
+      ]);
+      setInfrastructure(infraData);
+      setGapAnalysis(gapData);
+      setSettings(settingsData);
+      setDemand(demandData);
+      await fetchScenariosAndConstants(projectId);
+    },
+    [fetchScenariosAndConstants],
+  );
 
   const fetchSettlementsAndLedger = useCallback(
     async (projectId: string) => {
@@ -295,6 +316,7 @@ export const WorkspacePage: React.FC = () => {
             settlementClusters={settlements?.geojson ?? null}
             infrastructureAssets={infrastructure?.geojson ?? null}
             gapCorridors={gapAnalysis?.corridors_geojson ?? null}
+            networkLayout={scenariosState?.active_scenario.network_geojson ?? null}
             placeTieInModeActive={placeTieInModeActive}
             onPlaceTieInPoint={(lon, lat) => {
               void (async () => {
@@ -387,6 +409,14 @@ export const WorkspacePage: React.FC = () => {
           </div>
         </aside>
       </div>
+
+      {/* Milestone M5: Network Layout Routing, Voltage Drop, Technical Losses & Off-Grid Sizing */}
+      <NetworkEngineeringPanel
+        projectId={project.id}
+        scenariosState={scenariosState}
+        constants={engineeringConstants}
+        onScenariosUpdated={() => fetchScenariosAndConstants(project.id)}
+      />
 
       {/* Milestone M4: Infrastructure Gap Analysis, Assumptions Register & 7-Category Demand Engine */}
       <InfrastructureAndDemandPanel

@@ -59,3 +59,4 @@ def reset_project_settings(
 ) -> ProjectSettingsListResponse:
     """Reset all project engineering assumptions to normative REC/CEA defaults."""
     return reset_project_settings_state(db, project_id=project_id, user=user)
+
