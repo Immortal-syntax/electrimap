@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import maplibregl, { StyleSpecification } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { Button } from '../ui/Button';
 import { QualityTag } from '../ui/QualityTag';
 
@@ -19,7 +19,7 @@ export interface MapCanvasProps {
   heightClass?: string;
 }
 
-function buildBasemapStyle(mode: BasemapMode): StyleSpecification | string {
+function buildBasemapStyle(mode: BasemapMode): maplibregl.StyleSpecification | string {
   if (mode === 'streets') {
     return 'https://tiles.openfreemap.org/styles/liberty';
   }
@@ -451,14 +451,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       'bottom-left',
     );
 
-    map.on('mousemove', (e) => {
+    map.on('mousemove', (e: maplibregl.MapMouseEvent) => {
       setCursorCoords({
         lon: Number(e.lngLat.lng.toFixed(5)),
         lat: Number(e.lngLat.lat.toFixed(5)),
       });
     });
 
-    map.on('click', (e) => {
+    map.on('click', (e: maplibregl.MapMouseEvent) => {
       if (!drawModeRef.current) return;
       const pt: [number, number] = [
         Number(e.lngLat.lng.toFixed(5)),

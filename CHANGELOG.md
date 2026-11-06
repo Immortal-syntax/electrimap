@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased] - 2026-11-06
 
+### Fixed
+- **GitHub Actions CI & Repository Configuration:**
+  - Resolved `TS2307: Cannot find module '../lib/apiClient'` in CI builds by anchoring `.gitignore` Python build rules to `backend/build/` and `backend/lib/`, ensuring `frontend/src/lib/apiClient.ts` is committed and tracked.
+  - Added explicit parameter type `(u: AdminUnitDto)` in `frontend/src/pages/NewProjectWizardPage.tsx` and included `geojson` in `frontend/tsconfig.json` compiler `types`.
+  - Upgraded `maplibre-gl` from `4.7.1` to `6.16.0` to resolve critical CVSS 10.0 XSS vulnerability (`GHSA-jrc7-96c5-q579`), adapting map canvas imports to `import * as maplibregl`.
+  - Modernized CI workflow in `.github/workflows/ci.yml` with Node.js 22 LTS and `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` to eliminate runner deprecation notices.
+
 ### Added
 - **Milestone M2 — Geospatial Ingestion, Provenance Registry, Job Queue & Reference Pack (`M2-1` to `M2-7`):**
   - PostgreSQL-backed transactional job queue (`backend/app/services/job_service.py`, `backend/app/api/v1/jobs.py`, `backend/app/worker.py`) enforcing `max_jobs_per_user=2` (`429 CONCURRENT_JOB_LIMIT`), stage/progress updates, and cancellation (`POST /api/v1/jobs/{job_id}/cancel`).

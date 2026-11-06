@@ -144,7 +144,7 @@ export const NewProjectWizardPage: React.FC = () => {
       const results = await apiRequest<AdminUnitDto[]>(
         `/api/v1/admin-units/search?q=${encodeURIComponent(searchQuery.trim())}`,
       );
-      const villageMatches = results.filter((u) => u.level === 'VILLAGE');
+      const villageMatches = results.filter((u: AdminUnitDto) => u.level === 'VILLAGE');
       if (villageMatches.length > 0) {
         setVillages(villageMatches);
         setSelectedLgd(villageMatches[0]!.lgd_code);

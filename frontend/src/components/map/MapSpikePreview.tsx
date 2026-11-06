@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import maplibregl, { StyleSpecification } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { Button } from '../ui/Button';
 import { QualityTag } from '../ui/QualityTag';
 
@@ -15,7 +15,7 @@ export interface MapSpikePreviewProps {
 
 type BasemapMode = 'survey_paper' | 'streets' | 'satellite_2016';
 
-function buildBaseStyle(mode: BasemapMode): StyleSpecification | string {
+function buildBaseStyle(mode: BasemapMode): maplibregl.StyleSpecification | string {
   if (mode === 'streets') {
     return 'https://tiles.openfreemap.org/styles/liberty';
   }
@@ -277,7 +277,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({ referenceData 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-left');
 
-    map.on('mousemove', (e) => {
+    map.on('mousemove', (e: maplibregl.MapMouseEvent) => {
       setCursorCoords({
         lon: Number(e.lngLat.lng.toFixed(5)),
         lat: Number(e.lngLat.lat.toFixed(5)),
