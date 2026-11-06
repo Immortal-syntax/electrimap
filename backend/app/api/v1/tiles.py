@@ -12,6 +12,7 @@ from app.db.models.auth import User
 from app.db.session import get_db
 from app.services.data_service import get_project_vector_layer_geojson
 from app.services.project_service import get_owned_project_or_404
+from app.services.settlement_service import get_project_settlement_state
 
 router = APIRouter(prefix="/api/v1/tiles", tags=["Vector Tiles"])
 
@@ -26,9 +27,9 @@ def get_vector_tile(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Serve Mapbox Vector Tile (.mvt) for project buildings or osm_features."""
+    """Serve Mapbox Vector Tile (.mvt) for project buildings, osm_features, or clusters."""
     proj = get_owned_project_or_404(db, project_id, user)
-    if layer not in {"buildings", "osm_features"}:
+    if layer not in {"buildings", "osm_features", "clusters"}:
         raise AppError(
             code="UNKNOWN_TILE_LAYER",
             message=f"Unsupported tile layer '{layer}'.",
@@ -37,7 +38,12 @@ def get_vector_tile(
 
     dialect_name = db.bind.dialect.name if db.bind is not None else "sqlite"
     if dialect_name == "postgresql":
-        table_name = "buildings" if layer == "buildings" else "osm_features"
+        table_map = {
+            "buildings": "buildings",
+            "osm_features": "osm_features",
+            "clusters": "clusters",
+        }
+        table_name = table_map[layer]
         sql = text(
             f"""
             WITH mvtgeom AS (
@@ -71,9 +77,13 @@ def get_vector_tile(
         )
 
     # On local SQLite fallback, serialize compact tile payload with ownership verified
-    fc = get_project_vector_layer_geojson(
-        db, project_id=proj.id, layer_name=layer, user=user
-    )
+    if layer == "clusters":
+        settlements = get_project_settlement_state(db, project_id=proj.id, user=user)
+        fc = settlements.geojson
+    else:
+        fc = get_project_vector_layer_geojson(
+            db, project_id=proj.id, layer_name=layer, user=user
+        )
     payload_bytes = json.dumps(
         {"tile": [z, x, y], "layer": layer, "feature_count": len(fc["features"])}
     ).encode("utf-8")

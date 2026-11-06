@@ -15,6 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Modernized CI workflow in `.github/workflows/ci.yml` with Node.js 22 LTS and `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` to eliminate runner deprecation notices.
 
 ### Added
+- **Milestone M3 — Settlement Identification, Two-Axis Proxy Classification, Verification Ledger & Preliminary DPR PDF (`M3-1` to `M3-7`):**
+  - Pure metric DBSCAN habitation clustering (`backend/app/domain/gis/clustering.py`) in UTM `EPSG:32644` with 35 m buffered convex hull polygons, isolated homestead grouping, and household estimation (`round(n_residential * household_alpha)`).
+  - Pure 4-tier proxy classification and Census 2011 household reconciliation domain (`backend/app/domain/gis/classification.py`) enforcing epistemic honesty (`proxy_confidence` capped at `MEDIUM`/`LOW`, flagging $>30\%$ Census divergence).
+  - `ClusterRun`, `SettlementCluster`, `VerificationRecord`, and `VerificationImport` models (`backend/app/db/models/settlement.py`) and Alembic migration `0004_m3_settlements_verification.py` with append-only immutability triggers (`before_update`/`before_delete` listeners + PostgreSQL trigger).
+  - Settlement & Verification service (`backend/app/services/settlement_service.py`), Preliminary DPR PDF Skeleton generator (`backend/app/services/settlement_pdf_service.py` — Sections 1–5 + Page 2 UTM Cartographic Map Plate), and REST routers (`backend/app/api/v1/settlements.py`, `backend/app/api/v1/verification.py`, `clusters` layer in `backend/app/api/v1/tiles.py`).
+  - Frontend `SettlementAssessmentPanel.tsx` integrated into `WorkspacePage.tsx` and `MapCanvas.tsx` (Okabe-Ito proxy palette, dashed vs. solid verification outlines, configurable DBSCAN controls, Census 2011 reconciliation banner, inline Axis-2 verification form, append-only audit ledger with reversal, CSV batch upload, and PDF download).
 - **Milestone M2 — Geospatial Ingestion, Provenance Registry, Job Queue & Reference Pack (`M2-1` to `M2-7`):**
   - PostgreSQL-backed transactional job queue (`backend/app/services/job_service.py`, `backend/app/api/v1/jobs.py`, `backend/app/worker.py`) enforcing `max_jobs_per_user=2` (`429 CONCURRENT_JOB_LIMIT`), stage/progress updates, and cancellation (`POST /api/v1/jobs/{job_id}/cancel`).
   - Dataset provenance registry (`GET /api/v1/datasets`) and spatial models (`ProjectLayer`, `Building`, `OsmFeature`, `SolarResource`) with Alembic migration `0003_m2_layers_buildings_osm_solar.py`.

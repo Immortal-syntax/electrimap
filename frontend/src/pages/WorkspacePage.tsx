@@ -8,7 +8,12 @@ import {
   ProjectLayerDto,
   RasterOverlayKey,
 } from '../components/workspace/DataManagementPanel';
-import { ClassificationBadge, ProxyElectrificationClass } from '../components/ui/Badge';
+import {
+  ClusterListResponseDto,
+  SettlementAssessmentPanel,
+  VerificationLedgerDto,
+} from '../components/workspace/SettlementAssessmentPanel';
+import { ClassificationBadge } from '../components/ui/Badge';
 import { Callout } from '../components/ui/Callout';
 import { StatTile } from '../components/ui/StatTile';
 import { TitleBlock } from '../components/ui/TitleBlock';
@@ -21,50 +26,13 @@ interface ReferenceGeoJsonPayload {
 }
 
 const WORKFLOW_STEPS = [
-  { key: 'data', label: '1. Data & AOI', state: 'ACTIVE' },
-  { key: 'settlements', label: '2. Settlements', state: 'READY' },
+  { key: 'data', label: '1. Data & AOI', state: 'READY' },
+  { key: 'settlements', label: '2. Settlements', state: 'ACTIVE' },
   { key: 'infrastructure', label: '3. Infrastructure', state: 'READY' },
   { key: 'planning', label: '4. Planning', state: 'READY' },
   { key: 'engineering', label: '5. Engineering', state: 'READY' },
   { key: 'cost', label: '6. Cost & BOQ', state: 'READY' },
   { key: 'compare', label: '7. Compare & DPR', state: 'READY' },
-];
-
-const DEMO_HABITATIONS: Array<{
-  code: string;
-  name: string;
-  buildings: number;
-  estHh: number;
-  proxyClass: ProxyElectrificationClass;
-}> = [
-  {
-    code: 'CL-01',
-    name: 'Bheja Main Village Core',
-    buildings: 65,
-    estHh: 59,
-    proxyClass: 'LIKELY_ELECTRIFIED',
-  },
-  {
-    code: 'CL-02',
-    name: 'Podapadar Tola (Eastern Ridge)',
-    buildings: 42,
-    estHh: 38,
-    proxyClass: 'POTENTIALLY_UNDERSERVED',
-  },
-  {
-    code: 'CL-03',
-    name: 'Maliaguda PVTG Hamlet',
-    buildings: 28,
-    estHh: 26,
-    proxyClass: 'POTENTIALLY_UNSERVED',
-  },
-  {
-    code: 'CL-04',
-    name: 'Dispersed Forest Homesteads',
-    buildings: 8,
-    estHh: 8,
-    proxyClass: 'UNKNOWN',
-  },
 ];
 
 export const WorkspacePage: React.FC = () => {
@@ -76,6 +44,9 @@ export const WorkspacePage: React.FC = () => {
   const [buildingsGeoJson, setBuildingsGeoJson] = useState<GeoJSON.FeatureCollection | null>(null);
   const [osmGeoJson, setOsmGeoJson] = useState<GeoJSON.FeatureCollection | null>(null);
   const [routesGeoJson, setRoutesGeoJson] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [settlements, setSettlements] = useState<ClusterListResponseDto | null>(null);
+  const [verificationLedger, setVerificationLedger] = useState<VerificationLedgerDto | null>(null);
+  const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
 
   const [visibleVectorLayers, setVisibleVectorLayers] = useState<Record<string, boolean>>({
     buildings: true,
@@ -87,20 +58,34 @@ export const WorkspacePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchLayersAndVectors = useCallback(async (projectId: string) => {
-    const [layerItems, bldFc, osmFc] = await Promise.all([
-      apiRequest<ProjectLayerDto[]>(`/api/v1/projects/${projectId}/layers`),
-      apiRequest<GeoJSON.FeatureCollection>(
-        `/api/v1/projects/${projectId}/layers/buildings/geojson`,
-      ),
-      apiRequest<GeoJSON.FeatureCollection>(
-        `/api/v1/projects/${projectId}/layers/osm_features/geojson`,
-      ),
+  const fetchSettlementsAndLedger = useCallback(async (projectId: string) => {
+    const [clustersData, ledgerData] = await Promise.all([
+      apiRequest<ClusterListResponseDto>(`/api/v1/projects/${projectId}/clusters`),
+      apiRequest<VerificationLedgerDto>(`/api/v1/projects/${projectId}/verifications`),
     ]);
-    setLayers(layerItems);
-    setBuildingsGeoJson(bldFc);
-    setOsmGeoJson(osmFc);
+    setSettlements(clustersData);
+    setVerificationLedger(ledgerData);
+    setSelectedClusterId((prev) => prev ?? clustersData.items[0]?.id ?? null);
   }, []);
+
+  const fetchLayersAndVectors = useCallback(
+    async (projectId: string) => {
+      const [layerItems, bldFc, osmFc] = await Promise.all([
+        apiRequest<ProjectLayerDto[]>(`/api/v1/projects/${projectId}/layers`),
+        apiRequest<GeoJSON.FeatureCollection>(
+          `/api/v1/projects/${projectId}/layers/buildings/geojson`,
+        ),
+        apiRequest<GeoJSON.FeatureCollection>(
+          `/api/v1/projects/${projectId}/layers/osm_features/geojson`,
+        ),
+      ]);
+      setLayers(layerItems);
+      setBuildingsGeoJson(bldFc);
+      setOsmGeoJson(osmFc);
+      await fetchSettlementsAndLedger(projectId);
+    },
+    [fetchSettlementsAndLedger],
+  );
 
   useEffect(() => {
     let active = true;
@@ -166,6 +151,8 @@ export const WorkspacePage: React.FC = () => {
       ? Number(solarLayer.summary_metrics.worst_ghi_kwh_m2_day).toFixed(2)
       : '3.82';
 
+  const verCoveragePct = settlements?.verification_coverage_pct ?? 0.0;
+
   return (
     <div className="max-w-[1440px] w-full mx-auto p-4 space-y-4">
       <TitleBlock
@@ -229,10 +216,16 @@ export const WorkspacePage: React.FC = () => {
         />
         <StatTile
           label="Verification Coverage"
-          value="0.0"
+          value={verCoveragePct.toFixed(1)}
           unit="% HH verified"
-          quality="PROXY"
-          subtitle="All settlement clusters currently UNVERIFIED on Axis 2"
+          quality={verCoveragePct > 0 ? 'VERIFIED' : 'PROXY'}
+          subtitle={
+            verCoveragePct > 0
+              ? `${verificationLedger?.verified_clusters ?? 0}/${
+                  verificationLedger?.total_clusters ?? 0
+                } clusters verified on Axis 2`
+              : 'All settlement clusters currently UNVERIFIED on Axis 2'
+          }
         />
       </div>
 
@@ -269,6 +262,9 @@ export const WorkspacePage: React.FC = () => {
             referenceBuildings={visibleVectorLayers.buildings ? buildingsGeoJson : null}
             osmFeatures={visibleVectorLayers.osm_features ? osmGeoJson : null}
             referenceRoutes={routesGeoJson}
+            settlementClusters={settlements?.geojson ?? null}
+            selectedClusterId={selectedClusterId}
+            onSelectCluster={(cid) => setSelectedClusterId(cid)}
             rasterOverlayUrl={rasterOverlayUrl}
             rasterOpacity={rasterOpacity}
             heightClass="h-[460px]"
@@ -310,22 +306,29 @@ export const WorkspacePage: React.FC = () => {
           </dl>
 
           <div className="pt-2 space-y-2">
-            <div className="small-caps-heading">Habitation Clusters (Preview)</div>
-            <div className="space-y-1.5">
-              {DEMO_HABITATIONS.map((h) => (
+            <div className="small-caps-heading">
+              Habitation Clusters ({settlements?.items.length ?? 0})
+            </div>
+            <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-1">
+              {(settlements?.items ?? []).map((h) => (
                 <div
-                  key={h.code}
-                  className="p-2 bg-paper border border-rule rounded-xs space-y-1"
+                  key={h.id}
+                  onClick={() => setSelectedClusterId(h.id)}
+                  className={`p-2 border rounded-xs space-y-1 cursor-pointer transition-colors ${
+                    selectedClusterId === h.id
+                      ? 'bg-accent-tint/50 border-accent'
+                      : 'bg-paper border-rule hover:bg-sheet'
+                  }`}
                 >
                   <div className="flex items-center justify-between font-medium text-ink">
                     <span>
-                      {h.code} · {h.name}
+                      {h.label} · {h.name}
                     </span>
-                    <span className="font-mono text-[11px]">{h.estHh} HH</span>
+                    <span className="font-mono text-[11px]">{h.est_households} HH</span>
                   </div>
                   <ClassificationBadge
-                    proxyClass={h.proxyClass}
-                    verificationState="UNVERIFIED"
+                    proxyClass={h.proxy_class}
+                    verificationState={h.verification_state}
                   />
                 </div>
               ))}
@@ -333,6 +336,16 @@ export const WorkspacePage: React.FC = () => {
           </div>
         </aside>
       </div>
+
+      {/* Milestone M3: Habitation Clustering, Two-Axis Classification & Verification Ledger */}
+      <SettlementAssessmentPanel
+        projectId={project.id}
+        settlements={settlements}
+        ledger={verificationLedger}
+        selectedClusterId={selectedClusterId}
+        onSelectCluster={(cid) => setSelectedClusterId(cid)}
+        onSettlementsUpdated={() => fetchSettlementsAndLedger(project.id)}
+      />
 
       {/* Milestone M2: Data Management, Layer Toggles & Provenance Registry Panel */}
       <DataManagementPanel

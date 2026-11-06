@@ -10,7 +10,7 @@
 - [x] **PROMPT-1:** Product Discovery, Requirements Validation & PRD *(Approved 2026-11-05)*
 - [x] **PROMPT-2:** Technical Architecture, UI/UX Design System & Roadmap *(Approved 2026-11-06)*
 - [x] **PROMPT-3:** Environment Inspection, Git/GitHub Setup & Permanent Instructions *(Approved 2026-11-06)*
-- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M0)*
+- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M3 Completed)*
 - [ ] **PROMPT-5:** Production Readiness, Debugging & Handover
 
 ---
@@ -53,13 +53,13 @@
 ---
 
 ## Milestone M3: Settlement Identification & Verification Ledger
-- [ ] **M3-1:** Building footprint filtering and DBSCAN habitation clustering
-- [ ] **M3-2:** Zonal statistics extraction and 4-tier proxy classification engine
-- [ ] **M3-3:** Cluster persistence API and Census household reconciliation
-- [ ] **M3-4:** Immutable verification audit ledger and CSV import processor
-- [ ] **M3-5:** Interactive Settlement Assessment UI with synchronized map inspector
-- [ ] **M3-6:** Verification Audit Log and field correction dashboard
-- [ ] **M3-7:** Preliminary DPR PDF skeleton generation with dynamic maps
+- [x] **M3-1:** Building footprint filtering and DBSCAN habitation clustering
+- [x] **M3-2:** Zonal statistics extraction and 4-tier proxy classification engine
+- [x] **M3-3:** Cluster persistence API and Census household reconciliation
+- [x] **M3-4:** Immutable verification audit ledger and CSV import processor
+- [x] **M3-5:** Interactive Settlement Assessment UI with synchronized map inspector
+- [x] **M3-6:** Verification Audit Log and field correction dashboard
+- [x] **M3-7:** Preliminary DPR PDF skeleton generation with dynamic maps
 
 ---
 

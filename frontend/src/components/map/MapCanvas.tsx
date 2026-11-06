@@ -12,6 +12,9 @@ export interface MapCanvasProps {
   referenceRoutes?: GeoJSON.FeatureCollection | null;
   osmFeatures?: GeoJSON.FeatureCollection | null;
   customFeatures?: GeoJSON.FeatureCollection | null;
+  settlementClusters?: GeoJSON.FeatureCollection | null;
+  selectedClusterId?: string | null;
+  onSelectCluster?: (clusterId: string) => void;
   rasterOverlayUrl?: string | null;
   rasterOpacity?: number;
   drawModeActive?: boolean;
@@ -109,6 +112,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   referenceRoutes = null,
   osmFeatures = null,
   customFeatures = null,
+  settlementClusters = null,
+  selectedClusterId = null,
+  onSelectCluster,
   rasterOverlayUrl = null,
   rasterOpacity = 0.65,
   drawModeActive = false,
@@ -117,6 +123,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const onSelectClusterRef = useRef<((clusterId: string) => void) | undefined>(onSelectCluster);
+  onSelectClusterRef.current = onSelectCluster;
 
   const [basemap, setBasemap] = useState<BasemapMode>('survey_paper');
   const [cursorCoords, setCursorCoords] = useState<{ lon: number; lat: number }>({
@@ -432,6 +440,75 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         },
       });
     }
+
+    // 8. Habitation Settlement Clusters (Okabe-Ito 4-Tier Proxy Palette + Verification State)
+    const clustFc: GeoJSON.FeatureCollection = settlementClusters ?? {
+      type: 'FeatureCollection',
+      features: [],
+    };
+    const existingClust = map.getSource('settlement-clusters-source') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (existingClust) {
+      existingClust.setData(clustFc);
+    } else {
+      map.addSource('settlement-clusters-source', { type: 'geojson', data: clustFc });
+      map.addLayer({
+        id: 'settlement-clusters-fill',
+        type: 'fill',
+        source: 'settlement-clusters-source',
+        paint: {
+          'fill-color': [
+            'match',
+            ['get', 'proxy_class'],
+            'LIKELY_ELECTRIFIED',
+            '#0072B2',
+            'POTENTIALLY_UNDERSERVED',
+            '#E69F00',
+            'POTENTIALLY_UNSERVED',
+            '#D55E00',
+            '#6C757D',
+          ],
+          'fill-opacity': [
+            'case',
+            ['==', ['get', 'id'], selectedClusterId ?? ''],
+            0.38,
+            0.22,
+          ],
+        },
+      });
+      map.addLayer({
+        id: 'settlement-clusters-unverified-line',
+        type: 'line',
+        source: 'settlement-clusters-source',
+        filter: ['==', ['get', 'verification_state'], 'UNVERIFIED'],
+        paint: {
+          'line-color': [
+            'match',
+            ['get', 'proxy_class'],
+            'LIKELY_ELECTRIFIED',
+            '#0072B2',
+            'POTENTIALLY_UNDERSERVED',
+            '#E69F00',
+            'POTENTIALLY_UNSERVED',
+            '#D55E00',
+            '#6C757D',
+          ],
+          'line-width': 2,
+          'line-dasharray': [2, 2],
+        },
+      });
+      map.addLayer({
+        id: 'settlement-clusters-verified-line',
+        type: 'line',
+        source: 'settlement-clusters-source',
+        filter: ['!=', ['get', 'verification_state'], 'UNVERIFIED'],
+        paint: {
+          'line-color': '#1F8A4C',
+          'line-width': 3,
+        },
+      });
+    }
   };
 
   useEffect(() => {
@@ -459,12 +536,24 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     });
 
     map.on('click', (e: maplibregl.MapMouseEvent) => {
-      if (!drawModeRef.current) return;
-      const pt: [number, number] = [
-        Number(e.lngLat.lng.toFixed(5)),
-        Number(e.lngLat.lat.toFixed(5)),
-      ];
-      setDrawnVertices((prev) => [...prev, pt]);
+      if (drawModeRef.current) {
+        const pt: [number, number] = [
+          Number(e.lngLat.lng.toFixed(5)),
+          Number(e.lngLat.lat.toFixed(5)),
+        ];
+        setDrawnVertices((prev) => [...prev, pt]);
+        return;
+      }
+      if (map.getLayer('settlement-clusters-fill') && onSelectClusterRef.current) {
+        const hits = map.queryRenderedFeatures(e.point, {
+          layers: ['settlement-clusters-fill'],
+        });
+        const firstHit = hits[0];
+        const clusterId = firstHit?.properties?.['id'];
+        if (typeof clusterId === 'string') {
+          onSelectClusterRef.current(clusterId);
+        }
+      }
     });
 
     map.on('load', () => {
@@ -519,6 +608,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     referenceRoutes,
     osmFeatures,
     customFeatures,
+    settlementClusters,
+    selectedClusterId,
     rasterOverlayUrl,
     rasterOpacity,
   ]);
