@@ -108,3 +108,4 @@ def register_exception_handlers(app: FastAPI) -> None:
                 }
             },
         )
+

@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
+from app.api.v1 import spikes
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
@@ -35,6 +36,7 @@ app.add_middleware(
 )
 
 register_exception_handlers(app)
+app.include_router(spikes.router)
 
 
 @app.get("/api/v1/health", tags=["System"])

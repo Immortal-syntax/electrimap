@@ -41,3 +41,4 @@ This file tracks active engineering bottlenecks, data caveats, performance limit
 - **Status:** Ongoing Methodological Caveat
 - **Impact:** 11 kV feeders and 415V LT poles are rarely mapped in public OSM layers for rural India.
 - **Mitigation:** The system never fabricates grid lines. If no user GIS layer is uploaded, the planner is prompted to interactively designate an `Assumed Tie-In Point`.
+

@@ -62,3 +62,6 @@ This document maintains an immutable, chronological Architecture Decision Record
 - **AD-07 (Deployment Strategy):** Local development and Docker Compose demo deployment prioritized for Phase 1. Public cloud hosting deferred to P1.
 - **AD-08 (Network Routing):** scikit-image `MCP_Geometric` raster cost-surface pathfinding for HT feeders; SciPy Minimum Spanning Tree for LT radial networks.
 - **AD-09 (Documentation Structure):** Permanent root instruction files (`AGENTS.md`, `CLAUDE.md`, `PROJECT_STATUS.md`, `TASKS.md`, `CHANGELOG.md`) paired with a comprehensive `docs/` repository.
+- **AD-10 (Reference Block & Village Finalization — C8 Resolution):** Selected **Nandapur Block, Koraput District, Odisha** (sample village **Bheja**, LGD `398712`, Census 2011 `428914`, bbox `[82.68, 18.52, 82.78, 18.61]`, metric CRS `EPSG:32644` UTM Zone 44N) as the canonical reference geography in Spike S1 (`data/reference/MANIFEST.json`).
+- **AD-11 (Dual-Mode Spatial Database Adapter):** Implemented `SpatialGeometry` (`backend/app/db/types.py`) using `geoalchemy2.Geometry` on PostgreSQL/PostGIS and WKB-hex + Shapely 2.2 / PyProj 3.8 on local SQLite so full spatial CRUD, CRS reprojection, and Alembic migrations run identically on Windows workstations without Docker (`KI-01`) as well as in PostGIS CI containers.
+

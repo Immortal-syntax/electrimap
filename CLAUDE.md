@@ -21,3 +21,4 @@
 - **No Direct Fabrications:** Follow the epistemic honesty principles defined in `AGENTS.md`. Never invent grid infrastructure, electricity connection statuses, or equipment prices.
 - **Git Protocol:** Commit logically in small units using conventional commit syntax. Never commit `.env` or data binaries. Update `PROJECT_STATUS.md` and `TASKS.md` upon completing work.
 - **Handover Duty:** If handing work back to Antigravity, record the exact stopping point, branch status, and remaining checklist in `PROJECT_STATUS.md`.
+

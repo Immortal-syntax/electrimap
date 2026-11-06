@@ -79,3 +79,4 @@ def test_alembic_upgrade_and_downgrade(tmp_path: Path) -> None:
     assert mig_db_path.exists()
     command.downgrade(alembic_cfg, "base")
     command.upgrade(alembic_cfg, "head")
+

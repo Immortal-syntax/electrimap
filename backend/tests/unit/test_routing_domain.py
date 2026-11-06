@@ -45,3 +45,4 @@ def test_least_cost_feeder_avoids_impassable_water_obstacle() -> None:
     assert route.crossed_water_cells == 0
     assert route.length_m > 20 * 30.0
     assert any(r >= 25 for r, _c in route.grid_indices)
+

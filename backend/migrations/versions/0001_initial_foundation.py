@@ -85,3 +85,4 @@ def downgrade() -> None:
     op.drop_table("engineering_constants")
     op.drop_index("ix_datasets_key", table_name="datasets")
     op.drop_table("datasets")
+

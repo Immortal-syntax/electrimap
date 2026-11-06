@@ -31,3 +31,4 @@ class LocalStorageService:
         """Read bytes from a path inside base_dir."""
         target = self.resolve_safe_path(relative_path)
         return target.read_bytes()
+

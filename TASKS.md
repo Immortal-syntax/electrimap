@@ -19,13 +19,13 @@
 - [x] **M0-1:** Establish Monorepo directory structure, editorconfig, and tooling configs
 - [x] **M0-2:** Backend environment setup (Python 3.12/3.13, FastAPI base, linting, test runner)
 - [x] **M0-3:** PostGIS database connectivity, SQLAlchemy models, and Alembic migrations
-- [-] **M0-4:** Frontend scaffolding (Vite + React + TypeScript + Tailwind + MapLibre setup)
+- [x] **M0-4:** Frontend scaffolding (Vite + React + TypeScript + Tailwind + MapLibre setup)
 - [x] **M0-5:** GitHub Actions CI pipeline configuration
-- [-] **S1 (Spike):** Koraput reference data acquisition & verification test
-- [-] **S2 (Spike):** DEM slope cost-surface raster routing feasibility check
-- [ ] **S3 (Spike):** ReportLab PDF cartographic rendering test with north arrow & scale bar
-- [ ] **S4 (Spike):** MapLibre MVT performance test with 50k building footprints
-- [ ] **M0-6:** Milestone M0 Review & Checkpoint verification
+- [x] **S1 (Spike):** Koraput reference data acquisition & verification test
+- [x] **S2 (Spike):** DEM slope cost-surface raster routing feasibility check
+- [x] **S3 (Spike):** ReportLab PDF cartographic rendering test with north arrow & scale bar
+- [x] **S4 (Spike):** MapLibre MVT performance test with 50k building footprints
+- [x] **M0-6:** Milestone M0 Review & Checkpoint verification
 
 ---
 

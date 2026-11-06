@@ -50,3 +50,4 @@ class SpatialGeometry(TypeDecorator[Any]):
         if isinstance(value, str):
             return wkb.loads(bytes.fromhex(value))
         return value
+

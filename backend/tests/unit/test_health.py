@@ -47,3 +47,19 @@ def test_storage_service_prevents_path_traversal(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Unsafe storage path"):
         storage.resolve_safe_path("../../outside.txt")
+
+
+def test_spike_summary_and_reference_geojson_endpoints(client: TestClient) -> None:
+    """Verify GET /api/v1/spikes/summary and /api/v1/spikes/reference-geojson return 200."""
+    res_summary = client.get("/api/v1/spikes/summary")
+    assert res_summary.status_code == 200
+    summary = res_summary.json()
+    assert summary["milestone"] == "M0"
+    assert "spikes" in summary
+
+    res_geo = client.get("/api/v1/spikes/reference-geojson")
+    assert res_geo.status_code == 200
+    geo = res_geo.json()
+    assert "villages" in geo
+    assert "buildings" in geo
+    assert "routes" in geo

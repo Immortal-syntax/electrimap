@@ -44,6 +44,7 @@ dist/
 dist-ssr/
 *.local
 .turbo/
+*.tsbuildinfo
 
 # Testing & Coverage
 .pytest_cache/
@@ -71,6 +72,8 @@ Desktop.ini
 data/*
 !data/reference/
 !data/reference/MANIFEST.json
+!data/reference/*.json
+!data/reference/*.geojson
 !data/.gitkeep
 tmp/
 temp/
@@ -95,3 +98,4 @@ temp/
 # PDF and Output Artifacts (generated)
 exports/
 *.pdf
+

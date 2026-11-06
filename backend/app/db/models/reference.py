@@ -44,3 +44,4 @@ class EngineeringConstant(Base, TimestampMixin):
         String(32), default="PROVISIONAL", nullable=False
     )  # PROVISIONAL or SOURCE_VERIFIED
     updated_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+

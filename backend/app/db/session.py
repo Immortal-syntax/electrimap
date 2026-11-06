@@ -57,3 +57,4 @@ def check_db_readiness(db: Session) -> dict[str, Any]:
         "database_dialect": dialect_name,
         "spatial_runtime": spatial_runtime,
     }
+

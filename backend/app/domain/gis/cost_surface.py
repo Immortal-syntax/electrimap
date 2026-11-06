@@ -67,3 +67,4 @@ def build_routing_cost_surface(
         cost = np.where(road_corridor_mask, cost * (1.0 - cfg.road_corridor_discount), cost)
 
     return np.clip(cost, 0.2, cfg.water_impassable_cost)
+
