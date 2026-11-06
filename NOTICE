@@ -1,0 +1,43 @@
+ElectriMap DPR
+Copyright 2026 Swayam Kumar and ElectriMap DPR Contributors
+
+This product includes software developed at
+ElectriMap DPR (https://github.com/swayamkr/electrimap).
+
+===============================================================================
+Third-Party Data and Attribution Notices
+===============================================================================
+
+1. Copernicus DEM GLO-30
+   Digital Elevation Model (DEM) data provided by the European Space Agency (ESA)
+   and the European Union. Accessed via AWS Open Data Program.
+   Distributed under Copernicus open access terms.
+
+2. Sentinel-2 Cloudless
+   Sentinel-2 cloudless mosaic provided by EOX IT Services GmbH (https://s2maps.eu).
+   Contains modified Copernicus Sentinel data (ESA).
+   Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+
+3. OpenStreetMap
+   Map data and geospatial vector geometries © OpenStreetMap contributors.
+   Available under the Open Database License (ODbL) 1.0.
+   For details, see https://www.openstreetmap.org/copyright.
+
+4. Google Research & Microsoft Building Footprints
+   Building footprint geometries combined and published by VIDA via Source Cooperative
+   (https://source.coop/repositories/vida/google-microsoft-open-buildings).
+   Google Open Buildings: CC BY 4.0 / CC BY-NC 4.0.
+   Microsoft Building Footprints: Open Data Commons Open Database License (ODbL) v1.0.
+
+5. NASA POWER Project
+   Global solar irradiance (GHI) and meteorological data provided by the NASA Langley
+   Research Center POWER Project funded through the NASA Earth Science / Applied Science
+   Program (https://power.larc.nasa.gov/).
+   Open access scientific data.
+
+6. Census of India 2011
+   Village directory, demographic records, and village amenity data published by
+   the Office of the Registrar General & Census Commissioner, Ministry of Home Affairs,
+   Government of India.
+   Published under the National Data Sharing and Accessibility Policy (NDSAP) /
+   Open Government Data (OGD) Platform India (https://data.gov.in).

@@ -85,6 +85,14 @@
 
 ---
 
+## Repository Audit: Error Remediation, GitHub Community Standards & Apache 2.0 Compliance
+- [x] **AUDIT-1:** Audit entire codebase and resolve test harness typing and scenario isolation issues
+- [x] **AUDIT-2:** Implement full GitHub Community Standards (`README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, Issue & PR templates)
+- [x] **AUDIT-3:** Verify Apache 2.0 compliance (unmodified `LICENSE`, `NOTICE` file with 6 dataset attributions, standard license headers on source files)
+- [x] **AUDIT-4:** Verify all quality gates (`ruff`, `mypy`, `pytest`, `eslint`, `tsc`, `vitest`, `build`) and push to GitHub
+
+---
+
 ## Milestone M6: Traceable Cost Estimation & Scenarios
 - [ ] **M6-1:** Schedule of Rates (SoR) management and custom CSV import
 - [ ] **M6-2:** Automated Bill of Quantities (BOQ) generator and financial metrics

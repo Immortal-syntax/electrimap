@@ -1,3 +1,17 @@
+# Copyright 2026 Swayam Kumar
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Technical Spike S1: Koraput, Odisha Reference Data Access & Block Selection.
 
 Tests live keyless retrieval of:
@@ -96,7 +110,7 @@ def fetch_nasa_power_solar(lon: float, lat: float) -> dict[str, Any]:
                     parameter_data["ALLSKY_SFC_SW_DWN"].get("ANN", 4.95)
                 ),
             }
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         # Citable Eastern Ghats / Koraput NASA POWER climatology baseline if offline
         ghi_fallback = {
             "JAN": 4.82,
@@ -151,16 +165,18 @@ def fetch_or_build_dem_and_worldcover(
     wc_status = "LIVE_RETRIEVED"
 
     try:
-        with rasterio.Env(AWS_NO_SIGN_REQUEST="YES"):
-            with rasterio.open(COPERNICUS_DEM_COG_URL) as src:
-                win = window_from_bounds(min_lon, min_lat, max_lon, max_lat, src.transform)
-                elevation_m = src.read(
-                    1,
-                    window=win,
-                    out_shape=(target_rows, target_cols),
-                    resampling=rasterio.enums.Resampling.bilinear,
-                ).astype(np.float32)
-    except Exception:
+        with (
+            rasterio.Env(AWS_NO_SIGN_REQUEST="YES"),
+            rasterio.open(COPERNICUS_DEM_COG_URL) as src,
+        ):
+            win = window_from_bounds(min_lon, min_lat, max_lon, max_lat, src.transform)
+            elevation_m = src.read(
+                1,
+                window=win,
+                out_shape=(target_rows, target_cols),
+                resampling=rasterio.enums.Resampling.bilinear,
+            ).astype(np.float32)
+    except Exception:  # noqa: BLE001
         dem_status = "CACHED_REFERENCE_GRID"
         # Realistic Eastern Ghats valley-and-ridge topography (820m valley to 1180m ridge)
         y = np.linspace(0.0, 1.0, target_rows, dtype=np.float32)
@@ -188,16 +204,18 @@ def fetch_or_build_dem_and_worldcover(
         dst.write(elevation_m, 1)
 
     try:
-        with rasterio.Env(AWS_NO_SIGN_REQUEST="YES"):
-            with rasterio.open(ESA_WORLDCOVER_COG_URL) as src:
-                win = window_from_bounds(min_lon, min_lat, max_lon, max_lat, src.transform)
-                worldcover = src.read(
-                    1,
-                    window=win,
-                    out_shape=(target_rows, target_cols),
-                    resampling=rasterio.enums.Resampling.nearest,
-                ).astype(np.uint8)
-    except Exception:
+        with (
+            rasterio.Env(AWS_NO_SIGN_REQUEST="YES"),
+            rasterio.open(ESA_WORLDCOVER_COG_URL) as src,
+        ):
+            win = window_from_bounds(min_lon, min_lat, max_lon, max_lat, src.transform)
+            worldcover = src.read(
+                1,
+                window=win,
+                out_shape=(target_rows, target_cols),
+                resampling=rasterio.enums.Resampling.nearest,
+            ).astype(np.uint8)
+    except Exception:  # noqa: BLE001
         wc_status = "CACHED_REFERENCE_GRID"
         worldcover = np.full((target_rows, target_cols), 40, dtype=np.uint8)  # Cropland
         # High-elevation ridges have dense tree cover (10)

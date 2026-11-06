@@ -192,3 +192,4 @@ def downgrade() -> None:
         table_name="planning_scenarios",
     )
     op.drop_table("planning_scenarios")
+

@@ -1,3 +1,17 @@
+# Copyright 2026 Swayam Kumar
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Integration tests for Milestone M5 (Network Layout Routing & Engineering Engine):
 - `GET /api/v1/engineering-constants`
 - `GET /api/v1/projects/{id}/scenarios`
@@ -39,7 +53,12 @@ def test_m5_engineering_constants_and_scenario_lifecycle() -> None:
         assert "ht_11kv_r_ohm_per_km" in keys
         assert "lt_415v_3ph_r_ohm_per_km" in keys
 
-        # 2. Fetch default scenarios on Demo Project
+        # 2. Fetch default scenarios on Demo Project (ensuring HYBRID_OPTIMAL baseline)
+        client.post(
+            f"/api/v1/projects/{DEMO_PROJECT_ID}/scenarios/generate",
+            headers=headers,
+            json={"scenario_key": "HYBRID_OPTIMAL", "preserve_manual_overrides": False},
+        )
         scen_resp = client.get(f"/api/v1/projects/{DEMO_PROJECT_ID}/scenarios")
         assert scen_resp.status_code == 200
         scen_data = scen_resp.json()
@@ -105,9 +124,15 @@ def test_m5_engineering_constants_and_scenario_lifecycle() -> None:
         assert pdf_resp.headers["content-type"] == "application/pdf"
         assert len(pdf_resp.content) > 25000
 
-        # Clean up test tie-in asset
+        # Clean up test tie-in asset and restore default HYBRID_OPTIMAL scenario
         del_resp = client.delete(
             f"/api/v1/projects/{DEMO_PROJECT_ID}/infrastructure/{asset_id}",
             headers=headers,
         )
         assert del_resp.status_code == 204
+        client.post(
+            f"/api/v1/projects/{DEMO_PROJECT_ID}/scenarios/generate",
+            headers=headers,
+            json={"scenario_key": "HYBRID_OPTIMAL", "preserve_manual_overrides": False},
+        )
+

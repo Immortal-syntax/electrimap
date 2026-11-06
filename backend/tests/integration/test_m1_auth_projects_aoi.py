@@ -1,8 +1,23 @@
+# Copyright 2026 Swayam Kumar
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Integration tests for Milestone M1: Auth, CSRF, Project CRUD, AdminUnits, and AOI Uploads."""
 
 import io
 import json
 import zipfile
+from pathlib import Path
 
 import geopandas as gpd
 from fastapi.testclient import TestClient
@@ -174,7 +189,7 @@ def test_admin_unit_cascade_search_and_boundary_fallback(client: TestClient) -> 
     assert 6.9 < approx_bound["area_km2"] < 7.2
 
 
-def test_set_aoi_and_multipart_file_uploads(client: TestClient, tmp_path) -> None:
+def test_set_aoi_and_multipart_file_uploads(client: TestClient, tmp_path: Path) -> None:
     """Verify setting AOI via ADMIN_UNIT, USER_DRAWN, GeoJSON, KML, and Shapefile .zip."""
     csrf = _login_planner(client)
     headers = {"X-CSRF-Token": csrf}

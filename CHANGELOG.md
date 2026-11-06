@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased] - 2026-11-06
 
 ### Fixed
+- **Codebase Integrity & Test Stability:**
+  - Resolved `mypy` module typing conflict in `backend/tests/conftest.py` by aliasing `import app.db.models as _models` and `from app.main import app as fastapi_app`, restoring type safety for `app.dependency_overrides`.
+  - Added explicit `Path` typing for `tmp_path: Path` in `backend/tests/integration/test_m1_auth_projects_aoi.py`.
+  - Isolated scenario state in `backend/tests/integration/test_m5_planning_scenarios.py` by explicitly ensuring `HYBRID_OPTIMAL` baseline initialization and restoring baseline during test teardown.
+  - Resolved ambiguous multiple element match in frontend `src/tests/AppRoutes.test.tsx` using `getAllByText(/1420 m/i)`.
+  - Resolved unused imports, format ordering, and blind exception warnings in utility scripts (`scripts/spikes/s1_data_access.py`, `scripts/spikes/s2_routing.py`, `scripts/spikes/s3_pdf_spike.py`).
+
+### Added
+- **GitHub Community Standards Compliance:**
+  - Expanded root `README.md` into an authoritative engineering guide covering epistemic honesty principles, 4 electrification dimensions, architecture, completed milestones M0–M5, local setup (Docker PostGIS, Python venv, Vite dev), and quality commands.
+  - Added `CONTRIBUTING.md` defining community values, core non-negotiable principles, domain purity rules, explicit physical units convention, and pre-commit verification gates.
+  - Added `CODE_OF_CONDUCT.md` following Contributor Covenant v2.1 with reporting contact `swayamkr26@gmail.com`.
+  - Added `SECURITY.md` detailing supported versions, responsible vulnerability disclosure process, and built-in security architecture (CSRF, path traversal protection, parameterized SQL, bcrypt).
+  - Added GitHub issue forms and templates: `.github/ISSUE_TEMPLATE/bug_report.yml`, `.github/ISSUE_TEMPLATE/feature_request.yml`, `.github/ISSUE_TEMPLATE/config.yml`.
+  - Added standard Pull Request template: `.github/pull_request_template.md` with engineering principles and quality gate checklist.
+- **Apache License 2.0 Compliance:**
+  - Created root `NOTICE` file specifying project copyright and comprehensive third-party open data attributions (Copernicus DEM GLO-30, Sentinel-2 Cloudless EOX, OpenStreetMap ODbL, Google/Microsoft Open Buildings via VIDA, NASA POWER climatology, and Census of India 2011).
+  - Applied standard Apache 2.0 copyright and license boilerplate headers across 96 Python and 26 TypeScript/TSX source files via `scripts/apply_license_headers.py`.
 - **GitHub Actions CI & Repository Configuration:**
   - Resolved `TS2307: Cannot find module '../lib/apiClient'` in CI builds by anchoring `.gitignore` Python build rules to `backend/build/` and `backend/lib/`, ensuring `frontend/src/lib/apiClient.ts` is committed and tracked.
   - Added explicit parameter type `(u: AdminUnitDto)` in `frontend/src/pages/NewProjectWizardPage.tsx` and included `geojson` in `frontend/tsconfig.json` compiler `types`.

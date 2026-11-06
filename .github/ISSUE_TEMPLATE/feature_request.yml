@@ -1,0 +1,33 @@
+name: Feature Request
+description: Suggest an idea or enhancement for ElectriMap DPR
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We welcome feature ideas and engineering improvements aligned with rural electrification planning in India.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: A clear description of what the problem or limitation is.
+      placeholder: I am always frustrated when...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution or Behavior
+      description: Describe what you would like to see implemented.
+      placeholder: A concise proposal for the new functionality...
+    validations:
+      required: true
+  - type: textarea
+    id: engineering_considerations
+    attributes:
+      label: Engineering Standards & REC / RDSS Alignment
+      description: How does this align with Indian electrification norms, CEA guidelines, or REC standards?
+      placeholder: e.g. Aligns with REC Specifications for 11/0.415 kV substations...
+    validations:
+      required: false
