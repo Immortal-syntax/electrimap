@@ -1,11 +1,13 @@
-"""Reference tables: Dataset provenance registry and EngineeringConstants."""
+"""Reference tables: Dataset provenance, EngineeringConstants, AdminUnits, CensusVillages."""
 
 import uuid
+from typing import Any
 
-from sqlalchemy import Boolean, Float, String, Text
+from sqlalchemy import JSON, Boolean, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
+from app.db.types import SpatialGeometry
 
 
 class Dataset(Base, TimestampMixin):
@@ -21,7 +23,7 @@ class Dataset(Base, TimestampMixin):
     provider: Mapped[str] = mapped_column(String(200), nullable=False)
     url: Mapped[str] = mapped_column(String(500), nullable=False)
     licence: Mapped[str] = mapped_column(String(120), nullable=False)
-    licence_url: Mapped[str] = mapped_column(String(500), nullable=True)
+    licence_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     attribution_text: Mapped[str] = mapped_column(Text, nullable=False)
     spatial_resolution: Mapped[str] = mapped_column(String(80), nullable=False)
     temporal_coverage: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -45,3 +47,42 @@ class EngineeringConstant(Base, TimestampMixin):
     )  # PROVISIONAL or SOURCE_VERIFIED
     updated_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
+
+class AdminUnit(Base, TimestampMixin):
+    """Administrative hierarchy lookup (State -> District -> Block -> GP -> Village)."""
+
+    __tablename__ = "admin_units"
+
+    lgd_code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    level: Mapped[str] = mapped_column(
+        String(24), index=True, nullable=False
+    )  # STATE, DISTRICT, BLOCK, GP, VILLAGE
+    name: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
+    parent_lgd_code: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    census2011_code: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    geom: Mapped[Any | None] = mapped_column(
+        SpatialGeometry(geometry_type="MULTIPOLYGON", srid=4326), nullable=True
+    )
+    boundary_source: Mapped[str] = mapped_column(
+        String(32), default="HARMONISED", nullable=False
+    )  # HARMONISED or APPROXIMATE_BUFFER
+    centroid_lon: Mapped[float | None] = mapped_column(Float, nullable=True)
+    centroid_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class CensusVillage(Base, TimestampMixin):
+    """Census of India 2011 District Census Handbook (PCA & Village Directory) record."""
+
+    __tablename__ = "census_villages"
+
+    census2011_code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    state_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    district_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    subdistrict_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
+    total_pop: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    households: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    st_pop: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sc_pop: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    amenities: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    power_supply_2011: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)

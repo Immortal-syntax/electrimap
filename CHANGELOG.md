@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased] - 2026-11-06
 
 ### Added
+- **Milestone M1 — Core Authentication, Project CRUD & AOI Module (`M1-1` to `M1-8`):**
+  - Argon2id password hashing, SHA-256 session/CSRF token storage, sliding-window login rate limiter, and HttpOnly `em_session` cookie + `X-CSRF-Token` dependency (`backend/app/core/security.py`, `backend/app/services/auth_service.py`, `backend/app/api/v1/auth.py`, `backend/app/api/v1/deps.py`).
+  - Project CRUD API (`GET/POST /api/v1/projects`, `GET/PATCH/DELETE /api/v1/projects/{id}`, `POST /api/v1/projects/{id}/duplicate`) with optimistic concurrency locking (`version`) and cross-user ownership isolation (`backend/app/services/project_service.py`, `backend/app/api/v1/projects.py`).
+  - Administrative hierarchy (`AdminUnit`) and Census 2011 (`CensusVillage`) seeding for Odisha -> Koraput -> Nandapur / Pottangi -> Gram Panchayats -> Villages (`Bheja`, `Padwa`, `Maliaguda PVTG Forest Habitation`, `Pukali`), plus pre-seeded demo project (`backend/app/services/seed_service.py`, `backend/app/api/v1/admin_units.py`).
+  - Pure GIS boundary validation & normalization domain (`backend/app/domain/gis/boundary.py`) supporting self-intersection auto-repair (`make_valid`), CRS reprojection to `EPSG:4326`, India bounds verification, UTM area caps (`0.01` to `500 km²`), and 1.5 km metric circular buffer fallback (`APPROXIMATE_BUFFER`).
+  - Safe multipart boundary upload (`POST /api/v1/projects/{id}/aoi/upload`) supporting `.geojson`/`.json`, `.kml`, and `.zip` Shapefile archives with zip-bomb, path-traversal, and mandatory `.prj` checks (`backend/app/services/aoi_service.py`, `backend/app/api/v1/aoi.py`).
+  - Frontend application shell (`AppShell.tsx`), session state store (`sessionStore.ts`), CSRF-aware API client (`apiClient.ts`), interactive `MapCanvas.tsx`, and routes (`/`, `/login`, `/projects`, `/projects/new`, `/projects/:id/workspace`).
 - **Milestone M0 — Monorepo, Backend Foundation & Database Migrations (`M0-1`, `M0-2`, `M0-3`, `M0-5`):**
   - Monorepo layout (`backend/`, `frontend/`, `scripts/`, `data/`, `.github/workflows/ci.yml`), `.editorconfig`, and `docker-compose.yml` (`postgis/postgis:16-3.4`).
   - FastAPI application (`backend/app/main.py`) with structured JSON logging, typed `AppError` envelope, path-traversal-safe `LocalStorageService`, and `/api/v1/health` + `/api/v1/health/ready` + `/api/v1/spikes/*` endpoints.

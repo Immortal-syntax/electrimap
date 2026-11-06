@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     session_secret: str = Field(
         default="dev-only-session-secret-replace-in-production-64-bytes-long-0000"
     )
+    session_cookie_name: str = "em_session"
     session_ttl_hours: int = 12
     session_absolute_days: int = 7
 

@@ -1,20 +1,34 @@
 """FastAPI application entry point for ElectriMap DPR."""
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from app.api.v1 import spikes
+from app.api.v1 import admin_units, aoi, auth, projects, spikes
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.db import models as _db_models  # noqa: F401
-from app.db.session import check_db_readiness, get_db
+from app.db.base import Base
+from app.db.session import SessionLocal, check_db_readiness, engine, get_db
+from app.services.seed_service import ensure_seed_data
 
 settings = get_settings()
 configure_logging(settings.log_level)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    """Ensure database tables and seed data exist on startup."""
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        ensure_seed_data(db)
+    yield
+
 
 app = FastAPI(
     title="ElectriMap DPR API",
@@ -25,6 +39,7 @@ app = FastAPI(
     ),
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -36,6 +51,10 @@ app.add_middleware(
 )
 
 register_exception_handlers(app)
+app.include_router(auth.router)
+app.include_router(projects.router)
+app.include_router(admin_units.router)
+app.include_router(aoi.router)
 app.include_router(spikes.router)
 
 

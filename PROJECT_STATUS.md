@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Live Project State & Agent Handover Record
 
-> **Status:** Active · Phase: Prompt 4 (Milestone M0 Completed — Awaiting Approval for Milestone M1)  
+> **Status:** Active · Phase: Prompt 4 (Milestone M1 Completed — Awaiting Approval for Milestone M2)  
 > **Last Synchronized:** 2026-11-06  
 > **Active AI Agent:** Antigravity (Google DeepMind)  
 > **Secondary Compatibility:** Claude (Anthropic) via `CLAUDE.md` and `AGENTS.md`  
@@ -8,56 +8,47 @@
 ---
 
 ## 1. Executive Status Summary
-- **Current Phase & Milestone:** Prompt 4 — **Milestone M0 (Tooling, Database Setup & Technical Risk Spikes S1–S4) COMPLETED**.
-- **Approved Specifications:**
-  - Prompt 0 (Project Definition, Research & Feasibility): **APPROVED**
-  - Prompt 1 (Product Discovery & PRD): **APPROVED**
-  - Prompt 2 (Technical Architecture & UI/UX Design System): **APPROVED**
-  - Prompt 3 (Environment, Git/GitHub Setup & Permanent Docs): **APPROVED**
-  - Prompt 4 Milestone Breakdown & M0 Authorization: **APPROVED**
+- **Current Phase & Milestone:** Prompt 4 — **Milestone M1 (Core Authentication, Project & AOI Module) COMPLETED**.
+- **Completed Milestones:**
+  - **Milestone M0:** Tooling, Database Setup & Technical Risk Spikes S1–S4 (**APPROVED & COMPLETED**)
+  - **Milestone M1:** Core Authentication, Project CRUD & AOI Module (**COMPLETED**)
 - **Git Repository Status:**
   - Remote: `https://github.com/Immortal-syntax/electrimap.git`
   - Active Branch: `main`
-  - All Milestone M0 changes verified, committed, and pushed to `origin/main`.
-- **Next Milestone:** **Milestone M1 (Core Authentication, Project & AOI Module)** upon explicit user approval.
+  - All Milestone M0 and M1 changes verified, committed, and pushed to `origin/main`.
+- **Next Milestone:** **Milestone M2 (Geospatial Ingestion, Provenance & Reference Pack)** upon explicit user approval.
 
 ---
 
-## 2. Completed Work in Milestone M0
-1. **Task M0-1 (Monorepo Structure & Tooling Configs):**
-   - Created directory hierarchy across `backend/`, `frontend/`, `scripts/spikes/`, `data/reference/`, and `.github/workflows/`.
-   - Added `.editorconfig` and `docker-compose.yml` (`postgis/postgis:16-3.4`).
-2. **Task M0-2 (Backend Environment & FastAPI Foundation):**
-   - Created `backend/.venv` (Python 3.13.3), installed dependencies from `backend/pyproject.toml`, and froze `backend/requirements.txt`.
-   - Implemented `backend/app/core/config.py`, `logging.py`, `errors.py`, `storage.py`, `backend/app/main.py`, and `backend/app/api/v1/spikes.py`.
-3. **Task M0-3 (Database Layer & Alembic Migrations):**
-   - Implemented Dual-Mode `SpatialGeometry` (`backend/app/db/types.py`) supporting PostgreSQL/PostGIS and local SQLite WKB-hex + Shapely/PyProj (`AD-11`).
-   - Created foundation models `Dataset`, `EngineeringConstant` (`backend/app/db/models/reference.py`), and `Job` (`backend/app/db/models/ops.py`).
-   - Configured Alembic (`backend/alembic.ini`, `backend/migrations/env.py`, `backend/migrations/versions/0001_initial_foundation.py`) and verified full upgrade/downgrade cycle.
-4. **Technical Risk Spikes S1–S4:**
-   - **S1 (Koraput Reference Data Acquisition):** Finalized **Nandapur Block, Koraput District, Odisha** (sample village **Bheja**, LGD `398712`, Census `428914`, `EPSG:32644`) in `scripts/spikes/s1_data_access.py`, `data/reference/MANIFEST.json`, and `docs/data-sources.md`.
-   - **S2 (Least-Cost Terrain Routing):** Implemented pure domain modules `crs.py`, `raster_ops.py`, `cost_surface.py`, and `routing.py`. Routed two 11 kV feeders in `0.044 s` over the 300×300 DEM + WorldCover cost grid (`scripts/spikes/s2_routing.py`).
-   - **S3 (Cartographic PDF DPR Rendering):** Implemented `scripts/spikes/s3_pdf_spike.py` generating a 2-page ReportLab Platypus + Matplotlib engineering map plate with scale bar, north arrow, graticule, legend, and `PRELIMINARY — NOT FIELD VERIFIED` watermarks.
-   - **S4 (MapLibre 50k Footprints WebGL Stress Test):** Verified 50,000 footprint generation (`0.019 s` in Python, `~35 ms` client-side in WebGL) and smooth interactive rendering in `frontend/src/components/map/MapSpikePreview.tsx`.
-5. **Task M0-4 (Frontend Scaffolding & "Survey Sheet" Design System):**
-   - Scaffolded React 18 + TypeScript (`strict: true`) + Vite + Tailwind CSS + MapLibre GL JS in `frontend/`.
-   - Implemented design tokens (`tokens.css`, `globals.css`) and core UI primitives (`TitleBlock.tsx`, `QualityTag.tsx`, `Badge.tsx`, `StatTile.tsx`, `Callout.tsx`, `Button.tsx`, `MapSpikePreview.tsx`).
-6. **Task M0-5 & M0-6 (CI Workflow & Verification Checkpoint):**
-   - Configured `.github/workflows/ci.yml` for automated backend and frontend quality gates.
+## 2. Completed Work in Milestone M1 (`M1-1` to `M1-8`)
+1. **Task M1-1 (User Auth, Session Store, CSRF & Security Dependencies):**
+   - Implemented Argon2id password hashing, SHA-256 session/CSRF token digests, and sliding-window login rate limiting (`backend/app/core/security.py`).
+   - Implemented server-side session lifecycle (`12 h` sliding, `7 d` absolute expiry) with `HttpOnly`, `SameSite=Lax` cookie `em_session` and `X-CSRF-Token` validation on all state-mutating requests (`backend/app/services/auth_service.py`, `backend/app/api/v1/deps.py`, `backend/app/api/v1/auth.py`).
+2. **Task M1-2 (Project CRUD API with Optimistic Concurrency Locking):**
+   - Implemented `GET/POST /api/v1/projects`, `GET/PATCH/DELETE /api/v1/projects/{id}`, and `POST /api/v1/projects/{id}/duplicate` (`backend/app/services/project_service.py`, `backend/app/api/v1/projects.py`).
+   - Enforced optimistic concurrency `version` check (`409 VERSION_CONFLICT`), soft deletion (`deleted_at`), `AuditEvent` logging, and strict ownership isolation returning `404 PROJECT_NOT_FOUND` on unauthorized access.
+3. **Task M1-3 (Administrative Unit & Census 2011 Lookup Seeding):**
+   - Added `AdminUnit` and `CensusVillage` models (`backend/app/db/models/reference.py`) and Alembic migration `0002_m1_auth_projects_aoi.py`.
+   - Seeded Odisha -> Koraput -> Nandapur / Pottangi -> Gram Panchayats -> Villages (`Bheja`, `Padwa`, `Maliaguda PVTG Forest Habitation`, `Pukali`) and pre-seeded the Koraput Demo Project (`00000000-0000-4000-8000-000000000001`).
+   - Exposed `/api/v1/admin-units`, `/api/v1/admin-units/search`, and `/api/v1/admin-units/{lgd_code}/boundary` with automatic `1.5 km` UTM circular buffer fallback (`APPROXIMATE_BUFFER`) when a village polygon is missing.
+4. **Task M1-4 & M1-5 (GIS Boundary Validation Domain & Safe Boundary File Upload):**
+   - Implemented `validate_and_normalize_boundary` (`backend/app/domain/gis/boundary.py`) supporting arbitrary CRS -> `EPSG:4326` reprojection, `make_valid` self-intersection repair (`SELF_INTERSECTION_REPAIRED`), MultiPolygon normalization, India bounds verification, and UTM area bounds (`0.01` to `500 km²`).
+   - Implemented `PUT /api/v1/projects/{id}/aoi`, `POST /api/v1/projects/{id}/aoi/upload`, and `GET /api/v1/projects/{id}/aoi` supporting `.geojson`, `.json`, `.kml`, and `.zip` Shapefile bundles with zip-bomb, path-traversal, and mandatory `.prj` verification (`422 MISSING_CRS_PRJ`).
+5. **Task M1-6, M1-7 & M1-8 (Frontend App Shell, Interactive MapCanvas & AOI Selection Wizard):**
+   - Implemented `apiClient.ts`, `sessionStore.ts`, `AppShell.tsx`, `MapCanvas.tsx` (basemap switcher, AOI halo, interactive vertex drawing), `LoginPage.tsx`, `ProjectsPage.tsx`, `NewProjectWizardPage.tsx` (Admin Unit cascade/search, Draw Polygon, and Upload GIS File tabs), and `WorkspacePage.tsx`.
 
 ---
 
 ## 3. Verification & Test Results
 - **Backend Linting (`ruff check app tests`):** Passed (`All checks passed!`).
-- **Backend Typecheck (`mypy app`):** Passed (`Success: no issues found in 24 source files`).
-- **Backend Test Suite (`pytest -v`):** **15 passed** in `4.45 s` (`test_db_readiness.py`, `test_crs.py`, `test_health.py`, `test_pdf_spike.py`, `test_routing_domain.py`).
+- **Backend Typecheck (`mypy app`):** Passed (`Success: no issues found in 42 source files`).
+- **Backend Test Suite (`pytest -v`):** **24 passed** in `6.74 s` (including `test_boundary_domain.py` and `test_m1_auth_projects_aoi.py`).
 - **Frontend Typecheck (`npm run typecheck`):** Passed (`0 errors`).
 - **Frontend Linting (`npm run lint`):** Passed (`0 warnings, 0 errors`).
-- **Frontend Unit Tests (`npm run test`):** **3 passed** in `QualityTag.test.tsx`.
-- **Frontend Production Build (`npm run build`):** Passed (`dist/` generated cleanly with code-split `maplibre` chunk).
-- **Live End-to-End Proxy Check:** Verified `http://127.0.0.1:5173/` serving the React app and proxying `/api/v1/health/ready` and `/api/v1/spikes/summary` to FastAPI on `127.0.0.1:8000`.
+- **Frontend Unit Tests (`npm run test`):** **4 passed** (`QualityTag.test.tsx`, `AppRoutes.test.tsx`).
+- **Frontend Production Build (`npm run build`):** Passed.
 
 ---
 
 ## 4. Next Action Required to Resume
-- **STOP Gate:** Await explicit user approval of Milestone M0 before starting **Milestone M1 (Core Authentication, Project & AOI Module)** (`M1-1` through `M1-8` in `TASKS.md`).
+- **STOP Gate:** Await explicit user approval of Milestone M1 before starting **Milestone M2 (Geospatial Ingestion, Provenance & Reference Pack — Tasks `M2-1` through `M2-7`)**.

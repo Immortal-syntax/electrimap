@@ -39,6 +39,102 @@ class AoiTooLargeError(AppError):
         )
 
 
+class AoiTooSmallError(AppError):
+    """Raised when an Area of Interest is smaller than the minimum threshold (0.01 km^2)."""
+
+    def __init__(self, area_km2: float, min_aoi_km2: float = 0.01) -> None:
+        super().__init__(
+            code="AOI_TOO_SMALL",
+            message=(
+                f"AOI area ({area_km2:.4f} km^2) is below the minimum required area "
+                f"of {min_aoi_km2:.2f} km^2."
+            ),
+            status_code=422,
+            details={"area_km2": round(area_km2, 5), "min_aoi_km2": min_aoi_km2},
+        )
+
+
+class AuthenticationError(AppError):
+    """Raised when credentials or session cookies are missing, expired, or invalid."""
+
+    def __init__(self, message: str = "Authentication required or invalid credentials.") -> None:
+        super().__init__(
+            code="UNAUTHENTICATED",
+            message=message,
+            status_code=401,
+        )
+
+
+class CsrfValidationError(AppError):
+    """Raised when a state-changing request is missing a valid X-CSRF-Token header."""
+
+    def __init__(self, message: str = "Missing or invalid X-CSRF-Token header.") -> None:
+        super().__init__(
+            code="CSRF_INVALID",
+            message=message,
+            status_code=403,
+        )
+
+
+class RateLimitExceededError(AppError):
+    """Raised when login attempts exceed the sliding-window rate limit."""
+
+    def __init__(self, retry_after_seconds: int = 60) -> None:
+        super().__init__(
+            code="RATE_LIMITED",
+            message="Too many authentication attempts. Please wait before retrying.",
+            status_code=429,
+            details={"retry_after_seconds": retry_after_seconds},
+        )
+
+
+class ProjectNotFoundError(AppError):
+    """Raised when a project does not exist or is not owned by the current user."""
+
+    def __init__(self, project_id: str) -> None:
+        super().__init__(
+            code="PROJECT_NOT_FOUND",
+            message="Project not found.",
+            status_code=404,
+            details={"project_id": project_id},
+        )
+
+
+class VersionConflictError(AppError):
+    """Raised when optimistic concurrency version check fails during project PATCH."""
+
+    def __init__(self, expected_version: int, current_version: int) -> None:
+        super().__init__(
+            code="VERSION_CONFLICT",
+            message=(
+                f"Project was modified by another request (expected version {expected_version}, "
+                f"current version {current_version}). Refresh and retry."
+            ),
+            status_code=409,
+            details={
+                "expected_version": expected_version,
+                "current_version": current_version,
+            },
+        )
+
+
+class UploadValidationError(AppError):
+    """Raised when an uploaded boundary file fails size, format, zip-safety, or CRS checks."""
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "UPLOAD_VALIDATION_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            code=code,
+            message=message,
+            status_code=422,
+            details=details,
+        )
+
+
 class InvalidGeometryError(AppError):
     """Raised when uploaded or drawn geometry is invalid or outside India."""
 

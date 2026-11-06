@@ -30,14 +30,14 @@
 ---
 
 ## Milestone M1: Core Authentication, Project & AOI Module
-- [ ] **M1-1:** User auth, session store, CSRF, and security dependencies
-- [ ] **M1-2:** Project CRUD API with optimistic concurrency locking
-- [ ] **M1-3:** Administrative unit and Census database lookup seeding
-- [ ] **M1-4:** GIS CRS reprojection and boundary geometry validation service
-- [ ] **M1-5:** Boundary file upload handler (Shapefile zip, GeoJSON, KML)
-- [ ] **M1-6:** Frontend application shell, layout, and session state
-- [ ] **M1-7:** Interactive MapCanvas with MapLibre GL JS and basemap switching
-- [ ] **M1-8:** AOI selection wizard (administrative cascade, drawing, and upload)
+- [x] **M1-1:** User auth, session store, CSRF, and security dependencies
+- [x] **M1-2:** Project CRUD API with optimistic concurrency locking
+- [x] **M1-3:** Administrative unit and Census database lookup seeding
+- [x] **M1-4:** GIS CRS reprojection and boundary geometry validation service
+- [x] **M1-5:** Boundary file upload handler (Shapefile zip, GeoJSON, KML)
+- [x] **M1-6:** Frontend application shell, layout, and session state
+- [x] **M1-7:** Interactive MapCanvas with MapLibre GL JS and basemap switching
+- [x] **M1-8:** AOI selection wizard (administrative cascade, drawing, and upload)
 
 ---
 
