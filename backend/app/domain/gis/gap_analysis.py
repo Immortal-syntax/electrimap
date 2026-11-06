@@ -258,10 +258,12 @@ def run_project_gap_analysis(
 
         if nearest_dist_m is not None and nearest_pt_utm is not None:
             straight_val = round(nearest_dist_m, 1)
+            c_pt = c_utm.centroid
+            n_pt = nearest_pt_utm.centroid
             corridor_utm = LineString(
                 [
-                    (float(c_utm.x), float(c_utm.y)),
-                    (float(nearest_pt_utm.x), float(nearest_pt_utm.y)),
+                    (float(c_pt.x), float(c_pt.y)),
+                    (float(n_pt.x), float(n_pt.y)),
                 ]
             )
             for w_utm in projected_waterways:

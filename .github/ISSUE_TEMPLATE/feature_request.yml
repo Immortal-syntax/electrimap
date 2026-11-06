@@ -31,3 +31,4 @@ body:
       placeholder: e.g. Aligns with REC Specifications for 11/0.415 kV substations...
     validations:
       required: false
+

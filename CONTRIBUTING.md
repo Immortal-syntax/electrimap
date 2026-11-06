@@ -105,3 +105,4 @@ npm run build
 3. Complete the provided [Pull Request Template](.github/pull_request_template.md).
 4. Verify that all automated GitHub Actions checks pass.
 5. Address code review feedback promptly.
+

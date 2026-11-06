@@ -50,15 +50,16 @@
 ---
 
 ## 3. Verification & Test Results
-- **Backend Linting (`ruff check app tests scripts`):** Passed (`All checks passed!`).
+- **IDE Problems Panel Diagnostics (`Pyright / Pylance`):** **0 errors, 0 warnings, 0 informations** across 105 files.
+- **Backend Linting (`ruff check .`):** Passed (`All checks passed!`).
 - **Backend Typecheck (`mypy app tests`):** Passed (`Success: no issues found in 91 source files`).
-- **Backend Test Suite (`pytest -v`):** **45 passed** in `11.59 s`.
+- **Backend Test Suite (`pytest -v`):** **45 passed** in `12.02 s`.
 - **Frontend Typecheck (`npm run typecheck`):** Passed (`0 errors`).
 - **Frontend Linting (`npm run lint`):** Passed (`0 warnings, 0 errors`).
 - **Frontend Unit Tests (`npm run test`):** **10 passed** (`QualityTag.test.tsx`, `AppRoutes.test.tsx`).
-- **Frontend Production Build (`npm run build`):** Passed cleanly (`dist/` built in `6.58 s`).
+- **Frontend Production Build (`npm run build`):** Passed cleanly (`dist/` built in `8.68 s`).
 - **GitHub Community Standards Compliance:** Passed (100% compliant with GitHub Community Profile recommendations).
-- **Apache 2.0 Compliance:** Passed (Full `LICENSE`, valid `NOTICE` with third-party open dataset attributions, and license headers on 122 source files).
+- **Apache 2.0 Compliance:** Passed (Full `LICENSE`, valid `NOTICE` with third-party open dataset attributions, and license headers on all source files).
 
 ---
 

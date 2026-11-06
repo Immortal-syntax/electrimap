@@ -80,11 +80,12 @@ def _build_cluster_hull_wgs84(
         hull_utm = MultiPoint(pts).convex_hull.buffer(hull_buffer_m, quad_segs=8)
 
     hull_wgs84_geom = project_geometry(hull_utm, source_epsg=metric_epsg, target_epsg=4326)
-    hull_wgs84 = (
-        hull_wgs84_geom
-        if isinstance(hull_wgs84_geom, Polygon)
-        else Polygon(hull_wgs84_geom.convex_hull)
-    )
+    if isinstance(hull_wgs84_geom, Polygon):
+        hull_wgs84 = hull_wgs84_geom
+    elif isinstance(hull_wgs84_geom.convex_hull, Polygon):
+        hull_wgs84 = hull_wgs84_geom.convex_hull
+    else:
+        hull_wgs84 = Polygon()
     centroid_wgs84 = Point(float(hull_wgs84.centroid.x), float(hull_wgs84.centroid.y))
     return hull_wgs84, centroid_wgs84
 
@@ -138,9 +139,13 @@ def run_dbscan_habitation_clustering(
     for idx, b in enumerate(valid_buildings):
         p_utm = project_geometry(b.geom, source_epsg=4326, target_epsg=metric_epsg)
         c_utm = project_geometry(b.centroid, source_epsg=4326, target_epsg=metric_epsg)
-        utm_polys.append(
-            p_utm if isinstance(p_utm, Polygon) else Polygon(p_utm.convex_hull)
-        )
+        if isinstance(p_utm, Polygon):
+            poly_val = p_utm
+        elif isinstance(p_utm.convex_hull, Polygon):
+            poly_val = p_utm.convex_hull
+        else:
+            poly_val = Polygon()
+        utm_polys.append(poly_val)
         utm_coords[idx, 0] = float(c_utm.centroid.x)
         utm_coords[idx, 1] = float(c_utm.centroid.y)
 

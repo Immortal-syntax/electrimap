@@ -38,6 +38,7 @@ from typing import Any
 import httpx
 import numpy as np
 import rasterio
+from rasterio.enums import Resampling
 from rasterio.transform import from_bounds
 from rasterio.windows import from_bounds as window_from_bounds
 
@@ -174,7 +175,7 @@ def fetch_or_build_dem_and_worldcover(
                 1,
                 window=win,
                 out_shape=(target_rows, target_cols),
-                resampling=rasterio.enums.Resampling.bilinear,
+                resampling=Resampling.bilinear,
             ).astype(np.float32)
     except Exception:  # noqa: BLE001
         dem_status = "CACHED_REFERENCE_GRID"
@@ -213,7 +214,7 @@ def fetch_or_build_dem_and_worldcover(
                 1,
                 window=win,
                 out_shape=(target_rows, target_cols),
-                resampling=rasterio.enums.Resampling.nearest,
+                resampling=Resampling.nearest,
             ).astype(np.uint8)
     except Exception:  # noqa: BLE001
         wc_status = "CACHED_REFERENCE_GRID"

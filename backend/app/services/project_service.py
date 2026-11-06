@@ -201,7 +201,8 @@ def update_project_with_optimistic_lock(
 def soft_delete_project(db: Session, project_id: str, user: User) -> None:
     """Soft-delete a project by setting deleted_at."""
     proj = get_owned_project_or_404(db, project_id, user)
-    proj.deleted_at = datetime.now(UTC)
+    now = datetime.now(UTC)
+    proj.deleted_at = now
     db.add(
         AuditEvent(
             project_id=proj.id,
@@ -209,7 +210,7 @@ def soft_delete_project(db: Session, project_id: str, user: User) -> None:
             event_type="PROJECT_DELETED",
             entity="project",
             entity_id=proj.id,
-            diff={"deleted_at": proj.deleted_at.isoformat()},
+            diff={"deleted_at": now.isoformat()},
         )
     )
     db.commit()

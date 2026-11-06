@@ -17,8 +17,10 @@
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+import numpy as np
 import pyproj
 import shapely
+from pyproj.exceptions import CRSError
 from shapely.geometry import MultiPolygon, Point, Polygon, mapping, shape
 from shapely.geometry.base import BaseGeometry
 
@@ -61,9 +63,10 @@ def _extract_multipolygon(geom: BaseGeometry) -> MultiPolygon:
         return geom
     if isinstance(geom, Polygon):
         return MultiPolygon([geom])
-    if hasattr(geom, "geoms"):
+    geom_parts = getattr(geom, "geoms", None)
+    if geom_parts is not None:
         polys: list[Polygon] = []
-        for part in geom.geoms:
+        for part in geom_parts:
             if isinstance(part, Polygon) and not part.is_empty:
                 polys.append(part)
             elif isinstance(part, MultiPolygon) and not part.is_empty:
@@ -80,7 +83,7 @@ def reproject_arbitrary_crs_to_wgs84(geom: BaseGeometry, source_crs: str) -> Bas
     """Reproject a Shapely geometry from an arbitrary CRS string/WKT into WGS 84 (EPSG:4326)."""
     try:
         crs_obj = pyproj.CRS.from_user_input(source_crs)
-    except pyproj.exceptions.CRSError as exc:
+    except CRSError as exc:
         raise InvalidGeometryError(
             f"Unrecognized coordinate reference system: '{source_crs}'.",
             details={"source_crs": source_crs},
@@ -95,8 +98,7 @@ def reproject_arbitrary_crs_to_wgs84(geom: BaseGeometry, source_crs: str) -> Bas
     )
     transformed = shapely.transform(
         geom,
-        lambda coords: transformer.transform(coords[:, 0], coords[:, 1]),
-        interleaved= False,
+        lambda coords: np.column_stack(transformer.transform(coords[:, 0], coords[:, 1])),
     )
     return cast(BaseGeometry, transformed)
 

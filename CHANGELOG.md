@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased] - 2026-11-06
 
 ### Fixed
+- **IDE Language Server & Static Type Diagnostics (Resolved 23 Problems Panel Findings):**
+  - Configured workspace settings (`.vscode/settings.json`, `.vscode/extensions.json`, `pyrightconfig.json`) resolving missing interpreter and `backend` module import resolution errors across spike scripts.
+  - Resolved `BaseGeometry.geoms` attribute error in `backend/app/domain/gis/boundary.py` via safe collection attribute inspection (`getattr`).
+  - Resolved `pyproj.exceptions.CRSError` import in `boundary.py` with explicit top-level exception import.
+  - Fixed `shapely.transform` coordinate array shape mismatch in `boundary.py` using `np.column_stack`.
+  - Fixed `Polygon(hull.convex_hull)` redundant constructor type errors in `backend/app/domain/gis/clustering.py` by preserving Shapely 2 polygon instances directly.
+  - Resolved `BaseGeometry.x` and `BaseGeometry.y` access errors on projected UTM points in `backend/app/domain/gis/gap_analysis.py` and `backend/app/services/settlement_pdf_service.py` by accessing typed `.centroid.x` / `.centroid.y`.
+  - Fixed `simplify` return type narrowing for `LineString` in `backend/app/domain/gis/routing.py`.
+  - Fixed optional `None.isoformat()` type violation on `proj.deleted_at` in `backend/app/services/project_service.py`.
+  - Resolved `rasterio.enums.Resampling` attribute access in `scripts/spikes/s1_data_access.py` via explicit submodule import.
+  - Shortened docstring line length in `backend/migrations/versions/0002_m1_auth_projects_aoi.py` to satisfy `E501`.
 - **Codebase Integrity & Test Stability:**
   - Resolved `mypy` module typing conflict in `backend/tests/conftest.py` by aliasing `import app.db.models as _models` and `from app.main import app as fastapi_app`, restoring type safety for `app.dependency_overrides`.
   - Added explicit `Path` typing for `tmp_path: Path` in `backend/tests/integration/test_m1_auth_projects_aoi.py`.

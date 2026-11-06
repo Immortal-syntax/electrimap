@@ -86,12 +86,18 @@ def route_least_cost_feeder(
         for row, col in path_rc
     ]
     raw_line = LineString(coords_xy)
-    simplified_line = (
+    simplified_geom = (
         raw_line.simplify(simplify_tolerance_m, preserve_topology=False)
         if simplify_tolerance_m > 0.0 and len(coords_xy) > 2
         else raw_line
     )
-    if simplified_line.is_empty or len(simplified_line.coords) < 2:
+    if (
+        isinstance(simplified_geom, LineString)
+        and not simplified_geom.is_empty
+        and len(simplified_geom.coords) >= 2
+    ):
+        simplified_line = simplified_geom
+    else:
         simplified_line = raw_line
 
     rows_idx = [r for r, _ in path_rc]

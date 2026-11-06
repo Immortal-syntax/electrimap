@@ -148,8 +148,9 @@ def _render_settlement_map_plate_png(
     for b in buildings:
         if b.centroid is not None and not b.is_excluded:
             pt_utm = project_geometry(b.centroid, source_epsg=4326, target_epsg=metric_epsg)
-            bld_xs.append(float(pt_utm.x))
-            bld_ys.append(float(pt_utm.y))
+            c_pt = pt_utm.centroid
+            bld_xs.append(float(c_pt.x))
+            bld_ys.append(float(c_pt.y))
     if bld_xs:
         ax.scatter(
             bld_xs,

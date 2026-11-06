@@ -1,4 +1,5 @@
-"""Milestone M1 schema: users, sessions, admin_units, census_villages, projects, project_aoi, audit_events.
+"""Milestone M1 schema: users, sessions, admin_units, census_villages, projects,
+project_aoi, audit_events.
 
 Revision ID: 0002_m1_auth_projects_aoi
 Revises: 0001_initial_foundation

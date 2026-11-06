@@ -39,3 +39,4 @@ ElectriMap DPR implements several security controls by design:
 - **Path Traversal Protection**: All user-supplied file uploads (GeoJSON, KML, Shapefiles) and raster tile requests are validated through safe path resolution, preventing directory traversal outside the configured storage directory.
 - **SQL Injection Prevention**: All spatial and relational database operations use SQLAlchemy 2.0 ORM and parameterized queries.
 - **Credential Protection**: User passwords are encrypted using `bcrypt`. No API keys or credentials are committed to version control.
+
