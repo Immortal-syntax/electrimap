@@ -1,0 +1,113 @@
+# TASKS.md — Project Roadmap & Task Execution Tracker
+
+> **Tracking Convention:** `[ ] TODO` · `[-] IN_PROGRESS` · `[x] DONE` · `[!] BLOCKED`  
+> **Source of Truth:** Derived directly from approved `docs/ROADMAP.md`.
+
+---
+
+## Preparation & Planning (Prompts 0–3)
+- [x] **PROMPT-0:** Comprehensive Project Definition, Research & Feasibility Evaluation *(Approved 2026-11-05)*
+- [x] **PROMPT-1:** Product Discovery, Requirements Validation & PRD *(Approved 2026-11-05)*
+- [x] **PROMPT-2:** Technical Architecture, UI/UX Design System & Roadmap *(Approved 2026-11-06)*
+- [-] **PROMPT-3:** Environment Inspection, Git/GitHub Setup & Permanent Instructions *(In Progress)*
+- [ ] **PROMPT-4:** Milestone Implementation & Continuous Verification
+- [ ] **PROMPT-5:** Production Readiness, Debugging & Handover
+
+---
+
+## Milestone M0: Tooling, Database Setup & Spikes
+- [ ] **M0-1:** Establish Monorepo directory structure, editorconfig, and tooling configs
+- [ ] **M0-2:** Backend environment setup (Python 3.12/3.13, FastAPI base, linting, test runner)
+- [ ] **M0-3:** PostGIS database connectivity, SQLAlchemy models, and Alembic migrations
+- [ ] **M0-4:** Frontend scaffolding (Vite + React + TypeScript + Tailwind + MapLibre setup)
+- [ ] **M0-5:** GitHub Actions CI pipeline configuration
+- [ ] **S1 (Spike):** Koraput reference data acquisition & verification test
+- [ ] **S2 (Spike):** DEM slope cost-surface raster routing feasibility check
+- [ ] **S3 (Spike):** ReportLab PDF cartographic rendering test with north arrow & scale bar
+- [ ] **S4 (Spike):** MapLibre MVT performance test with 50k building footprints
+- [ ] **M0-6:** Milestone M0 Review & Checkpoint verification
+
+---
+
+## Milestone M1: Core Authentication, Project & AOI Module
+- [ ] **M1-1:** User auth, session store, CSRF, and security dependencies
+- [ ] **M1-2:** Project CRUD API with optimistic concurrency locking
+- [ ] **M1-3:** Administrative unit and Census database lookup seeding
+- [ ] **M1-4:** GIS CRS reprojection and boundary geometry validation service
+- [ ] **M1-5:** Boundary file upload handler (Shapefile zip, GeoJSON, KML)
+- [ ] **M1-6:** Frontend application shell, layout, and session state
+- [ ] **M1-7:** Interactive MapCanvas with MapLibre GL JS and basemap switching
+- [ ] **M1-8:** AOI selection wizard (administrative cascade, drawing, and upload)
+
+---
+
+## Milestone M2: Geospatial Ingestion, Provenance & Reference Pack
+- [ ] **M2-1:** Transactional background job queue and worker process
+- [ ] **M2-2:** Dataset provenance registry and metadata schema
+- [ ] **M2-3:** Spatial data ingestion pipelines (buildings, DEM, landcover, nightlights, OSM, solar)
+- [ ] **M2-4:** Background AOI data clipping and processing coordinator
+- [ ] **M2-5:** Koraput offline demonstration dataset packaging
+- [ ] **M2-6:** PostGIS vector tile (`ST_AsMVT`) and raster preview endpoints
+- [ ] **M2-7:** Workspace Data Management panel with provenance cards
+
+---
+
+## Milestone M3: Settlement Identification & Verification Ledger
+- [ ] **M3-1:** Building footprint filtering and DBSCAN habitation clustering
+- [ ] **M3-2:** Zonal statistics extraction and 4-tier proxy classification engine
+- [ ] **M3-3:** Cluster persistence API and Census household reconciliation
+- [ ] **M3-4:** Immutable verification audit ledger and CSV import processor
+- [ ] **M3-5:** Interactive Settlement Assessment UI with synchronized map inspector
+- [ ] **M3-6:** Verification Audit Log and field correction dashboard
+- [ ] **M3-7:** Preliminary DPR PDF skeleton generation with dynamic maps
+
+---
+
+## Milestone M4: Infrastructure Gap Analysis & Demand Engine
+- [ ] **M4-1:** Existing electrical infrastructure management and interactive tie-in placement
+- [ ] **M4-2:** Terrain-weighted distance and obstacle gap analysis matrix
+- [ ] **M4-3:** Project-level assumptions register with parameter edit tracking
+- [ ] **M4-4:** 7-category parametric electricity demand estimation engine
+- [ ] **M4-5:** Interactive Infrastructure and Demand Workspace panels
+- [ ] **M4-6:** DPR engineering demand and gap analysis section export
+
+---
+
+## Milestone M5: Network Layout Routing & Engineering Engine
+- [ ] **M5-1:** Engineering constants table verification against REC/IS standards
+- [ ] **M5-2:** Distribution transformer placement and radial distance constraints
+- [ ] **M5-3:** 11 kV HT feeder least-cost path routing algorithm
+- [ ] **M5-4:** 415V LT radial network Minimum Spanning Tree and pole allocation
+- [ ] **M5-5:** Deterministic engineering calculations (voltage drop, technical losses, solar/BESS sizing)
+- [ ] **M5-6:** Synchronous scenario planning and recalculation engine
+- [ ] **M5-7:** Planning and Network Layout interactive editing UI
+- [ ] **M5-8:** DPR engineering calculations and Single-Line Diagram export
+
+---
+
+## Milestone M6: Traceable Cost Estimation & Scenarios
+- [ ] **M6-1:** Schedule of Rates (SoR) management and custom CSV import
+- [ ] **M6-2:** Automated Bill of Quantities (BOQ) generator and financial metrics
+- [ ] **M6-3:** Scenario comparison engine (Grid vs. Mini-Grid vs. SHS vs. Hybrid)
+- [ ] **M6-4:** Interactive Cost BOQ spreadsheet and Scenario Comparison UI
+- [ ] **M6-5:** DPR financial statements and cost abstract export
+
+---
+
+## Milestone M7: Complete 24-Section DPR, Excel & GIS Exports
+- [ ] **M7-1:** Comprehensive 24-section PDF DPR compilation engine
+- [ ] **M7-2:** Pre-flight engineering and data integrity audit validation
+- [ ] **M7-3:** Formula-driven multi-sheet Excel BOQ workbook generator
+- [ ] **M7-4:** Cleaned GIS vector package export (GeoJSON/Shapefile/CSV)
+- [ ] **M7-5:** Export job logging and cryptographic document hashing
+- [ ] **M7-6:** DPR preview, map framing, and export download center
+
+---
+
+## Milestone M8: System Hardening, Benchmarking & Production Audit
+- [ ] **M8-1:** Geospatial spatial query and map rendering performance optimization
+- [ ] **M8-2:** Comprehensive accessibility audit and keyboard navigation review
+- [ ] **M8-3:** End-to-end automated integration tests for complete user journeys
+- [ ] **M8-4:** Security penetration review, input fuzzing, and dependency audit
+- [ ] **M8-5:** Docker container configuration and offline evaluation readiness
+- [ ] **M8-6:** Comprehensive technical documentation and user manual finalization
