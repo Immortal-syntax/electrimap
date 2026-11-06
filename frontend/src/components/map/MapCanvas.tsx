@@ -10,6 +10,10 @@ export interface MapCanvasProps {
   boundarySource?: string;
   referenceBuildings?: GeoJSON.FeatureCollection | null;
   referenceRoutes?: GeoJSON.FeatureCollection | null;
+  osmFeatures?: GeoJSON.FeatureCollection | null;
+  customFeatures?: GeoJSON.FeatureCollection | null;
+  rasterOverlayUrl?: string | null;
+  rasterOpacity?: number;
   drawModeActive?: boolean;
   onDrawnPolygonChange?: (polygon: GeoJSON.Polygon | null, vertexCount: number) => void;
   heightClass?: string;
@@ -103,6 +107,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   boundarySource = 'HARMONISED',
   referenceBuildings = null,
   referenceRoutes = null,
+  osmFeatures = null,
+  customFeatures = null,
+  rasterOverlayUrl = null,
+  rasterOpacity = 0.65,
   drawModeActive = false,
   onDrawnPolygonChange,
   heightClass = 'h-[480px]',
@@ -138,6 +146,39 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const syncLayers = (map: maplibregl.Map) => {
     if (!map.isStyleLoaded()) return;
 
+    // 1. Optional Raster Overlay (DEM Slope / WorldCover / VIIRS)
+    if (map.getLayer('aoi-raster-overlay-layer')) {
+      map.removeLayer('aoi-raster-overlay-layer');
+    }
+    if (map.getSource('aoi-raster-overlay')) {
+      map.removeSource('aoi-raster-overlay');
+    }
+    if (rasterOverlayUrl && aoiGeometry) {
+      const bbox = computeGeometryBbox(aoiGeometry);
+      if (bbox) {
+        const [minLon, minLat, maxLon, maxLat] = bbox;
+        map.addSource('aoi-raster-overlay', {
+          type: 'image',
+          url: rasterOverlayUrl,
+          coordinates: [
+            [minLon, maxLat],
+            [maxLon, maxLat],
+            [maxLon, minLat],
+            [minLon, minLat],
+          ],
+        });
+        map.addLayer({
+          id: 'aoi-raster-overlay-layer',
+          type: 'raster',
+          source: 'aoi-raster-overlay',
+          paint: {
+            'raster-opacity': rasterOpacity,
+          },
+        });
+      }
+    }
+
+    // 2. AOI Boundary Polygon
     const aoiFc: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
       features: aoiGeometry
@@ -187,7 +228,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       });
     }
 
-    // Drawn vertices & polygon preview
+    // 3. Drawn vertices & polygon preview
     const drawnFeatures: GeoJSON.Feature[] = [];
     if (drawnVertices.length >= 3) {
       drawnFeatures.push({
@@ -263,45 +304,133 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       });
     }
 
-    if (referenceBuildings) {
-      const existingBld = map.getSource('ref-buildings') as
-        | maplibregl.GeoJSONSource
-        | undefined;
-      if (existingBld) {
-        existingBld.setData(referenceBuildings);
-      } else {
-        map.addSource('ref-buildings', { type: 'geojson', data: referenceBuildings });
-        map.addLayer({
-          id: 'ref-buildings-fill',
-          type: 'fill',
-          source: 'ref-buildings',
-          paint: {
-            'fill-color': '#5B5F66',
-            'fill-opacity': 0.72,
-          },
-        });
-      }
+    // 4. OSM Roads, Waterways & Amenities
+    const osmFc: GeoJSON.FeatureCollection = osmFeatures ?? {
+      type: 'FeatureCollection',
+      features: [],
+    };
+    const existingOsm = map.getSource('osm-features-source') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (existingOsm) {
+      existingOsm.setData(osmFc);
+    } else {
+      map.addSource('osm-features-source', { type: 'geojson', data: osmFc });
+      map.addLayer({
+        id: 'osm-waterway-line',
+        type: 'line',
+        source: 'osm-features-source',
+        filter: ['==', ['get', 'category'], 'WATER'],
+        paint: {
+          'line-color': '#0064C8',
+          'line-width': 2.5,
+        },
+      });
+      map.addLayer({
+        id: 'osm-road-line',
+        type: 'line',
+        source: 'osm-features-source',
+        filter: ['==', ['get', 'category'], 'ROAD'],
+        paint: {
+          'line-color': '#8C6D46',
+          'line-width': 2,
+          'line-dasharray': [2, 1],
+        },
+      });
+      map.addLayer({
+        id: 'osm-amenity-points',
+        type: 'circle',
+        source: 'osm-features-source',
+        filter: ['==', ['get', 'category'], 'AMENITY'],
+        paint: {
+          'circle-radius': 5.5,
+          'circle-color': '#D97706',
+          'circle-stroke-color': '#FFFFFF',
+          'circle-stroke-width': 1.5,
+        },
+      });
     }
 
-    if (referenceRoutes) {
-      const existingRts = map.getSource('ref-routes') as
-        | maplibregl.GeoJSONSource
-        | undefined;
-      if (existingRts) {
-        existingRts.setData(referenceRoutes);
-      } else {
-        map.addSource('ref-routes', { type: 'geojson', data: referenceRoutes });
-        map.addLayer({
-          id: 'ref-routes-line',
-          type: 'line',
-          source: 'ref-routes',
-          paint: {
-            'line-color': '#CC79A7',
-            'line-width': 2.5,
-            'line-dasharray': [3, 2],
-          },
-        });
-      }
+    // 5. Building Footprints (colored by size_class)
+    const bldFc: GeoJSON.FeatureCollection = referenceBuildings ?? {
+      type: 'FeatureCollection',
+      features: [],
+    };
+    const existingBld = map.getSource('ref-buildings') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (existingBld) {
+      existingBld.setData(bldFc);
+    } else {
+      map.addSource('ref-buildings', { type: 'geojson', data: bldFc });
+      map.addLayer({
+        id: 'ref-buildings-fill',
+        type: 'fill',
+        source: 'ref-buildings',
+        paint: {
+          'fill-color': [
+            'match',
+            ['get', 'size_class'],
+            'RESIDENTIAL',
+            '#0B5D57',
+            'NON_RESIDENTIAL',
+            '#B45309',
+            'OUTBUILDING',
+            '#5B5F66',
+            '#5B5F66',
+          ],
+          'fill-opacity': 0.78,
+        },
+      });
+    }
+
+    // 6. Preliminary Feeder Routes
+    const rtsFc: GeoJSON.FeatureCollection = referenceRoutes ?? {
+      type: 'FeatureCollection',
+      features: [],
+    };
+    const existingRts = map.getSource('ref-routes') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (existingRts) {
+      existingRts.setData(rtsFc);
+    } else {
+      map.addSource('ref-routes', { type: 'geojson', data: rtsFc });
+      map.addLayer({
+        id: 'ref-routes-line',
+        type: 'line',
+        source: 'ref-routes',
+        paint: {
+          'line-color': '#CC79A7',
+          'line-width': 2.5,
+          'line-dasharray': [3, 2],
+        },
+      });
+    }
+
+    // 7. Custom Uploaded Features (USER_ENTERED)
+    const custFc: GeoJSON.FeatureCollection = customFeatures ?? {
+      type: 'FeatureCollection',
+      features: [],
+    };
+    const existingCust = map.getSource('custom-features-source') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (existingCust) {
+      existingCust.setData(custFc);
+    } else {
+      map.addSource('custom-features-source', { type: 'geojson', data: custFc });
+      map.addLayer({
+        id: 'custom-features-points',
+        type: 'circle',
+        source: 'custom-features-source',
+        paint: {
+          'circle-radius': 5,
+          'circle-color': '#7C3AED',
+          'circle-stroke-color': '#FFFFFF',
+          'circle-stroke-width': 1.5,
+        },
+      });
     }
   };
 
@@ -382,7 +511,17 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aoiGeometry, boundarySource, drawnVertices, referenceBuildings, referenceRoutes]);
+  }, [
+    aoiGeometry,
+    boundarySource,
+    drawnVertices,
+    referenceBuildings,
+    referenceRoutes,
+    osmFeatures,
+    customFeatures,
+    rasterOverlayUrl,
+    rasterOpacity,
+  ]);
 
   return (
     <div className="bg-sheet border border-rule-strong rounded-xs overflow-hidden flex flex-col">

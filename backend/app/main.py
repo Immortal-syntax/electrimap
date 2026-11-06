@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from app.api.v1 import admin_units, aoi, auth, projects, spikes
+from app.api.v1 import admin_units, aoi, auth, data, jobs, projects, spikes, tiles
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
@@ -55,6 +55,9 @@ app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(admin_units.router)
 app.include_router(aoi.router)
+app.include_router(data.router)
+app.include_router(jobs.router)
+app.include_router(tiles.router)
 app.include_router(spikes.router)
 
 

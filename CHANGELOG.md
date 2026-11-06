@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased] - 2026-11-06
 
 ### Added
+- **Milestone M2 — Geospatial Ingestion, Provenance Registry, Job Queue & Reference Pack (`M2-1` to `M2-7`):**
+  - PostgreSQL-backed transactional job queue (`backend/app/services/job_service.py`, `backend/app/api/v1/jobs.py`, `backend/app/worker.py`) enforcing `max_jobs_per_user=2` (`429 CONCURRENT_JOB_LIMIT`), stage/progress updates, and cancellation (`POST /api/v1/jobs/{job_id}/cancel`).
+  - Dataset provenance registry (`GET /api/v1/datasets`) and spatial models (`ProjectLayer`, `Building`, `OsmFeature`, `SolarResource`) with Alembic migration `0003_m2_layers_buildings_osm_solar.py`.
+  - Pure GIS layer processing domain (`backend/app/domain/gis/layer_processing.py`) classifying building footprints by metric area (`NOISE` `<8 m²`, `OUTBUILDING` `8–15 m²`, `RESIDENTIAL` `15–250 m²`, `NON_RESIDENTIAL` `>250 m²`), computing UTM terrain/landcover/nightlight/OSM/NASA POWER GHI summaries, and rendering color-mapped RGBA PNG raster overlays (`dem_slope`, `landcover`, `nightlights`).
+  - Offline Koraput Reference Pack pre-population and acquisition coordinator (`POST /api/v1/projects/{id}/data/acquire`), custom GeoJSON layer upload (`POST /api/v1/projects/{id}/layers/upload` tagged `USER_ENTERED`), vector GeoJSON & `ST_AsMVT` endpoints (`backend/app/api/v1/data.py`, `backend/app/api/v1/tiles.py`).
+  - Frontend `ProvenanceChip.tsx`, `JobProgress.tsx`, and `DataManagementPanel.tsx` integrated into `WorkspacePage.tsx` and `MapCanvas.tsx` with vector layer toggles, raster overlay selector, and opacity slider.
 - **Milestone M1 — Core Authentication, Project CRUD & AOI Module (`M1-1` to `M1-8`):**
   - Argon2id password hashing, SHA-256 session/CSRF token storage, sliding-window login rate limiter, and HttpOnly `em_session` cookie + `X-CSRF-Token` dependency (`backend/app/core/security.py`, `backend/app/services/auth_service.py`, `backend/app/api/v1/auth.py`, `backend/app/api/v1/deps.py`).
   - Project CRUD API (`GET/POST /api/v1/projects`, `GET/PATCH/DELETE /api/v1/projects/{id}`, `POST /api/v1/projects/{id}/duplicate`) with optimistic concurrency locking (`version`) and cross-user ownership isolation (`backend/app/services/project_service.py`, `backend/app/api/v1/projects.py`).
@@ -30,14 +36,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Design system tokens (`frontend/src/styles/tokens.css`, `globals.css`) and core UI primitives (`TitleBlock`, `QualityTag`, `ClassificationBadge`, `StatTile`, `Callout`, `Button`, `MapSpikePreview`) with Vitest unit test coverage.
 - **Prompt 3 — Repository & Documentation Setup:**
   - Comprehensive `.gitignore` protecting credentials, Python venvs, node_modules, GIS rasters, GeoParquet, and build artifacts.
-- Baseline `.env.example` documenting all configuration keys without exposing credentials.
-- Approved `docs/PROJECT_CONTEXT.md` defining project identity, problem statement, and non-negotiable principles.
-- Approved `docs/PRD.md` detailing functional requirements (FR-1 to FR-12), non-functional requirements, and acceptance criteria.
-- Approved `docs/ARCHITECTURE.md` specifying system architecture, database schema, REST API, and data ingestion pipelines.
-- Approved `docs/DESIGN_SYSTEM.md` specifying "Survey Sheet" aesthetic, color-blind safe palettes, and map workspace interactions.
-- Approved `docs/DECISIONS.md` recording all ADRs (D-01 to D-04, C1 to C8, AD-01 to AD-09).
-- `docs/KNOWN_ISSUES.md` tracking environment observations and methodological caveats.
-- Permanent root instructions `AGENTS.md` and `CLAUDE.md` establishing universal multi-agent coding standards and Git policies.
-- Milestone tracking file `TASKS.md` derived from the development roadmap.
-- Live progress and handover document `PROJECT_STATUS.md`.
-
+  - Baseline `.env.example` documenting all configuration keys without exposing credentials.
+  - Approved `docs/PROJECT_CONTEXT.md`, `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN_SYSTEM.md`, `docs/DECISIONS.md`, `docs/KNOWN_ISSUES.md`, `AGENTS.md`, `CLAUDE.md`, `TASKS.md`, and `PROJECT_STATUS.md`.

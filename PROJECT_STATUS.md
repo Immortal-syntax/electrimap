@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Live Project State & Agent Handover Record
 
-> **Status:** Active · Phase: Prompt 4 (Milestone M1 Completed — Awaiting Approval for Milestone M2)  
+> **Status:** Active · Phase: Prompt 4 (Milestone M2 Completed — Awaiting Approval for Milestone M3)  
 > **Last Synchronized:** 2026-11-06  
 > **Active AI Agent:** Antigravity (Google DeepMind)  
 > **Secondary Compatibility:** Claude (Anthropic) via `CLAUDE.md` and `AGENTS.md`  
@@ -8,47 +8,46 @@
 ---
 
 ## 1. Executive Status Summary
-- **Current Phase & Milestone:** Prompt 4 — **Milestone M1 (Core Authentication, Project & AOI Module) COMPLETED**.
+- **Current Phase & Milestone:** Prompt 4 — **Milestone M2 (Geospatial Ingestion, Provenance & Reference Pack) COMPLETED**.
 - **Completed Milestones:**
   - **Milestone M0:** Tooling, Database Setup & Technical Risk Spikes S1–S4 (**APPROVED & COMPLETED**)
-  - **Milestone M1:** Core Authentication, Project CRUD & AOI Module (**COMPLETED**)
+  - **Milestone M1:** Core Authentication, Project CRUD & AOI Module (**APPROVED & COMPLETED**)
+  - **Milestone M2:** Geospatial Ingestion, Provenance & Reference Pack (**COMPLETED**)
 - **Git Repository Status:**
   - Remote: `https://github.com/Immortal-syntax/electrimap.git`
   - Active Branch: `main`
-  - All Milestone M0 and M1 changes verified, committed, and pushed to `origin/main`.
-- **Next Milestone:** **Milestone M2 (Geospatial Ingestion, Provenance & Reference Pack)** upon explicit user approval.
+  - All Milestone M0, M1, and M2 changes verified, committed, and pushed to `origin/main`.
+- **Next Milestone:** **Milestone M3 (Settlement Identification & Verification Ledger)** upon explicit user approval.
 
 ---
 
-## 2. Completed Work in Milestone M1 (`M1-1` to `M1-8`)
-1. **Task M1-1 (User Auth, Session Store, CSRF & Security Dependencies):**
-   - Implemented Argon2id password hashing, SHA-256 session/CSRF token digests, and sliding-window login rate limiting (`backend/app/core/security.py`).
-   - Implemented server-side session lifecycle (`12 h` sliding, `7 d` absolute expiry) with `HttpOnly`, `SameSite=Lax` cookie `em_session` and `X-CSRF-Token` validation on all state-mutating requests (`backend/app/services/auth_service.py`, `backend/app/api/v1/deps.py`, `backend/app/api/v1/auth.py`).
-2. **Task M1-2 (Project CRUD API with Optimistic Concurrency Locking):**
-   - Implemented `GET/POST /api/v1/projects`, `GET/PATCH/DELETE /api/v1/projects/{id}`, and `POST /api/v1/projects/{id}/duplicate` (`backend/app/services/project_service.py`, `backend/app/api/v1/projects.py`).
-   - Enforced optimistic concurrency `version` check (`409 VERSION_CONFLICT`), soft deletion (`deleted_at`), `AuditEvent` logging, and strict ownership isolation returning `404 PROJECT_NOT_FOUND` on unauthorized access.
-3. **Task M1-3 (Administrative Unit & Census 2011 Lookup Seeding):**
-   - Added `AdminUnit` and `CensusVillage` models (`backend/app/db/models/reference.py`) and Alembic migration `0002_m1_auth_projects_aoi.py`.
-   - Seeded Odisha -> Koraput -> Nandapur / Pottangi -> Gram Panchayats -> Villages (`Bheja`, `Padwa`, `Maliaguda PVTG Forest Habitation`, `Pukali`) and pre-seeded the Koraput Demo Project (`00000000-0000-4000-8000-000000000001`).
-   - Exposed `/api/v1/admin-units`, `/api/v1/admin-units/search`, and `/api/v1/admin-units/{lgd_code}/boundary` with automatic `1.5 km` UTM circular buffer fallback (`APPROXIMATE_BUFFER`) when a village polygon is missing.
-4. **Task M1-4 & M1-5 (GIS Boundary Validation Domain & Safe Boundary File Upload):**
-   - Implemented `validate_and_normalize_boundary` (`backend/app/domain/gis/boundary.py`) supporting arbitrary CRS -> `EPSG:4326` reprojection, `make_valid` self-intersection repair (`SELF_INTERSECTION_REPAIRED`), MultiPolygon normalization, India bounds verification, and UTM area bounds (`0.01` to `500 km²`).
-   - Implemented `PUT /api/v1/projects/{id}/aoi`, `POST /api/v1/projects/{id}/aoi/upload`, and `GET /api/v1/projects/{id}/aoi` supporting `.geojson`, `.json`, `.kml`, and `.zip` Shapefile bundles with zip-bomb, path-traversal, and mandatory `.prj` verification (`422 MISSING_CRS_PRJ`).
-5. **Task M1-6, M1-7 & M1-8 (Frontend App Shell, Interactive MapCanvas & AOI Selection Wizard):**
-   - Implemented `apiClient.ts`, `sessionStore.ts`, `AppShell.tsx`, `MapCanvas.tsx` (basemap switcher, AOI halo, interactive vertex drawing), `LoginPage.tsx`, `ProjectsPage.tsx`, `NewProjectWizardPage.tsx` (Admin Unit cascade/search, Draw Polygon, and Upload GIS File tabs), and `WorkspacePage.tsx`.
+## 2. Completed Work in Milestone M2 (`M2-1` to `M2-7`)
+1. **Task M2-1 (Transactional Background Job Queue & Worker Process):**
+   - Implemented `backend/app/services/job_service.py`, `backend/app/api/v1/jobs.py`, and `backend/app/worker.py`.
+   - Enforced `max_jobs_per_user=2` (`429 CONCURRENT_JOB_LIMIT`), transactional job claiming (`SELECT ... FOR UPDATE SKIP LOCKED` on PostgreSQL with transactional claim fallback on SQLite), stage/progress updates, and job cancellation (`POST /api/v1/jobs/{job_id}/cancel`).
+2. **Task M2-2 (Dataset Provenance Registry & Metadata Schema):**
+   - Seeded and exposed the 8 core open datasets (`GET /api/v1/datasets`) with licence, spatial resolution (`m`), temporal coverage, attribution text, and methodological limitations (`backend/app/services/data_service.py`, `backend/app/api/v1/data.py`).
+3. **Task M2-3, M2-4 & M2-5 (Spatial Data Ingestion Pipelines, AOI Processing Coordinator & Koraput Offline Reference Pack):**
+   - Added `ProjectLayer`, `Building`, `OsmFeature`, and `SolarResource` models (`backend/app/db/models/project.py`, `backend/app/db/models/spatial.py`) and Alembic migration `0003_m2_layers_buildings_osm_solar.py`.
+   - Implemented pure GIS domain functions in `backend/app/domain/gis/layer_processing.py` (`classify_building_footprint` filtering `<8 m²` as `NOISE`, `8–15 m²` as `OUTBUILDING`, `15–250 m²` as `RESIDENTIAL`, `>250 m²` as `NON_RESIDENTIAL`; `compute_layer_summaries` in UTM `EPSG:32644`; and `render_raster_layer_png` for `dem_slope`, `landcover`, and `nightlights`).
+   - Pre-populated the Koraput Demo Project (`00000000-0000-4000-8000-000000000001`) with all 6 spatial layers (`buildings`, `dem_slope`, `landcover`, `nightlights`, `osm_features`, `solar_resource`) offline at startup, and implemented `POST /api/v1/projects/{project_id}/data/acquire` and `POST /api/v1/projects/{project_id}/layers/upload` (`USER_ENTERED`).
+4. **Task M2-6 (PostGIS Vector Tile `ST_AsMVT` & Raster Preview Endpoints):**
+   - Implemented `GET /api/v1/tiles/{project_id}/{layer}/{z}/{x}/{y}.mvt` (`backend/app/api/v1/tiles.py`), `GET /api/v1/projects/{project_id}/layers/{layer_key}/image`, and `GET /api/v1/projects/{project_id}/layers/{layer_name}/geojson`.
+5. **Task M2-7 (Workspace Data Management Panel, Provenance Cards & Map Layer Toggles):**
+   - Created `ProvenanceChip.tsx`, `JobProgress.tsx`, and `DataManagementPanel.tsx` and integrated them into `WorkspacePage.tsx` and `MapCanvas.tsx` with vector layer toggles (`buildings` colored by `size_class`, `osm_features` roads/waterways/amenities), raster overlay switcher (`dem_slope`, `landcover`, `nightlights`) with opacity slider, and custom `.geojson` layer upload.
 
 ---
 
 ## 3. Verification & Test Results
 - **Backend Linting (`ruff check app tests`):** Passed (`All checks passed!`).
-- **Backend Typecheck (`mypy app`):** Passed (`Success: no issues found in 42 source files`).
-- **Backend Test Suite (`pytest -v`):** **24 passed** in `6.74 s` (including `test_boundary_domain.py` and `test_m1_auth_projects_aoi.py`).
+- **Backend Typecheck (`mypy app`):** Passed (`Success: no issues found in 52 source files`).
+- **Backend Test Suite (`pytest -v`):** **30 passed** in `2.55 s` (including `test_layer_processing_domain.py` and `test_m2_jobs_ingestion_provenance.py`).
 - **Frontend Typecheck (`npm run typecheck`):** Passed (`0 errors`).
 - **Frontend Linting (`npm run lint`):** Passed (`0 warnings, 0 errors`).
-- **Frontend Unit Tests (`npm run test`):** **4 passed** (`QualityTag.test.tsx`, `AppRoutes.test.tsx`).
+- **Frontend Unit Tests (`npm run test`):** **7 passed** (`QualityTag.test.tsx`, `AppRoutes.test.tsx`).
 - **Frontend Production Build (`npm run build`):** Passed.
 
 ---
 
 ## 4. Next Action Required to Resume
-- **STOP Gate:** Await explicit user approval of Milestone M1 before starting **Milestone M2 (Geospatial Ingestion, Provenance & Reference Pack — Tasks `M2-1` through `M2-7`)**.
+- **STOP Gate:** Await explicit user approval of Milestone M2 before starting **Milestone M3 (Settlement Identification & Verification Ledger — Tasks `M3-1` through `M3-7`)**.

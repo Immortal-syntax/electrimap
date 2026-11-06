@@ -1,8 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiRequest } from '../lib/apiClient';
 import { useSessionStore } from '../stores/sessionStore';
 import { MapCanvas } from '../components/map/MapCanvas';
+import {
+  DataManagementPanel,
+  ProjectLayerDto,
+  RasterOverlayKey,
+} from '../components/workspace/DataManagementPanel';
 import { ClassificationBadge, ProxyElectrificationClass } from '../components/ui/Badge';
 import { Callout } from '../components/ui/Callout';
 import { StatTile } from '../components/ui/StatTile';
@@ -67,9 +72,35 @@ export const WorkspacePage: React.FC = () => {
   const { user, login } = useSessionStore();
 
   const [project, setProject] = useState<ProjectDto | null>(null);
-  const [refLayers, setRefLayers] = useState<ReferenceGeoJsonPayload | null>(null);
+  const [layers, setLayers] = useState<ProjectLayerDto[]>([]);
+  const [buildingsGeoJson, setBuildingsGeoJson] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [osmGeoJson, setOsmGeoJson] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [routesGeoJson, setRoutesGeoJson] = useState<GeoJSON.FeatureCollection | null>(null);
+
+  const [visibleVectorLayers, setVisibleVectorLayers] = useState<Record<string, boolean>>({
+    buildings: true,
+    osm_features: true,
+  });
+  const [activeRasterOverlay, setActiveRasterOverlay] = useState<RasterOverlayKey>('none');
+  const [rasterOpacity, setRasterOpacity] = useState<number>(0.65);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const fetchLayersAndVectors = useCallback(async (projectId: string) => {
+    const [layerItems, bldFc, osmFc] = await Promise.all([
+      apiRequest<ProjectLayerDto[]>(`/api/v1/projects/${projectId}/layers`),
+      apiRequest<GeoJSON.FeatureCollection>(
+        `/api/v1/projects/${projectId}/layers/buildings/geojson`,
+      ),
+      apiRequest<GeoJSON.FeatureCollection>(
+        `/api/v1/projects/${projectId}/layers/osm_features/geojson`,
+      ),
+    ]);
+    setLayers(layerItems);
+    setBuildingsGeoJson(bldFc);
+    setOsmGeoJson(osmFc);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -87,7 +118,8 @@ export const WorkspacePage: React.FC = () => {
         ]);
         if (!active) return;
         setProject(projData);
-        setRefLayers(geoData);
+        setRoutesGeoJson(geoData.routes);
+        await fetchLayersAndVectors(id);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'Unable to load project workspace.');
@@ -100,7 +132,7 @@ export const WorkspacePage: React.FC = () => {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, fetchLayersAndVectors]);
 
   if (loading) {
     return (
@@ -122,6 +154,17 @@ export const WorkspacePage: React.FC = () => {
       </div>
     );
   }
+
+  const rasterOverlayUrl =
+    activeRasterOverlay !== 'none'
+      ? `/api/v1/projects/${project.id}/layers/${activeRasterOverlay}/image`
+      : null;
+
+  const solarLayer = layers.find((l) => l.layer_key === 'solar_resource');
+  const worstMonthGhi =
+    solarLayer && typeof solarLayer.summary_metrics.worst_ghi_kwh_m2_day === 'number'
+      ? Number(solarLayer.summary_metrics.worst_ghi_kwh_m2_day).toFixed(2)
+      : '3.82';
 
   return (
     <div className="max-w-[1440px] w-full mx-auto p-4 space-y-4">
@@ -178,10 +221,11 @@ export const WorkspacePage: React.FC = () => {
           subtitle="All distances (m) and areas (m²) computed in UTM"
         />
         <StatTile
-          label="Consumer Load Tier"
-          value={project.load_tier.replace('TIER_', 'TIER ')}
-          quality="ASSUMED"
-          subtitle={`Base Year ${project.base_year} · ${project.horizon_years}-Yr Horizon`}
+          label="Design Worst-Month GHI"
+          value={worstMonthGhi}
+          unit="kWh/m²/day"
+          quality="ESTIMATED"
+          subtitle="NASA POWER Climatology (Monsoon Design)"
         />
         <StatTile
           label="Verification Coverage"
@@ -222,8 +266,11 @@ export const WorkspacePage: React.FC = () => {
           <MapCanvas
             aoiGeometry={project.aoi?.geojson_geometry ?? null}
             boundarySource={project.aoi?.boundary_source ?? 'HARMONISED'}
-            referenceBuildings={refLayers?.buildings ?? null}
-            referenceRoutes={refLayers?.routes ?? null}
+            referenceBuildings={visibleVectorLayers.buildings ? buildingsGeoJson : null}
+            osmFeatures={visibleVectorLayers.osm_features ? osmGeoJson : null}
+            referenceRoutes={routesGeoJson}
+            rasterOverlayUrl={rasterOverlayUrl}
+            rasterOpacity={rasterOpacity}
             heightClass="h-[460px]"
           />
         </div>
@@ -253,8 +300,8 @@ export const WorkspacePage: React.FC = () => {
               </dd>
             </div>
             <div className="flex justify-between border-b border-rule/60 pb-1">
-              <dt className="text-ink-2">Source CRS</dt>
-              <dd className="text-ink">{project.aoi?.original_crs ?? 'EPSG:4326'}</dd>
+              <dt className="text-ink-2">Ingested GIS Layers</dt>
+              <dd className="text-ink">{layers.length} layers READY</dd>
             </div>
             <div className="flex justify-between border-b border-rule/60 pb-1">
               <dt className="text-ink-2">Optimistic Version</dt>
@@ -286,6 +333,24 @@ export const WorkspacePage: React.FC = () => {
           </div>
         </aside>
       </div>
+
+      {/* Milestone M2: Data Management, Layer Toggles & Provenance Registry Panel */}
+      <DataManagementPanel
+        projectId={project.id}
+        layers={layers}
+        visibleVectorLayers={visibleVectorLayers}
+        onToggleVectorLayer={(layerKey) =>
+          setVisibleVectorLayers((prev) => ({
+            ...prev,
+            [layerKey]: !prev[layerKey],
+          }))
+        }
+        activeRasterOverlay={activeRasterOverlay}
+        onChangeRasterOverlay={setActiveRasterOverlay}
+        rasterOpacity={rasterOpacity}
+        onChangeRasterOpacity={setRasterOpacity}
+        onLayersUpdated={() => fetchLayersAndVectors(project.id)}
+      />
     </div>
   );
 };

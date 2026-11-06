@@ -42,13 +42,13 @@
 ---
 
 ## Milestone M2: Geospatial Ingestion, Provenance & Reference Pack
-- [ ] **M2-1:** Transactional background job queue and worker process
-- [ ] **M2-2:** Dataset provenance registry and metadata schema
-- [ ] **M2-3:** Spatial data ingestion pipelines (buildings, DEM, landcover, nightlights, OSM, solar)
-- [ ] **M2-4:** Background AOI data clipping and processing coordinator
-- [ ] **M2-5:** Koraput offline demonstration dataset packaging
-- [ ] **M2-6:** PostGIS vector tile (`ST_AsMVT`) and raster preview endpoints
-- [ ] **M2-7:** Workspace Data Management panel with provenance cards
+- [x] **M2-1:** Transactional background job queue and worker process
+- [x] **M2-2:** Dataset provenance registry and metadata schema
+- [x] **M2-3:** Spatial data ingestion pipelines (buildings, DEM, landcover, nightlights, OSM, solar)
+- [x] **M2-4:** Background AOI data clipping and processing coordinator
+- [x] **M2-5:** Koraput offline demonstration dataset packaging
+- [x] **M2-6:** PostGIS vector tile (`ST_AsMVT`) and raster preview endpoints
+- [x] **M2-7:** Workspace Data Management panel with provenance cards
 
 ---
 

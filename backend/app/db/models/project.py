@@ -66,3 +66,32 @@ class ProjectAoi(Base, TimestampMixin):
     original_crs: Mapped[str | None] = mapped_column(String(64), nullable=True)
     warnings: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
+
+class ProjectLayer(Base, TimestampMixin):
+    """Per-project ingested geospatial layer record with provenance and summary metrics."""
+
+    __tablename__ = "project_layers"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    dataset_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
+    )
+    layer_key: Mapped[str] = mapped_column(
+        String(64), index=True, nullable=False
+    )  # buildings, dem_slope, landcover, nightlights, osm_features, solar_resource
+    status: Mapped[str] = mapped_column(
+        String(24), default="PENDING", nullable=False
+    )  # PENDING, RUNNING, READY, FAILED
+    retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    feature_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    bbox: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    summary_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cache_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+

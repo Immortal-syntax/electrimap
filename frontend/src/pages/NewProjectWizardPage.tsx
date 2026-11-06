@@ -604,3 +604,4 @@ export const NewProjectWizardPage: React.FC = () => {
     </div>
   );
 };
+
