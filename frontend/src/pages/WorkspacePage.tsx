@@ -13,6 +13,13 @@ import {
   SettlementAssessmentPanel,
   VerificationLedgerDto,
 } from '../components/workspace/SettlementAssessmentPanel';
+import {
+  InfrastructureAndDemandPanel,
+  InfrastructureListDto,
+  ProjectDemandSummaryDto,
+  ProjectGapAnalysisDto,
+  ProjectSettingsListDto,
+} from '../components/workspace/InfrastructureAndDemandPanel';
 import { ClassificationBadge } from '../components/ui/Badge';
 import { Callout } from '../components/ui/Callout';
 import { StatTile } from '../components/ui/StatTile';
@@ -27,8 +34,8 @@ interface ReferenceGeoJsonPayload {
 
 const WORKFLOW_STEPS = [
   { key: 'data', label: '1. Data & AOI', state: 'READY' },
-  { key: 'settlements', label: '2. Settlements', state: 'ACTIVE' },
-  { key: 'infrastructure', label: '3. Infrastructure', state: 'READY' },
+  { key: 'settlements', label: '2. Settlements', state: 'READY' },
+  { key: 'infrastructure', label: '3. Infrastructure', state: 'ACTIVE' },
   { key: 'planning', label: '4. Planning', state: 'READY' },
   { key: 'engineering', label: '5. Engineering', state: 'READY' },
   { key: 'cost', label: '6. Cost & BOQ', state: 'READY' },
@@ -48,6 +55,12 @@ export const WorkspacePage: React.FC = () => {
   const [verificationLedger, setVerificationLedger] = useState<VerificationLedgerDto | null>(null);
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
 
+  const [infrastructure, setInfrastructure] = useState<InfrastructureListDto | null>(null);
+  const [gapAnalysis, setGapAnalysis] = useState<ProjectGapAnalysisDto | null>(null);
+  const [settings, setSettings] = useState<ProjectSettingsListDto | null>(null);
+  const [demand, setDemand] = useState<ProjectDemandSummaryDto | null>(null);
+  const [placeTieInModeActive, setPlaceTieInModeActive] = useState<boolean>(false);
+
   const [visibleVectorLayers, setVisibleVectorLayers] = useState<Record<string, boolean>>({
     buildings: true,
     osm_features: true,
@@ -58,15 +71,32 @@ export const WorkspacePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSettlementsAndLedger = useCallback(async (projectId: string) => {
-    const [clustersData, ledgerData] = await Promise.all([
-      apiRequest<ClusterListResponseDto>(`/api/v1/projects/${projectId}/clusters`),
-      apiRequest<VerificationLedgerDto>(`/api/v1/projects/${projectId}/verifications`),
+  const fetchInfraAndDemand = useCallback(async (projectId: string) => {
+    const [infraData, gapData, settingsData, demandData] = await Promise.all([
+      apiRequest<InfrastructureListDto>(`/api/v1/projects/${projectId}/infrastructure`),
+      apiRequest<ProjectGapAnalysisDto>(`/api/v1/projects/${projectId}/gap-analysis`),
+      apiRequest<ProjectSettingsListDto>(`/api/v1/projects/${projectId}/settings`),
+      apiRequest<ProjectDemandSummaryDto>(`/api/v1/projects/${projectId}/demand`),
     ]);
-    setSettlements(clustersData);
-    setVerificationLedger(ledgerData);
-    setSelectedClusterId((prev) => prev ?? clustersData.items[0]?.id ?? null);
+    setInfrastructure(infraData);
+    setGapAnalysis(gapData);
+    setSettings(settingsData);
+    setDemand(demandData);
   }, []);
+
+  const fetchSettlementsAndLedger = useCallback(
+    async (projectId: string) => {
+      const [clustersData, ledgerData] = await Promise.all([
+        apiRequest<ClusterListResponseDto>(`/api/v1/projects/${projectId}/clusters`),
+        apiRequest<VerificationLedgerDto>(`/api/v1/projects/${projectId}/verifications`),
+      ]);
+      setSettlements(clustersData);
+      setVerificationLedger(ledgerData);
+      setSelectedClusterId((prev) => prev ?? clustersData.items[0]?.id ?? null);
+      await fetchInfraAndDemand(projectId);
+    },
+    [fetchInfraAndDemand],
+  );
 
   const fetchLayersAndVectors = useCallback(
     async (projectId: string) => {
@@ -263,6 +293,27 @@ export const WorkspacePage: React.FC = () => {
             osmFeatures={visibleVectorLayers.osm_features ? osmGeoJson : null}
             referenceRoutes={routesGeoJson}
             settlementClusters={settlements?.geojson ?? null}
+            infrastructureAssets={infrastructure?.geojson ?? null}
+            gapCorridors={gapAnalysis?.corridors_geojson ?? null}
+            placeTieInModeActive={placeTieInModeActive}
+            onPlaceTieInPoint={(lon, lat) => {
+              void (async () => {
+                setPlaceTieInModeActive(false);
+                await apiRequest(`/api/v1/projects/${project.id}/infrastructure`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    asset_type: 'TIE_IN',
+                    name: `11 kV Tie-In (${lon.toFixed(4)}E, ${lat.toFixed(4)}N)`,
+                    voltage_kv: 11.0,
+                    provenance: 'USER_ASSUMED',
+                    source_note: 'Interactive planner map click tie-in point.',
+                    lon,
+                    lat,
+                  }),
+                });
+                await fetchSettlementsAndLedger(project.id);
+              })();
+            }}
             selectedClusterId={selectedClusterId}
             onSelectCluster={(cid) => setSelectedClusterId(cid)}
             rasterOverlayUrl={rasterOverlayUrl}
@@ -336,6 +387,18 @@ export const WorkspacePage: React.FC = () => {
           </div>
         </aside>
       </div>
+
+      {/* Milestone M4: Infrastructure Gap Analysis, Assumptions Register & 7-Category Demand Engine */}
+      <InfrastructureAndDemandPanel
+        projectId={project.id}
+        infrastructure={infrastructure}
+        gapAnalysis={gapAnalysis}
+        settings={settings}
+        demand={demand}
+        placeTieInModeActive={placeTieInModeActive}
+        onTogglePlaceTieInMode={() => setPlaceTieInModeActive((prev) => !prev)}
+        onInfrastructureAndDemandUpdated={() => fetchSettlementsAndLedger(project.id)}
+      />
 
       {/* Milestone M3: Habitation Clustering, Two-Axis Classification & Verification Ledger */}
       <SettlementAssessmentPanel

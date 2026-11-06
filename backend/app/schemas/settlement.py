@@ -174,3 +174,4 @@ class VerificationLedgerResponse(BaseModel):
     verification_coverage_pct: float
     records: list[VerificationRecordResponse]
     imports: list[VerificationImportResponse]
+

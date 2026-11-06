@@ -41,6 +41,12 @@ from app.db.models.project import ProjectAoi
 from app.db.models.spatial import Building
 from app.domain.gis.crs import project_geometry
 from app.services.data_service import list_project_layers_with_provenance
+from app.services.infrastructure_service import (
+    compute_and_persist_gap_analysis,
+    compute_and_persist_project_demand,
+    get_project_settings_state,
+    list_project_infrastructure,
+)
 from app.services.project_service import get_owned_project_or_404
 from app.services.settlement_service import (
     get_project_settlement_state,
@@ -277,6 +283,10 @@ def generate_preliminary_settlement_pdf(
     settlements = get_project_settlement_state(db, project_id=proj.id, user=user)
     ledger = get_project_verification_ledger(db, project_id=proj.id, user=user)
     layers = list_project_layers_with_provenance(db, project_id=proj.id, user=user)
+    infra = list_project_infrastructure(db, project_id=proj.id, user=user)
+    gap = compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
+    settings_state = get_project_settings_state(db, project_id=proj.id, user=user)
+    demand = compute_and_persist_project_demand(db, project_id=proj.id, user=user)
 
     aoi_row = db.execute(
         select(ProjectAoi).where(ProjectAoi.project_id == proj.id)
@@ -546,7 +556,7 @@ def generate_preliminary_settlement_pdf(
         )
         story.append(t5)
 
-    # Page 2: Cartographic Map Plate
+    # Page 2: Cartographic Map Plate + Sections 6-9 (Infrastructure, Gap Matrix & Demand)
     story.append(PageBreak())
     story.append(
         Paragraph(
@@ -561,8 +571,164 @@ def generate_preliminary_settlement_pdf(
         clusters_geojson=settlements.geojson,
         metric_epsg=proj.metric_epsg,
     )
-    img = Image(io.BytesIO(map_png_bytes), width=174 * mm, height=125 * mm)
+    img = Image(io.BytesIO(map_png_bytes), width=174 * mm, height=118 * mm)
     story.append(img)
+
+    # Section 6: Existing Electrical Infrastructure Register
+    story.append(
+        Paragraph(
+            "6. EXISTING ELECTRICAL INFRASTRUCTURE & TIE-IN PROVENANCE",
+            sec_style,
+        )
+    )
+    if not infra.has_existing_infra:
+        story.append(
+            Paragraph(
+                "<b>Epistemic Notice (Core Principle #4):</b> No existing 11 kV / LT lines, "
+                "Distribution Transformers, or tie-in points have been uploaded or placed yet "
+                "(d_infra_m = UNSET). No synthetic infrastructure has been fabricated.",
+                body_style,
+            )
+        )
+    else:
+        inf_rows = [
+            ["Asset Type", "Name", "Voltage (kV)", "Provenance", "Quality Tag", "Source Note"]
+        ]
+        for a in infra.items[:6]:
+            inf_rows.append(
+                [
+                    a.asset_type,
+                    a.name[:28],
+                    f"{a.voltage_kv or '-'} kV",
+                    a.provenance,
+                    a.quality_tag,
+                    a.source_note[:36],
+                ]
+            )
+        t6 = Table(inf_rows, colWidths=[22 * mm, 42 * mm, 20 * mm, 28 * mm, 22 * mm, 42 * mm])
+        t6.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                    ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                    ("PADDING", (0, 0), (-1, -1), 2.5),
+                ]
+            )
+        )
+        story.append(t6)
+
+    # Section 7: Terrain-Weighted Distance & Obstacle Gap Matrix
+    story.append(
+        Paragraph(
+            "7. TERRAIN-WEIGHTED DISTANCE & OBSTACLE GAP ANALYSIS MATRIX",
+            sec_style,
+        )
+    )
+    gap_rows = [
+        [
+            "Cluster",
+            "Nearest Tie-In",
+            "d_straight (m)",
+            "Penalty",
+            "d_terrain (m)",
+            "Water Crossings",
+            "Recommended Modality",
+        ]
+    ]
+    for g in gap.clusters:
+        gap_rows.append(
+            [
+                g.cluster_label,
+                (g.nearest_asset_name or "UNSET")[:24],
+                f"{g.d_straight_m:.0f} m" if g.d_straight_m is not None else "UNSET",
+                f"{g.terrain_penalty_factor:.2f}x",
+                f"{g.d_terrain_m:.0f} m" if g.d_terrain_m is not None else "UNSET",
+                str(g.water_crossings_count),
+                g.recommended_modality,
+            ]
+        )
+    t7 = Table(
+        gap_rows,
+        colWidths=[16 * mm, 38 * mm, 22 * mm, 16 * mm, 22 * mm, 22 * mm, 40 * mm],
+    )
+    t7.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("PADDING", (0, 0), (-1, -1), 2.5),
+            ]
+        )
+    )
+    story.append(t7)
+
+    # Section 8 & 9: Assumptions Register Summary & 7-Category Parametric Demand Forecast
+    story.append(
+        Paragraph(
+            f"8–9. ASSUMPTIONS REGISTER ({settings_state.user_edited_count} OVERRIDES) & "
+            f"7-CATEGORY ELECTRICITY DEMAND FORECAST ({demand.horizon_years}-YR HORIZON)",
+            sec_style,
+        )
+    )
+    dem_rows = [
+        [
+            "Consumer Category",
+            "Consumers",
+            "Connected (kW)",
+            "Demand Factor",
+            "Max Demand (kW)",
+            "Daily Energy (kWh/d)",
+            "Annual Energy (MWh/yr)",
+        ]
+    ]
+    for cat in demand.category_totals:
+        dem_rows.append(
+            [
+                cat.label[:30],
+                str(cat.consumer_count),
+                f"{cat.connected_kw:.2f}",
+                f"{cat.demand_factor:.2f}",
+                f"{cat.max_demand_kw:.2f}",
+                f"{cat.energy_kwh_day:.1f}",
+                f"{cat.annual_energy_mwh:.2f}",
+            ]
+        )
+    dem_rows.append(
+        [
+            f"COINCIDENT BASE / HORIZON (+{demand.horizon_years}Y)",
+            f"{demand.total_households} HH",
+            f"{demand.total_connected_kw:.2f} kW",
+            "Coinc. 0.65",
+            f"{demand.peak_kva_base:.2f} -> {demand.peak_kva_horizon:.2f} kVA",
+            f"{demand.energy_kwh_day_base:.1f} -> {demand.energy_kwh_day_horizon:.1f}",
+            f"{demand.annual_energy_mwh_base:.2f} -> {demand.annual_energy_mwh_horizon:.2f}",
+        ]
+    )
+    t9 = Table(
+        dem_rows,
+        colWidths=[42 * mm, 18 * mm, 22 * mm, 20 * mm, 26 * mm, 24 * mm, 24 * mm],
+    )
+    t9.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F1F5F9")),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("PADDING", (0, 0), (-1, -1), 2.5),
+            ]
+        )
+    )
+    story.append(t9)
 
     doc.build(
         story,

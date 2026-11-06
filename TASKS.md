@@ -10,7 +10,7 @@
 - [x] **PROMPT-1:** Product Discovery, Requirements Validation & PRD *(Approved 2026-11-05)*
 - [x] **PROMPT-2:** Technical Architecture, UI/UX Design System & Roadmap *(Approved 2026-11-06)*
 - [x] **PROMPT-3:** Environment Inspection, Git/GitHub Setup & Permanent Instructions *(Approved 2026-11-06)*
-- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M3 Completed)*
+- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M4 Completed)*
 - [ ] **PROMPT-5:** Production Readiness, Debugging & Handover
 
 ---
@@ -64,12 +64,12 @@
 ---
 
 ## Milestone M4: Infrastructure Gap Analysis & Demand Engine
-- [ ] **M4-1:** Existing electrical infrastructure management and interactive tie-in placement
-- [ ] **M4-2:** Terrain-weighted distance and obstacle gap analysis matrix
-- [ ] **M4-3:** Project-level assumptions register with parameter edit tracking
-- [ ] **M4-4:** 7-category parametric electricity demand estimation engine
-- [ ] **M4-5:** Interactive Infrastructure and Demand Workspace panels
-- [ ] **M4-6:** DPR engineering demand and gap analysis section export
+- [x] **M4-1:** Existing electrical infrastructure management and interactive tie-in placement
+- [x] **M4-2:** Terrain-weighted distance and obstacle gap analysis matrix
+- [x] **M4-3:** Project-level assumptions register with parameter edit tracking
+- [x] **M4-4:** 7-category parametric electricity demand estimation engine
+- [x] **M4-5:** Interactive Infrastructure and Demand Workspace panels
+- [x] **M4-6:** DPR engineering demand and gap analysis section export
 
 ---
 

@@ -196,3 +196,4 @@ def test_reconcile_census_households_flags_30pct_divergence() -> None:
     )
     assert diverged.divergence_exceeds_30pct
     assert "DIVERGENCE FLAG" in diverged.reconciliation_note
+

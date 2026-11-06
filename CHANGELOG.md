@@ -15,6 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Modernized CI workflow in `.github/workflows/ci.yml` with Node.js 22 LTS and `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` to eliminate runner deprecation notices.
 
 ### Added
+- **Milestone M4 — Infrastructure Gap Analysis, Project Assumptions Register & 7-Category Demand Engine (`M4-1` to `M4-6`):**
+  - Pure UTM (`EPSG:32644`) terrain-weighted distance and obstacle gap analysis domain (`backend/app/domain/gis/gap_analysis.py`) enforcing Core Principle #4 (zero fabricated infrastructure; `d_straight_m`/`d_terrain_m` remain `None`/`UNSET` until utility GIS or explicit `USER_ASSUMED` tie-in points are added).
+  - Pure 14-parameter normative REC/CEA/ESMAP assumptions register and 7-category parametric electricity demand engine (`backend/app/domain/engineering/demand.py`) covering `DOMESTIC_BPL`, `DOMESTIC_APL`, `INSTITUTIONAL`, `STREET_LIGHTING`, `WATER_PUMPING`, `AGRICULTURAL_IRRIGATION`, and `MICRO_ENTERPRISE` with coincident peak ($\text{kW}$ / $\text{kVA}$) and compound horizon growth.
+  - `InfrastructureAsset`, `ProjectSetting`, `ClusterGapAnalysis`, and `ProjectDemandEstimate` models (`backend/app/db/models/infrastructure.py`) and Alembic migration `0005_m4_infra_assumptions_demand.py`.
+  - Infrastructure, Gap Analysis, Assumptions Register, and Demand orchestration service (`backend/app/services/infrastructure_service.py`) and REST endpoints (`backend/app/api/v1/infrastructure.py`, `backend/app/api/v1/settings.py`), plus Sections 6–9 in the Preliminary DPR PDF (`backend/app/services/settlement_pdf_service.py`).
+  - Frontend `InfrastructureAndDemandPanel.tsx` integrated into `WorkspacePage.tsx` and `MapCanvas.tsx` (existing infrastructure and gap corridor layers, interactive map tie-in placement, assumptions register editor, and 7-category demand forecast tables).
 - **Milestone M3 — Settlement Identification, Two-Axis Proxy Classification, Verification Ledger & Preliminary DPR PDF (`M3-1` to `M3-7`):**
   - Pure metric DBSCAN habitation clustering (`backend/app/domain/gis/clustering.py`) in UTM `EPSG:32644` with 35 m buffered convex hull polygons, isolated homestead grouping, and household estimation (`round(n_residential * household_alpha)`).
   - Pure 4-tier proxy classification and Census 2011 household reconciliation domain (`backend/app/domain/gis/classification.py`) enforcing epistemic honesty (`proxy_confidence` capped at `MEDIUM`/`LOW`, flagging $>30\%$ Census divergence).

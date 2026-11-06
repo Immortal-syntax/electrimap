@@ -15,6 +15,10 @@ export interface MapCanvasProps {
   settlementClusters?: GeoJSON.FeatureCollection | null;
   selectedClusterId?: string | null;
   onSelectCluster?: (clusterId: string) => void;
+  infrastructureAssets?: GeoJSON.FeatureCollection | null;
+  gapCorridors?: GeoJSON.FeatureCollection | null;
+  placeTieInModeActive?: boolean;
+  onPlaceTieInPoint?: (lon: number, lat: number) => void;
   rasterOverlayUrl?: string | null;
   rasterOpacity?: number;
   drawModeActive?: boolean;
@@ -115,6 +119,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   settlementClusters = null,
   selectedClusterId = null,
   onSelectCluster,
+  infrastructureAssets = null,
+  gapCorridors = null,
+  placeTieInModeActive = false,
+  onPlaceTieInPoint,
   rasterOverlayUrl = null,
   rasterOpacity = 0.65,
   drawModeActive = false,
@@ -125,6 +133,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const onSelectClusterRef = useRef<((clusterId: string) => void) | undefined>(onSelectCluster);
   onSelectClusterRef.current = onSelectCluster;
+  const placeTieInModeRef = useRef<boolean>(placeTieInModeActive);
+  placeTieInModeRef.current = placeTieInModeActive;
+  const onPlaceTieInPointRef = useRef<((lon: number, lat: number) => void) | undefined>(
+    onPlaceTieInPoint,
+  );
+  onPlaceTieInPointRef.current = onPlaceTieInPoint;
 
   const [basemap, setBasemap] = useState<BasemapMode>('survey_paper');
   const [cursorCoords, setCursorCoords] = useState<{ lon: number; lat: number }>({
@@ -509,6 +523,72 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         },
       });
     }
+
+    // 9. Gap Analysis Corridors (Straight-Line Vectors to Nearest Tie-In)
+    const corrFc: GeoJSON.FeatureCollection = gapCorridors ?? {
+      type: 'FeatureCollection',
+      features: [],
+    };
+    const existingCorr = map.getSource('gap-corridors-source') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (existingCorr) {
+      existingCorr.setData(corrFc);
+    } else {
+      map.addSource('gap-corridors-source', { type: 'geojson', data: corrFc });
+      map.addLayer({
+        id: 'gap-corridors-line',
+        type: 'line',
+        source: 'gap-corridors-source',
+        paint: {
+          'line-color': '#64748B',
+          'line-width': 1.5,
+          'line-dasharray': [3, 3],
+        },
+      });
+    }
+
+    // 10. Existing Electrical Infrastructure & Tie-In Points
+    const infraFc: GeoJSON.FeatureCollection = infrastructureAssets ?? {
+      type: 'FeatureCollection',
+      features: [],
+    };
+    const existingInfra = map.getSource('infra-assets-source') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (existingInfra) {
+      existingInfra.setData(infraFc);
+    } else {
+      map.addSource('infra-assets-source', { type: 'geojson', data: infraFc });
+      map.addLayer({
+        id: 'infra-assets-lines',
+        type: 'line',
+        source: 'infra-assets-source',
+        filter: ['in', '$type', 'LineString', 'MultiLineString'],
+        paint: {
+          'line-color': '#B91C1C',
+          'line-width': 3,
+        },
+      });
+      map.addLayer({
+        id: 'infra-assets-points',
+        type: 'circle',
+        source: 'infra-assets-source',
+        filter: ['==', '$type', 'Point'],
+        paint: {
+          'circle-radius': 6.5,
+          'circle-color': [
+            'match',
+            ['get', 'provenance'],
+            'USER_ASSUMED',
+            '#D97706',
+            '#15803D',
+          ],
+          'circle-stroke-color': '#FFFFFF',
+          'circle-stroke-width': 2,
+        },
+      });
+    }
   };
 
   useEffect(() => {
@@ -536,6 +616,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     });
 
     map.on('click', (e: maplibregl.MapMouseEvent) => {
+      if (placeTieInModeRef.current && onPlaceTieInPointRef.current) {
+        onPlaceTieInPointRef.current(
+          Number(e.lngLat.lng.toFixed(5)),
+          Number(e.lngLat.lat.toFixed(5)),
+        );
+        return;
+      }
       if (drawModeRef.current) {
         const pt: [number, number] = [
           Number(e.lngLat.lng.toFixed(5)),
@@ -610,6 +697,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     customFeatures,
     settlementClusters,
     selectedClusterId,
+    infrastructureAssets,
+    gapCorridors,
     rasterOverlayUrl,
     rasterOpacity,
   ]);
@@ -697,7 +786,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       <div className={`relative w-full survey-grid-bg ${heightClass}`}>
         <div
           ref={containerRef}
-          className={`h-full w-full ${drawModeActive ? 'cursor-crosshair' : ''}`}
+          className={`h-full w-full ${
+            drawModeActive || placeTieInModeActive ? 'cursor-crosshair' : ''
+          }`}
         />
 
         {/* Preliminary Watermark */}
@@ -720,9 +811,11 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           UTM Zone 44N (EPSG:32644)
         </div>
         <div>
-          {drawModeActive
-            ? 'DRAW MODE: Click map to add polygon vertices (min 3 vertices)'
-            : 'SRID: EPSG:4326 (WGS 84)'}
+          {placeTieInModeActive
+            ? 'TIE-IN PLACEMENT MODE: Click map to place explicit USER_ASSUMED 11 kV tie-in point'
+            : drawModeActive
+              ? 'DRAW MODE: Click map to add polygon vertices (min 3 vertices)'
+              : 'SRID: EPSG:4326 (WGS 84)'}
         </div>
       </div>
     </div>

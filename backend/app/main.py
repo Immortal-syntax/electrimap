@@ -13,6 +13,7 @@ from app.api.v1 import (
     aoi,
     auth,
     data,
+    infrastructure,
     jobs,
     projects,
     settlements,
@@ -20,6 +21,7 @@ from app.api.v1 import (
     tiles,
     verification,
 )
+from app.api.v1 import settings as project_settings_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
@@ -69,6 +71,8 @@ app.include_router(aoi.router)
 app.include_router(data.router)
 app.include_router(settlements.router)
 app.include_router(verification.router)
+app.include_router(infrastructure.router)
+app.include_router(project_settings_router.router)
 app.include_router(jobs.router)
 app.include_router(tiles.router)
 app.include_router(spikes.router)

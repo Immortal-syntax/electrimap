@@ -165,3 +165,4 @@ def downgrade() -> None:
     op.drop_index("ix_cluster_runs_is_current", table_name="cluster_runs")
     op.drop_index("ix_cluster_runs_project_id", table_name="cluster_runs")
     op.drop_table("cluster_runs")
+

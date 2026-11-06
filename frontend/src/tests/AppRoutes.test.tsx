@@ -6,8 +6,9 @@ import { ProvenanceChip } from '../components/ui/ProvenanceChip';
 import { JobProgress } from '../components/ui/JobProgress';
 import { DataManagementPanel } from '../components/workspace/DataManagementPanel';
 import { SettlementAssessmentPanel } from '../components/workspace/SettlementAssessmentPanel';
+import { InfrastructureAndDemandPanel } from '../components/workspace/InfrastructureAndDemandPanel';
 
-describe('Milestone M1, M2 & M3 Frontend Components', () => {
+describe('Milestone M1, M2, M3 & M4 Frontend Components', () => {
   it('renders LoginPage with Survey Sheet header and default planner credentials button', () => {
     render(
       <MemoryRouter>
@@ -262,5 +263,129 @@ describe('Milestone M1, M2 & M3 Frontend Components', () => {
       'href',
       '/api/v1/projects/00000000-0000-4000-8000-000000000001/exports/preliminary-settlement-pdf',
     );
+  });
+
+  it('renders InfrastructureAndDemandPanel with UNSET warning, terrain gap matrix, assumptions register, and 7-category demand table', () => {
+    const onToggleTieIn = vi.fn();
+
+    render(
+      <InfrastructureAndDemandPanel
+        projectId="00000000-0000-4000-8000-000000000001"
+        placeTieInModeActive={false}
+        onTogglePlaceTieInMode={onToggleTieIn}
+        onInfrastructureAndDemandUpdated={async () => {}}
+        infrastructure={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          has_existing_infra: false,
+          items: [],
+          geojson: { type: 'FeatureCollection', features: [] },
+        }}
+        gapAnalysis={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          has_existing_infra: false,
+          infra_assets_count: 0,
+          assumed_assets_count: 0,
+          verified_assets_count: 0,
+          mean_d_straight_m: null,
+          mean_d_terrain_m: null,
+          max_d_terrain_m: null,
+          grid_extension_candidates: 0,
+          minigrid_candidates: 0,
+          shs_candidates: 0,
+          augmentation_candidates: 0,
+          corridors_geojson: { type: 'FeatureCollection', features: [] },
+          clusters: [
+            {
+              cluster_id: 'cl-1',
+              cluster_label: 'CL-01',
+              cluster_name: 'Bheja Main Village Core',
+              est_households: 56,
+              effective_electrification_class: 'POTENTIALLY_UNSERVED',
+              nearest_asset_id: null,
+              nearest_asset_name: null,
+              nearest_asset_type: null,
+              nearest_asset_provenance: null,
+              d_straight_m: null,
+              d_terrain_m: null,
+              terrain_penalty_factor: 1.24,
+              slope_mean_deg: 6.4,
+              canopy_share: 0.18,
+              water_crossings_count: 1,
+              road_distance_m: 85.0,
+              recommended_modality: 'UNSET_INFRA_REQUIRED',
+              rationale: 'No existing electrical infrastructure uploaded or placed.',
+              corridor_geojson: null,
+            },
+          ],
+        }}
+        settings={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          user_edited_count: 0,
+          items: [
+            {
+              id: 'set-1',
+              project_id: '00000000-0000-4000-8000-000000000001',
+              key: 'bpl_connected_load_w',
+              category: 'DOMESTIC',
+              label: 'BPL Household Connected Load',
+              value: 250,
+              default_value: 250,
+              min_value: 50,
+              max_value: 2000,
+              unit: 'W/HH',
+              quality_tag: 'ESTIMATED',
+              citation: 'REC DDUGJY / Saubhagya Normative BPL Load',
+              is_user_edited: false,
+              override_note: null,
+              updated_at: '2026-11-06T00:00:00Z',
+            },
+          ],
+        }}
+        demand={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          total_households: 122,
+          total_connected_kw: 84.5,
+          peak_kw_base: 38.2,
+          peak_kva_base: 44.94,
+          energy_kwh_day_base: 295.4,
+          annual_energy_mwh_base: 107.82,
+          horizon_years: 10,
+          annual_growth_rate: 0.045,
+          peak_kw_horizon: 59.32,
+          peak_kva_horizon: 69.79,
+          energy_kwh_day_horizon: 458.7,
+          annual_energy_mwh_horizon: 167.44,
+          category_totals: [
+            {
+              category: 'DOMESTIC_BPL',
+              label: 'Domestic BPL Households (Kutcha / Tribal)',
+              consumer_count: 79,
+              connected_kw: 19.75,
+              demand_factor: 0.6,
+              max_demand_kw: 11.85,
+              daily_hours: 5.0,
+              energy_kwh_day: 59.25,
+              annual_energy_mwh: 21.63,
+            },
+          ],
+          clusters: [],
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Existing Electrical Infrastructure UNSET/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/UNSET_INFRA_REQUIRED/i)).toBeInTheDocument();
+    expect(screen.getByText(/BPL Household Connected Load/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Domestic BPL Households \(Kutcha \/ Tribal\)/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/69.79 kVA/i)).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /\+ Place Assumed 11 kV Tie-In on Map/i }),
+    );
+    expect(onToggleTieIn).toHaveBeenCalledTimes(1);
   });
 });
