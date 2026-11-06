@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "electrimap-backend"
+version = "0.1.0"
+description = "ElectriMap DPR — GIS & Satellite-Based Assessment and Detailed Project Report Backend"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "sqlalchemy>=2.0.35",
+    "geoalchemy2>=0.15.2",
+    "alembic>=1.13.3",
+    "shapely>=2.0.6",
+    "pyproj>=3.7.0",
+    "geopandas>=1.0.1",
+    "rasterio>=1.4.1",
+    "numpy>=2.0.0",
+    "scipy>=1.14.0",
+    "scikit-learn>=1.5.2",
+    "scikit-image>=0.24.0",
+    "reportlab>=4.2.5",
+    "matplotlib>=3.9.2",
+    "openpyxl>=3.1.5",
+    "argon2-cffi>=23.1.0",
+    "httpx>=0.27.2",
+    "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.3",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -9,20 +9,20 @@
 - [x] **PROMPT-0:** Comprehensive Project Definition, Research & Feasibility Evaluation *(Approved 2026-11-05)*
 - [x] **PROMPT-1:** Product Discovery, Requirements Validation & PRD *(Approved 2026-11-05)*
 - [x] **PROMPT-2:** Technical Architecture, UI/UX Design System & Roadmap *(Approved 2026-11-06)*
-- [-] **PROMPT-3:** Environment Inspection, Git/GitHub Setup & Permanent Instructions *(In Progress)*
-- [ ] **PROMPT-4:** Milestone Implementation & Continuous Verification
+- [x] **PROMPT-3:** Environment Inspection, Git/GitHub Setup & Permanent Instructions *(Approved 2026-11-06)*
+- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M0)*
 - [ ] **PROMPT-5:** Production Readiness, Debugging & Handover
 
 ---
 
 ## Milestone M0: Tooling, Database Setup & Spikes
-- [ ] **M0-1:** Establish Monorepo directory structure, editorconfig, and tooling configs
-- [ ] **M0-2:** Backend environment setup (Python 3.12/3.13, FastAPI base, linting, test runner)
-- [ ] **M0-3:** PostGIS database connectivity, SQLAlchemy models, and Alembic migrations
-- [ ] **M0-4:** Frontend scaffolding (Vite + React + TypeScript + Tailwind + MapLibre setup)
-- [ ] **M0-5:** GitHub Actions CI pipeline configuration
-- [ ] **S1 (Spike):** Koraput reference data acquisition & verification test
-- [ ] **S2 (Spike):** DEM slope cost-surface raster routing feasibility check
+- [x] **M0-1:** Establish Monorepo directory structure, editorconfig, and tooling configs
+- [x] **M0-2:** Backend environment setup (Python 3.12/3.13, FastAPI base, linting, test runner)
+- [x] **M0-3:** PostGIS database connectivity, SQLAlchemy models, and Alembic migrations
+- [-] **M0-4:** Frontend scaffolding (Vite + React + TypeScript + Tailwind + MapLibre setup)
+- [x] **M0-5:** GitHub Actions CI pipeline configuration
+- [-] **S1 (Spike):** Koraput reference data acquisition & verification test
+- [-] **S2 (Spike):** DEM slope cost-surface raster routing feasibility check
 - [ ] **S3 (Spike):** ReportLab PDF cartographic rendering test with north arrow & scale bar
 - [ ] **S4 (Spike):** MapLibre MVT performance test with 50k building footprints
 - [ ] **M0-6:** Milestone M0 Review & Checkpoint verification
@@ -111,3 +111,4 @@
 - [ ] **M8-4:** Security penetration review, input fuzzing, and dependency audit
 - [ ] **M8-5:** Docker container configuration and offline evaluation readiness
 - [ ] **M8-6:** Comprehensive technical documentation and user manual finalization
+

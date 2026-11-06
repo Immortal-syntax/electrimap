@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: electrimap-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: electrimap
+      POSTGRES_PASSWORD: electrimap_password
+      POSTGRES_DB: electrimap
+    ports:
+      - "5432:5432"
+    volumes:
+      - electrimap_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U electrimap -d electrimap"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  electrimap_pgdata:
