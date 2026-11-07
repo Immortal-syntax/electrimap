@@ -22,8 +22,8 @@ import { QualityTag } from '../ui/QualityTag';
 
 export type BasemapMode = 'survey_paper' | 'streets' | 'satellite';
 
-const KORAPUT_CENTER: [number, number] = [82.6815, 18.5685];
-const DEFAULT_ZOOM = 13.4;
+const KORAPUT_CENTER: [number, number] = [82.73, 18.565];
+const DEFAULT_ZOOM = 12.6;
 const GLYPHS_URL = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 
 export interface ReferenceGeoJsonBundle {
@@ -52,11 +52,11 @@ const FALLBACK_VILLAGE_FC: GeoJSON.FeatureCollection = {
         type: 'Polygon',
         coordinates: [
           [
-            [82.662, 18.552],
-            [82.701, 18.552],
-            [82.701, 18.585],
-            [82.662, 18.585],
-            [82.662, 18.552],
+            [82.695, 18.535],
+            [82.765, 18.535],
+            [82.765, 18.595],
+            [82.695, 18.595],
+            [82.695, 18.535],
           ],
         ],
       },
@@ -73,7 +73,7 @@ const REFERENCE_CLUSTER_POINTS_FC: GeoJSON.FeatureCollection = {
         code: 'CL-01 · Bheja Core (59 HH)',
         proxy_class: 'LIKELY_ELECTRIFIED',
       },
-      geometry: { type: 'Point', coordinates: [82.6755, 18.5665] },
+      geometry: { type: 'Point', coordinates: [82.718, 18.556] },
     },
     {
       type: 'Feature',
@@ -81,7 +81,7 @@ const REFERENCE_CLUSTER_POINTS_FC: GeoJSON.FeatureCollection = {
         code: 'CL-02 · Podapadar Tola (38 HH)',
         proxy_class: 'POTENTIALLY_UNDERSERVED',
       },
-      geometry: { type: 'Point', coordinates: [82.6885, 18.5695] },
+      geometry: { type: 'Point', coordinates: [82.738, 18.564] },
     },
     {
       type: 'Feature',
@@ -89,7 +89,7 @@ const REFERENCE_CLUSTER_POINTS_FC: GeoJSON.FeatureCollection = {
         code: 'CL-03 · Maliaguda PVTG (26 HH)',
         proxy_class: 'POTENTIALLY_UNSERVED',
       },
-      geometry: { type: 'Point', coordinates: [82.6945, 18.5775] },
+      geometry: { type: 'Point', coordinates: [82.748, 18.579] },
     },
     {
       type: 'Feature',
@@ -97,15 +97,15 @@ const REFERENCE_CLUSTER_POINTS_FC: GeoJSON.FeatureCollection = {
         code: 'CL-04 · Forest Homesteads (8 HH)',
         proxy_class: 'UNKNOWN',
       },
-      geometry: { type: 'Point', coordinates: [82.6685, 18.5785] },
+      geometry: { type: 'Point', coordinates: [82.708, 18.578] },
     },
   ],
 };
 
 function buildSurveyGraticuleGeoJson(): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = [];
-  const minLon = 82.58;
-  const maxLon = 82.78;
+  const minLon = 82.64;
+  const maxLon = 82.84;
   const minLat = 18.48;
   const maxLat = 18.66;
   const step = 0.01;
@@ -152,10 +152,10 @@ export function generateSyntheticPointsGeoJson(
   count: number,
 ): GeoJSON.FeatureCollection<GeoJSON.Point> {
   const features: Array<GeoJSON.Feature<GeoJSON.Point>> = new Array(count);
-  const baseLon = 82.658;
-  const baseLat = 18.548;
-  const spanLon = 0.046;
-  const spanLat = 0.04;
+  const baseLon = 82.698;
+  const baseLat = 18.538;
+  const spanLon = 0.064;
+  const spanLat = 0.054;
 
   for (let i = 0; i < count; i++) {
     const u = ((i * 2654435761) % 100000) / 100000;

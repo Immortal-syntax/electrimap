@@ -21,6 +21,9 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_DEFAULT_DATA_DIR = _REPO_ROOT / "data"
+
 
 class Settings(BaseSettings):
     """Typed application settings for ElectriMap DPR."""
@@ -51,7 +54,7 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 12
     session_absolute_days: int = 7
 
-    data_dir: Path = Path("../data")
+    data_dir: Path = _DEFAULT_DATA_DIR
     max_upload_mb: int = 25
     max_aoi_km2: float = 500.0
     max_jobs_per_user: int = 2
@@ -67,7 +70,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
-        """Reject weak or default session secrets when running in production mode."""
+        """Resolve data_dir across working directories and reject weak production secrets."""
+        if (
+            not (self.data_dir / "reference").exists()
+            and (_DEFAULT_DATA_DIR / "reference").exists()
+        ):
+            self.data_dir = _DEFAULT_DATA_DIR
         if self.app_env == "production":
             secret = self.session_secret.strip()
             if (

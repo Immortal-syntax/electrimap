@@ -22,8 +22,8 @@ import { QualityTag } from '../ui/QualityTag';
 
 export type BasemapMode = 'survey_paper' | 'streets' | 'satellite';
 
-const KORAPUT_DEFAULT_CENTER: [number, number] = [82.6815, 18.5685];
-const KORAPUT_DEFAULT_ZOOM = 13.2;
+const KORAPUT_DEFAULT_CENTER: [number, number] = [82.73, 18.565];
+const KORAPUT_DEFAULT_ZOOM = 12.6;
 const GLYPHS_URL = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 
 export interface MapCanvasProps {
@@ -187,10 +187,10 @@ function buildBasemapStyle(mode: BasemapMode): StyleSpecification {
  */
 function buildSurveyGraticuleGeoJson(): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = [];
-  const minLon = 82.55;
-  const maxLon = 82.82;
-  const minLat = 18.45;
-  const maxLat = 18.7;
+  const minLon = 82.64;
+  const maxLon = 82.84;
+  const minLat = 18.48;
+  const maxLat = 18.66;
   const step = 0.01;
 
   for (let lon = minLon; lon <= maxLon + 1e-6; lon += step) {
@@ -394,10 +394,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       try {
         if (rasterOverlayUrl) {
           const aoiBbox = aoiGeometry ? computeGeoJsonBbox(aoiGeometry) : null;
-          const minLon = aoiBbox ? aoiBbox[0] : 82.655;
-          const minLat = aoiBbox ? aoiBbox[1] : 18.545;
-          const maxLon = aoiBbox ? aoiBbox[2] : 82.705;
-          const maxLat = aoiBbox ? aoiBbox[3] : 18.59;
+          const minLon = aoiBbox ? aoiBbox[0] : 82.695;
+          const minLat = aoiBbox ? aoiBbox[1] : 18.535;
+          const maxLon = aoiBbox ? aoiBbox[2] : 82.765;
+          const maxLat = aoiBbox ? aoiBbox[3] : 18.595;
           const bounds: [
             [number, number],
             [number, number],
