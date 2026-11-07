@@ -274,9 +274,9 @@ def compute_cluster_demand(
             if k in cfg:
                 cfg[k] = float(v)
 
-    hh = max(0, int(est_households))
+    hh = max(0, est_households)
     bpl_share = max(0.0, min(1.0, cfg["bpl_household_share"]))
-    bpl_hh = int(round(hh * bpl_share))
+    bpl_hh = round(hh * bpl_share)
     apl_hh = max(0, hh - bpl_hh)
 
     dom_df = cfg["domestic_demand_factor"]
@@ -293,7 +293,7 @@ def compute_cluster_demand(
     apl_kwh_day = round(apl_max_kw * dom_hours, 3)
 
     # 3. Community & Public Institutions
-    inst_units = max(1 if hh >= 12 else 0, int(math.ceil(hh / 50.0)) + int(n_non_residential > 0))
+    inst_units = max(1 if hh >= 12 else 0, math.ceil(hh / 50.0) + int(n_non_residential > 0))
     inst_conn_kw = round(inst_units * cfg["institutional_load_kw_per_50hh"], 3) if hh > 0 else 0.0
     inst_df = 0.70
     inst_hours = 6.0
@@ -301,7 +301,7 @@ def compute_cluster_demand(
     inst_kwh_day = round(inst_max_kw * inst_hours, 3)
 
     # 4. Street Lighting (100% demand factor during night hours, 11 h/day)
-    sl_luminaires = int(math.ceil(hh / 10.0)) if hh > 0 else 0
+    sl_luminaires = math.ceil(hh / 10.0) if hh > 0 else 0
     sl_conn_kw = round(sl_luminaires * (cfg["streetlight_w_per_10hh"] / 1000.0), 3)
     sl_df = 1.00
     sl_hours = 11.0
@@ -317,7 +317,7 @@ def compute_cluster_demand(
     wp_kwh_day = round(wp_max_kw * wp_hours, 3)
 
     # 6. Agricultural Irrigation Pumpsets
-    agri_units = int(round((hh / 25.0) * cfg["agri_pumps_per_25hh"])) if hh >= 15 else 0
+    agri_units = round((hh / 25.0) * cfg["agri_pumps_per_25hh"]) if hh >= 15 else 0
     agri_conn_kw = round(agri_units * 2.20, 3)  # 3 HP = 2.2 kW pump
     agri_df = 0.65
     agri_hours = 4.5
@@ -325,7 +325,7 @@ def compute_cluster_demand(
     agri_kwh_day = round(agri_max_kw * agri_hours, 3)
 
     # 7. Rural Micro-Enterprise & Agro-Processing
-    me_units = int(math.ceil(hh / 40.0)) if hh >= 20 else 0
+    me_units = math.ceil(hh / 40.0) if hh >= 20 else 0
     me_conn_kw = round(me_units * cfg["micro_enterprise_kw_per_40hh"], 3)
     me_df = 0.60
     me_hours = 4.0
@@ -432,7 +432,7 @@ def compute_cluster_demand(
     annual_mwh_base = round((energy_day_base * 365.0) / 1000.0, 3)
 
     g_rate = max(0.0, min(0.20, cfg["annual_demand_growth_rate"]))
-    h_yrs = max(1, int(horizon_years))
+    h_yrs = max(1, horizon_years)
     growth_mult = round((1.0 + g_rate) ** h_yrs, 4)
 
     peak_kw_horizon = round(peak_kw_base * growth_mult, 3)
@@ -557,7 +557,7 @@ def compute_project_demand_summary(
         peak_kva_base=peak_kva_base,
         energy_kwh_day_base=energy_day_base,
         annual_energy_mwh_base=annual_mwh_base,
-        horizon_years=max(1, int(horizon_years)),
+        horizon_years=max(1, horizon_years),
         annual_growth_rate=cfg["annual_demand_growth_rate"],
         peak_kw_horizon=peak_kw_horizon,
         peak_kva_horizon=peak_kva_horizon,

@@ -71,10 +71,11 @@ def project_geometry(
     if source_epsg == target_epsg:
         return geom
     transformer = get_transformer(source_epsg, target_epsg)
-    return shapely.transform(
-        geom,
-        lambda coords: np.column_stack(transformer.transform(coords[:, 0], coords[:, 1])),
-    )
+
+    def _reproject_coords(coords: np.ndarray) -> np.ndarray:
+        return np.column_stack(transformer.transform(coords[:, 0], coords[:, 1]))
+
+    return shapely.transform(geom, _reproject_coords)
 
 
 def compute_metric_area_m2(geom_wgs84: BaseGeometry, metric_epsg: int | None = None) -> float:

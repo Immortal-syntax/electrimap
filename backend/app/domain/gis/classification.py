@@ -347,8 +347,8 @@ def reconcile_census_households(
         )
 
     years_elapsed = max(0, base_year - 2011)
-    projected_hh = int(
-        round(census_2011_households * ((1.0 + annual_growth_rate) ** years_elapsed))
+    projected_hh = round(
+        census_2011_households * ((1.0 + annual_growth_rate) ** years_elapsed)
     )
     delta_hh = satellite_estimated_households - projected_hh
     delta_pct = round((delta_hh / max(projected_hh, 1)) * 100.0, 1)

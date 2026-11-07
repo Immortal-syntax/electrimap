@@ -96,10 +96,11 @@ def reproject_arbitrary_crs_to_wgs84(geom: BaseGeometry, source_crs: str) -> Bas
     transformer = pyproj.Transformer.from_crs(
         crs_obj, f"EPSG:{WGS84_EPSG}", always_xy=True
     )
-    transformed = shapely.transform(
-        geom,
-        lambda coords: np.column_stack(transformer.transform(coords[:, 0], coords[:, 1])),
-    )
+
+    def _reproject_coords(coords: np.ndarray) -> np.ndarray:
+        return np.column_stack(transformer.transform(coords[:, 0], coords[:, 1]))
+
+    transformed = shapely.transform(geom, _reproject_coords)
     return cast(BaseGeometry, transformed)
 
 

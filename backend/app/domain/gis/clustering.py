@@ -246,7 +246,7 @@ def _create_detected_cluster(
     n_non_res = sum(1 for b in member_blds if b.size_class == "NON_RESIDENTIAL")
     n_out = sum(1 for b in member_blds if b.size_class == "OUTBUILDING")
 
-    est_hh = max(1, int(round(n_res * household_alpha))) if n_res > 0 else 0
+    est_hh = max(1, round(n_res * household_alpha)) if n_res > 0 else 0
 
     return DetectedCluster(
         cluster_index=cluster_index,

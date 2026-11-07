@@ -124,7 +124,7 @@ def compute_terrain_penalty_factor(
     """
     slope_term = beta_slope * max(0.0, float(slope_mean_deg))
     canopy_term = alpha_canopy * max(0.0, min(1.0, float(canopy_share)))
-    water_term = gamma_water * max(0, int(water_crossings_count))
+    water_term = gamma_water * max(0, water_crossings_count)
     return round(1.0 + slope_term + canopy_term + water_term, 3)
 
 

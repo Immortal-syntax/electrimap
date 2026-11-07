@@ -189,7 +189,7 @@ def place_cluster_transformers(
                 rating_kva=dt_spec.rating_kva,
                 allocated_peak_kva=sub_kva,
                 loading_pct=loading_pct,
-                served_buildings_count=int(len(group)),
+                served_buildings_count=len(group),
                 max_radial_reach_m=max_reach_m,
                 spec=dt_spec,
             )
@@ -241,8 +241,8 @@ def route_cluster_11kv_ht_feeder(
 
     span_max = max(max_x - min_x, max_y - min_y, 300.0)
     cell_size_m = max(25.0, min(120.0, span_max / 48.0))
-    n_cols = max(12, min(80, int(math.ceil((max_x - min_x) / cell_size_m))))
-    n_rows = max(12, min(80, int(math.ceil((max_y - min_y) / cell_size_m))))
+    n_cols = max(12, min(80, math.ceil((max_x - min_x) / cell_size_m)))
+    n_rows = max(12, min(80, math.ceil((max_y - min_y) / cell_size_m)))
 
     origin_x_m = min_x
     origin_y_m = max_y
@@ -316,7 +316,7 @@ def route_cluster_11kv_ht_feeder(
     steep_or_water = slope_mean_deg > 15.0 or water_crossings_count > 0
     effective_span_m = ht_steep_span_m if steep_or_water else ht_standard_span_m
     ht_poles_count = (
-        int(math.ceil(total_ht_length_m / max(20.0, effective_span_m))) + len(placed_dts)
+        math.ceil(total_ht_length_m / max(20.0, effective_span_m)) + len(placed_dts)
         if total_ht_length_m > 0
         else 0
     )
@@ -446,7 +446,7 @@ def build_cluster_415v_lt_mst(
 
     total_lt_m = round(total_3ph_m + total_1ph_m, 1)
     lt_poles = (
-        int(math.ceil(total_lt_m / max(20.0, lt_standard_span_m))) + len(placed_dts)
+        math.ceil(total_lt_m / max(20.0, lt_standard_span_m)) + len(placed_dts)
         if total_lt_m > 0
         else 0
     )

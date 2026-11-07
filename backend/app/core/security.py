@@ -31,7 +31,7 @@ _DUMMY_PASSWORD_HASH = _ph.hash("electrimap-constant-time-dummy-password")
 
 def hash_password(plain_password: str) -> str:
     """Hash a plaintext password using Argon2id."""
-    return str(_ph.hash(plain_password))
+    return _ph.hash(plain_password)
 
 
 def verify_password(plain_password: str, password_hash: str | None) -> bool:

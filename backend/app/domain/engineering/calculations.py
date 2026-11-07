@@ -180,7 +180,7 @@ def compute_voltage_drop_analysis(
         lt_drop_v=round(lt_drop_v, 2),
         lt_drop_pct=round(lt_drop_pct, 2),
         lt_vdrop_compliant=lt_ok,
-        overall_vdrop_compliant=bool(ht_ok and lt_ok),
+        overall_vdrop_compliant=ht_ok and lt_ok,
     )
 
 
@@ -573,7 +573,7 @@ def evaluate_cluster_engineering_layout(
         est_households=est_households,
         modality=modality,
         is_manual_override=is_manual_override,
-        requires_tie_in=bool(ht_res.requires_tie_in and modality == "GRID_EXTENSION"),
+        requires_tie_in=ht_res.requires_tie_in and modality == "GRID_EXTENSION",
         peak_kw_horizon=peak_kw_horizon,
         peak_kva_horizon=peak_kva_horizon,
         energy_kwh_day_horizon=energy_kwh_day_horizon,
