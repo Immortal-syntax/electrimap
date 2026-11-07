@@ -41,6 +41,13 @@ const KORAPUT_DEFAULT_CENTER: [number, number] = [82.73, 18.565];
 const KORAPUT_DEFAULT_ZOOM = 12.6;
 const GLYPHS_URL = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 
+if (
+  typeof maplibregl.setWorkerUrl === 'function' &&
+  typeof window !== 'undefined'
+) {
+  maplibregl.setWorkerUrl('/maplibre-gl-worker.mjs');
+}
+
 export interface MapCanvasProps {
   /** Active AOI polygon/multipolygon GeoJSON geometry (`EPSG:4326`) */
   aoiGeometry?: GeoJSON.Geometry | null;
@@ -378,6 +385,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const lastFittedBboxRef = useRef<string | null>(null);
+  const lastRasterKeyRef = useRef<string | null>(null);
 
   const [basemap, setBasemap] = useState<BasemapMode>('survey_paper');
   const [cursorCoords, setCursorCoords] = useState<{ lon: number; lat: number }>({
@@ -501,42 +509,91 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
   const effectiveSettlementsFc = React.useMemo<GeoJSON.FeatureCollection>(() => {
     if (settlementClusters && settlementClusters.features.length > 0) {
-      return settlementClusters;
+      const normalizedHulls = settlementClusters.features.map((f) => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          cluster_code:
+            f.properties?.cluster_code ?? f.properties?.label ?? 'CL',
+        },
+      }));
+      const hasPoints = normalizedHulls.some(
+        (f) => f.geometry?.type === 'Point',
+      );
+      return {
+        type: 'FeatureCollection',
+        features: hasPoints
+          ? normalizedHulls
+          : [...normalizedHulls, ...DEFAULT_SETTLEMENTS_FC.features],
+      };
     }
     return DEFAULT_SETTLEMENTS_FC;
   }, [settlementClusters]);
 
   const effectiveGapsFc = React.useMemo<GeoJSON.FeatureCollection>(() => {
     if (gapCorridors && gapCorridors.features.length > 0) {
-      return gapCorridors;
+      return {
+        type: 'FeatureCollection',
+        features: [
+          ...gapCorridors.features,
+          ...DEFAULT_ELECTRIFICATION_GAPS_FC.features,
+        ],
+      };
     }
     return DEFAULT_ELECTRIFICATION_GAPS_FC;
   }, [gapCorridors]);
 
   const effectiveProposedFc = React.useMemo<GeoJSON.FeatureCollection>(() => {
-    if (networkLayout && networkLayout.features.length > 0) {
-      return networkLayout;
-    }
-    if (referenceRoutes && referenceRoutes.features.length > 0) {
+    const normalizedScenarioFeatures: GeoJSON.Feature[] = (
+      networkLayout?.features ?? []
+    ).map((f) => {
+      const fk = String(f.properties?.feature_kind ?? '');
+      const inferredLayerType =
+        f.properties?.layer_type ??
+        (fk === 'LT_415V_MST'
+          ? 'LT_415V_PROPOSED'
+          : fk === 'DISTRIBUTION_TRANSFORMER'
+            ? 'DT_PROPOSED'
+            : fk === 'SOLAR_MINIGRID'
+              ? 'MINIGRID_PROPOSED'
+              : 'HT_11KV_PROPOSED');
       return {
-        type: 'FeatureCollection',
-        features: [
-          ...referenceRoutes.features.map((f) => ({
-            ...f,
-            properties: {
-              ...f.properties,
-              layer_type: 'HT_11KV_PROPOSED',
-              status: 'PROPOSED_PRELIMINARY',
-              voltage_kv: 11.0,
-            },
-          })),
-          ...DEFAULT_PROPOSED_NETWORK_FC.features.filter(
-            (f) => f.properties?.layer_type !== 'HT_11KV_PROPOSED',
-          ),
-        ],
+        ...f,
+        properties: {
+          ...f.properties,
+          layer_type: inferredLayerType,
+          name:
+            f.properties?.name ??
+            `${String(f.properties?.cluster_label ?? 'Cluster')} · ${fk}`,
+          voltage_kv:
+            f.properties?.voltage_kv ??
+            (inferredLayerType === 'LT_415V_PROPOSED' ? 0.415 : 11.0),
+          rating_kva:
+            f.properties?.rating_kva ?? f.properties?.total_dt_rating_kva,
+        },
       };
-    }
-    return DEFAULT_PROPOSED_NETWORK_FC;
+    });
+
+    const routeFeatures: GeoJSON.Feature[] = (
+      referenceRoutes?.features ?? []
+    ).map((f) => ({
+      ...f,
+      properties: {
+        ...f.properties,
+        layer_type: f.properties?.layer_type ?? 'HT_11KV_PROPOSED',
+        status: 'PROPOSED_PRELIMINARY',
+        voltage_kv: f.properties?.voltage_kv ?? 11.0,
+      },
+    }));
+
+    return {
+      type: 'FeatureCollection',
+      features: [
+        ...DEFAULT_PROPOSED_NETWORK_FC.features,
+        ...normalizedScenarioFeatures,
+        ...routeFeatures,
+      ],
+    };
   }, [networkLayout, referenceRoutes]);
 
   const syncLayers = useCallback(
@@ -566,6 +623,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         // Ignore mid-transition
       }
 
+      const firstVectorLayerId = map.getLayer('village-status-fill')
+        ? 'village-status-fill'
+        : undefined;
+
       // 1. Layer B: Nighttime Illumination (NASA VIIRS Black Marble / DNB + Workbench Raster Overlays)
       try {
         // Global NASA GIBS VIIRS Nighttime Lights WMTS tile layer
@@ -581,12 +642,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               attribution:
                 'NASA Earth Observatory / NOAA Suomi NPP VIIRS Black Marble (Public Domain)',
             });
-            map.addLayer({
-              id: 'nasa-gibs-viirs-layer',
-              type: 'raster',
-              source: 'nasa-gibs-viirs',
-              paint: { 'raster-opacity': viirsOpacity },
-            });
+            map.addLayer(
+              {
+                id: 'nasa-gibs-viirs-layer',
+                type: 'raster',
+                source: 'nasa-gibs-viirs',
+                paint: { 'raster-opacity': viirsOpacity },
+              },
+              firstVectorLayerId,
+            );
           } else if (map.getLayer('nasa-gibs-viirs-layer')) {
             map.setPaintProperty(
               'nasa-gibs-viirs-layer',
@@ -612,10 +676,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
         if (activeOverlayUrl) {
           const aoiBbox = aoiGeometry ? computeGeoJsonBbox(aoiGeometry) : null;
-          const minLon = aoiBbox ? aoiBbox[0] : 82.695;
-          const minLat = aoiBbox ? aoiBbox[1] : 18.535;
-          const maxLon = aoiBbox ? aoiBbox[2] : 82.765;
-          const maxLat = aoiBbox ? aoiBbox[3] : 18.595;
+          const minLon = aoiBbox ? aoiBbox[0] : 82.615;
+          const minLat = aoiBbox ? aoiBbox[1] : 18.475;
+          const maxLon = aoiBbox ? aoiBbox[2] : 82.785;
+          const maxLat = aoiBbox ? aoiBbox[3] : 18.605;
           const bounds: [
             [number, number],
             [number, number],
@@ -627,6 +691,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             [maxLon, minLat],
             [minLon, minLat],
           ];
+          const nextRasterKey = `${activeOverlayUrl}|${bounds.flat().join(',')}`;
           const existingRaster = map.getSource('project-raster') as
             | maplibregl.ImageSource
             | undefined;
@@ -636,20 +701,28 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               url: activeOverlayUrl,
               coordinates: bounds,
             });
-            map.addLayer({
-              id: 'project-raster-layer',
-              type: 'raster',
-              source: 'project-raster',
-              paint: {
-                'raster-opacity': effectiveOpacity,
+            map.addLayer(
+              {
+                id: 'project-raster-layer',
+                type: 'raster',
+                source: 'project-raster',
+                paint: {
+                  'raster-opacity': effectiveOpacity,
+                },
               },
-            });
+              firstVectorLayerId,
+            );
+            lastRasterKeyRef.current = nextRasterKey;
           } else {
-            if (typeof existingRaster.updateImage === 'function') {
+            if (
+              lastRasterKeyRef.current !== nextRasterKey &&
+              typeof existingRaster.updateImage === 'function'
+            ) {
               existingRaster.updateImage({
                 url: activeOverlayUrl,
                 coordinates: bounds,
               });
+              lastRasterKeyRef.current = nextRasterKey;
             }
             if (map.getLayer('project-raster-layer')) {
               map.setPaintProperty(
@@ -660,6 +733,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             }
           }
         } else {
+          lastRasterKeyRef.current = null;
           if (map.getLayer('project-raster-layer')) {
             map.removeLayer('project-raster-layer');
           }
@@ -667,6 +741,78 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             map.removeSource('project-raster');
           }
         }
+
+        // Vector VIIRS Nighttime Radiance Glow Halos (for immediate visual clarity across all zoom levels)
+        upsertGeoJsonSource(map, 'viirs-radiance-source', DEFAULT_SETTLEMENTS_FC);
+        if (!map.getLayer('viirs-radiance-glow-outer')) {
+          map.addLayer(
+            {
+              id: 'viirs-radiance-glow-outer',
+              type: 'circle',
+              source: 'viirs-radiance-source',
+              paint: {
+                'circle-radius': [
+                  'match',
+                  ['get', 'cluster_code'],
+                  'CL-01',
+                  42,
+                  'CL-02',
+                  24,
+                  'CL-03',
+                  14,
+                  10,
+                ],
+                'circle-color': [
+                  'match',
+                  ['get', 'cluster_code'],
+                  'CL-01',
+                  '#FDE047',
+                  'CL-02',
+                  '#F59E0B',
+                  '#6D28D9',
+                ],
+                'circle-blur': 0.75,
+                'circle-opacity': viirsOpacity * 0.65,
+              },
+            },
+            firstVectorLayerId,
+          );
+          map.addLayer(
+            {
+              id: 'viirs-radiance-glow-label',
+              type: 'symbol',
+              source: 'viirs-radiance-source',
+              layout: {
+                'text-field': [
+                  'concat',
+                  'VIIRS: ',
+                  ['to-string', ['get', 'viirs_radiance_2024_nw']],
+                  ' nW/cm²/sr',
+                ],
+                'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+                'text-size': 10,
+                'text-offset': [0, -1.8],
+                'text-anchor': 'bottom',
+              },
+              paint: {
+                'text-color': '#FEF08A',
+                'text-halo-color': '#1E1B4B',
+                'text-halo-width': 1.8,
+              },
+            },
+          );
+        } else if (map.getLayer('viirs-radiance-glow-outer')) {
+          map.setPaintProperty(
+            'viirs-radiance-glow-outer',
+            'circle-opacity',
+            viirsOpacity * 0.65,
+          );
+        }
+        setLayerVisibilitySafe(
+          map,
+          ['viirs-radiance-glow-outer', 'viirs-radiance-glow-label'],
+          layerBEnabled,
+        );
       } catch {
         // Ignore raster update error
       }
@@ -695,7 +841,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 '#A61B1B',
                 '#52504A',
               ],
-              'fill-opacity': 0.11,
+              'fill-opacity': 0.14,
             },
           });
           map.addLayer({
@@ -714,7 +860,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 '#A61B1B',
                 '#52504A',
               ],
-              'line-width': 2.0,
+              'line-width': 2.2,
             },
           });
           map.addLayer({
@@ -791,6 +937,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         } else {
           map.setPaintProperty('aoi-outline', 'line-color', outlineColor);
         }
+        setLayerVisibilitySafe(map, ['aoi-fill', 'aoi-outline'], layerCEnabled);
       } catch {
         // Ignore AOI sync error
       }
@@ -831,8 +978,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               },
             });
           }
-          setLayerVisibilitySafe(map, ['osm-lines', 'osm-points'], layerDEnabled);
         }
+        setLayerVisibilitySafe(
+          map,
+          ['osm-lines', 'osm-points'],
+          Boolean(osmFeatures) && layerDEnabled,
+        );
 
         if (referenceBuildings) {
           upsertGeoJsonSource(map, 'ref-buildings', referenceBuildings);
@@ -863,8 +1014,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               },
             });
           }
-          setLayerVisibilitySafe(map, ['ref-buildings-fill'], layerDEnabled);
         }
+        setLayerVisibilitySafe(
+          map,
+          ['ref-buildings-fill'],
+          Boolean(referenceBuildings) && layerDEnabled,
+        );
 
         upsertGeoJsonSource(map, 'settlement-clusters', effectiveSettlementsFc);
         if (!map.getLayer('clusters-hull-fill')) {
@@ -912,6 +1067,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             id: 'clusters-centroid-circle',
             type: 'circle',
             source: 'settlement-clusters',
+            filter: ['==', ['geometry-type'], 'Point'],
             paint: {
               'circle-radius': [
                 'case',
@@ -938,12 +1094,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             id: 'clusters-label',
             type: 'symbol',
             source: 'settlement-clusters',
+            filter: ['==', ['geometry-type'], 'Point'],
             layout: {
               'text-field': [
                 'concat',
-                ['get', 'cluster_code'],
+                ['coalesce', ['get', 'cluster_code'], ['get', 'label'], 'CL'],
                 ' · ',
-                ['get', 'name'],
+                ['coalesce', ['get', 'name'], 'Habitation'],
               ],
               'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
               'text-size': 10.5,
@@ -1128,7 +1285,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 '#D97706',
                 '#7C3AED',
               ],
-              'line-width': 2.4,
+              'line-width': 2.8,
               'line-dasharray': [2, 2],
             },
           });
@@ -1149,7 +1306,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             filter: ['==', ['get', 'layer_type'], 'HT_11KV_PROPOSED'],
             paint: {
               'line-color': '#DC2626',
-              'line-width': 3.0,
+              'line-width': 3.2,
               'line-dasharray': [4, 2],
             },
           });
@@ -1160,7 +1317,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             filter: ['==', ['get', 'layer_type'], 'LT_415V_PROPOSED'],
             paint: {
               'line-color': '#0284C7',
-              'line-width': 2.4,
+              'line-width': 2.6,
               'line-dasharray': [2, 1.5],
             },
           });
@@ -1271,6 +1428,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         }
       } catch {
         // Ignore draft polygon error
+      }
+
+      if (
+        typeof (map as { triggerRepaint?: () => void }).triggerRepaint ===
+        'function'
+      ) {
+        (map as { triggerRepaint: () => void }).triggerRepaint();
       }
     },
     [
@@ -1678,6 +1842,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const handleBasemapChange = (nextMode: BasemapMode) => {
     setBasemap(nextMode);
     setTileWarning(null);
+    lastRasterKeyRef.current = null;
     const map = mapRef.current;
     if (!map) return;
     map.setStyle(buildBasemapStyle(nextMode));
@@ -2032,6 +2197,37 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 Electricity GIS Layers (A–F)
               </span>
               <QualityTag kind="ESTIMATED" label="100% FREE OPEN DATA" />
+            </div>
+
+            <div className="flex items-center justify-between gap-1.5 pb-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setLayerAEnabled(true);
+                  setLayerBEnabled(true);
+                  setLayerCEnabled(true);
+                  setLayerDEnabled(true);
+                  setLayerEEnabled(true);
+                  setLayerFEnabled(true);
+                }}
+                className="flex-1 px-2 py-1 text-[10px] font-mono bg-sheet border border-rule-strong rounded-xs text-ink hover:bg-accent-tint"
+              >
+                Show All (A–F)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLayerAEnabled(false);
+                  setLayerBEnabled(false);
+                  setLayerCEnabled(false);
+                  setLayerDEnabled(false);
+                  setLayerEEnabled(false);
+                  setLayerFEnabled(false);
+                }}
+                className="flex-1 px-2 py-1 text-[10px] font-mono bg-sheet border border-rule-strong rounded-xs text-ink-2 hover:text-ink hover:bg-paper"
+              >
+                Hide All Overlays
+              </button>
             </div>
 
             {/* Layer A: Electricity Infrastructure */}

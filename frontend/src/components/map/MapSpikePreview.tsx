@@ -42,6 +42,13 @@ const KORAPUT_CENTER: [number, number] = [82.73, 18.565];
 const DEFAULT_ZOOM = 12.6;
 const GLYPHS_URL = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 
+if (
+  typeof maplibregl.setWorkerUrl === 'function' &&
+  typeof window !== 'undefined'
+) {
+  maplibregl.setWorkerUrl('/maplibre-gl-worker.mjs');
+}
+
 export interface ReferenceGeoJsonBundle {
   villages: GeoJSON.FeatureCollection;
   buildings: GeoJSON.FeatureCollection;
@@ -314,6 +321,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const lastRasterKeyRef = useRef<string | null>(null);
 
   const [basemap, setBasemap] = useState<BasemapMode>('survey_paper');
   const [stressActive, setStressActive] = useState<boolean>(false);
@@ -401,6 +409,10 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
         // Ignore mid-transition
       }
 
+      const firstVectorLayerId = map.getLayer('ref-villages-fill')
+        ? 'ref-villages-fill'
+        : undefined;
+
       // 1. Layer B: NASA VIIRS Nighttime Illumination Overlay
       try {
         if (layerBEnabled && viirsGlobalGibs) {
@@ -415,12 +427,15 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               attribution:
                 'NASA Earth Observatory / NOAA Suomi NPP VIIRS Black Marble (Public Domain)',
             });
-            map.addLayer({
-              id: 'nasa-gibs-viirs-layer',
-              type: 'raster',
-              source: 'nasa-gibs-viirs',
-              paint: { 'raster-opacity': viirsOpacity },
-            });
+            map.addLayer(
+              {
+                id: 'nasa-gibs-viirs-layer',
+                type: 'raster',
+                source: 'nasa-gibs-viirs',
+                paint: { 'raster-opacity': viirsOpacity },
+              },
+              firstVectorLayerId,
+            );
           } else if (map.getLayer('nasa-gibs-viirs-layer')) {
             map.setPaintProperty(
               'nasa-gibs-viirs-layer',
@@ -445,11 +460,12 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
             [number, number],
             [number, number],
           ] = [
-            [82.695, 18.595],
-            [82.765, 18.595],
-            [82.765, 18.535],
-            [82.695, 18.535],
+            [82.615, 18.605],
+            [82.785, 18.605],
+            [82.785, 18.475],
+            [82.615, 18.475],
           ];
+          const nextRasterKey = `${url}|${bounds.flat().join(',')}`;
           const existingRaster = map.getSource('viirs-local-raster') as
             | maplibregl.ImageSource
             | undefined;
@@ -459,15 +475,23 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               url,
               coordinates: bounds,
             });
-            map.addLayer({
-              id: 'viirs-local-raster-layer',
-              type: 'raster',
-              source: 'viirs-local-raster',
-              paint: { 'raster-opacity': viirsOpacity },
-            });
+            map.addLayer(
+              {
+                id: 'viirs-local-raster-layer',
+                type: 'raster',
+                source: 'viirs-local-raster',
+                paint: { 'raster-opacity': viirsOpacity },
+              },
+              firstVectorLayerId,
+            );
+            lastRasterKeyRef.current = nextRasterKey;
           } else {
-            if (typeof existingRaster.updateImage === 'function') {
+            if (
+              lastRasterKeyRef.current !== nextRasterKey &&
+              typeof existingRaster.updateImage === 'function'
+            ) {
               existingRaster.updateImage({ url, coordinates: bounds });
+              lastRasterKeyRef.current = nextRasterKey;
             }
             if (map.getLayer('viirs-local-raster-layer')) {
               map.setPaintProperty(
@@ -478,6 +502,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
             }
           }
         } else {
+          lastRasterKeyRef.current = null;
           if (map.getLayer('viirs-local-raster-layer')) {
             map.removeLayer('viirs-local-raster-layer');
           }
@@ -485,6 +510,80 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
             map.removeSource('viirs-local-raster');
           }
         }
+
+        // Vector VIIRS Nighttime Radiance Glow Halos
+        upsertGeoJsonSource(
+          map,
+          'viirs-radiance-source',
+          referenceData?.settlements ?? DEFAULT_SETTLEMENTS_FC,
+        );
+        if (!map.getLayer('viirs-radiance-glow-outer')) {
+          map.addLayer(
+            {
+              id: 'viirs-radiance-glow-outer',
+              type: 'circle',
+              source: 'viirs-radiance-source',
+              paint: {
+                'circle-radius': [
+                  'match',
+                  ['get', 'cluster_code'],
+                  'CL-01',
+                  42,
+                  'CL-02',
+                  24,
+                  'CL-03',
+                  14,
+                  10,
+                ],
+                'circle-color': [
+                  'match',
+                  ['get', 'cluster_code'],
+                  'CL-01',
+                  '#FDE047',
+                  'CL-02',
+                  '#F59E0B',
+                  '#6D28D9',
+                ],
+                'circle-blur': 0.75,
+                'circle-opacity': viirsOpacity * 0.65,
+              },
+            },
+            firstVectorLayerId,
+          );
+          map.addLayer({
+            id: 'viirs-radiance-glow-label',
+            type: 'symbol',
+            source: 'viirs-radiance-source',
+            layout: {
+              'text-field': [
+                'concat',
+                'VIIRS: ',
+                ['to-string', ['get', 'viirs_radiance_2024_nw']],
+                ' nW/cm²/sr',
+              ],
+              'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+              'text-size': 10,
+              'text-offset': [0, -1.8],
+              'text-anchor': 'bottom',
+            },
+            paint: {
+              'text-color': '#FEF08A',
+              'text-halo-color': '#1E1B4B',
+              'text-halo-width': 1.8,
+            },
+          });
+        } else if (map.getLayer('viirs-radiance-glow-outer')) {
+          map.setPaintProperty(
+            'viirs-radiance-glow-outer',
+            'circle-opacity',
+            viirsOpacity * 0.65,
+          );
+        }
+        setLayerVisibilitySafe(
+          map,
+          ['viirs-radiance-glow-outer', 'viirs-radiance-glow-label'],
+          layerBEnabled,
+        );
       } catch {
         // Ignore VIIRS overlay error
       }
@@ -581,8 +680,12 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               },
             });
           }
-          setLayerVisibilitySafe(map, ['ref-buildings-fill'], layerDEnabled);
         }
+        setLayerVisibilitySafe(
+          map,
+          ['ref-buildings-fill'],
+          Boolean(referenceData?.buildings) && layerDEnabled,
+        );
 
         const settlementsFc =
           referenceData?.settlements ?? DEFAULT_SETTLEMENTS_FC;
@@ -937,6 +1040,10 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
       } catch {
         // Ignore stress layer toggle error during style reload
       }
+
+      if (typeof (map as unknown as { triggerRepaint?: () => void }).triggerRepaint === 'function') {
+        (map as unknown as { triggerRepaint: () => void }).triggerRepaint();
+      }
     },
     [
       basemap,
@@ -1221,6 +1328,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
     const map = mapRef.current;
     if (!map) return;
 
+    lastRasterKeyRef.current = null;
     map.setStyle(buildBasemapStyle(nextMode));
     const reSync = () => {
       syncRef.current(map);
@@ -1477,6 +1585,37 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
                 Electricity GIS Layers (A–F)
               </span>
               <QualityTag kind="ESTIMATED" label="FREE OPEN DATA" />
+            </div>
+
+            <div className="flex items-center gap-1.5 pb-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setLayerAEnabled(true);
+                  setLayerBEnabled(true);
+                  setLayerCEnabled(true);
+                  setLayerDEnabled(true);
+                  setLayerEEnabled(true);
+                  setLayerFEnabled(true);
+                }}
+                className="flex-1 px-2 py-1 text-[11px] font-mono bg-sheet border border-rule-strong rounded-xs text-ink hover:bg-accent-tint/40 transition-colors"
+              >
+                Show All (A–F)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLayerAEnabled(false);
+                  setLayerBEnabled(false);
+                  setLayerCEnabled(false);
+                  setLayerDEnabled(false);
+                  setLayerEEnabled(false);
+                  setLayerFEnabled(false);
+                }}
+                className="flex-1 px-2 py-1 text-[11px] font-mono bg-sheet border border-rule-strong rounded-xs text-ink-2 hover:text-ink hover:bg-paper transition-colors"
+              >
+                Hide All Overlays
+              </button>
             </div>
 
             <div className="p-2 bg-sheet border border-rule rounded-xs space-y-1">

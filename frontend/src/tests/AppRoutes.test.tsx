@@ -72,6 +72,7 @@ vi.mock('maplibre-gl', () => {
     });
     setPaintProperty = vi.fn();
     setLayoutProperty = vi.fn();
+    triggerRepaint = vi.fn();
     queryRenderedFeatures = vi.fn(() => []);
   }
 
@@ -80,6 +81,7 @@ vi.mock('maplibre-gl', () => {
     NavigationControl: vi.fn(),
     ScaleControl: vi.fn(),
     AttributionControl: vi.fn(),
+    setWorkerUrl: vi.fn(),
   };
 });
 
@@ -992,5 +994,29 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     expect(
       screen.getByRole('button', { name: /Clear 50k Points/i }),
     ).toBeInTheDocument();
+
+    // Verify Hide All Overlays and Show All (A-F) checkbox synchronization
+    const hideAllButtons = screen.getAllByRole('button', { name: /Hide All Overlays/i });
+    fireEvent.click(hideAllButtons[0]!);
+    fireEvent.click(hideAllButtons[1]!);
+
+    const layerACheckboxes = screen.getAllByLabelText(
+      /Layer A · Existing Electricity Infrastructure/i,
+    );
+    expect(layerACheckboxes[0]).not.toBeChecked();
+    expect(layerACheckboxes[1]).not.toBeChecked();
+
+    const showAllButtons = screen.getAllByRole('button', { name: /Show All \(A–F\)/i });
+    fireEvent.click(showAllButtons[0]!);
+    fireEvent.click(showAllButtons[1]!);
+
+    expect(layerACheckboxes[0]).toBeChecked();
+    expect(layerACheckboxes[1]).toBeChecked();
+
+    const layerBCheckboxes = screen.getAllByLabelText(
+      /Layer B · NASA VIIRS Nighttime Illumination/i,
+    );
+    expect(layerBCheckboxes[0]).toBeChecked();
+    expect(layerBCheckboxes[1]).toBeChecked();
   });
 });
