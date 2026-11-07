@@ -16,6 +16,7 @@
 
 from app.db.models.auth import User, UserSession
 from app.db.models.costing import ProjectRateItem, ScenarioBoqLine
+from app.db.models.export_record import ProjectExportRecord
 from app.db.models.infrastructure import (
     ClusterGapAnalysis,
     InfrastructureAsset,
@@ -51,6 +52,7 @@ __all__ = [
     "Project",
     "ProjectAoi",
     "ProjectDemandEstimate",
+    "ProjectExportRecord",
     "ProjectLayer",
     "ProjectRateItem",
     "ProjectSetting",

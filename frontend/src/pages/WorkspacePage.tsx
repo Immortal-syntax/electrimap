@@ -47,6 +47,11 @@ import {
   ProjectScenarioComparisonDto,
   SorCsvImportResponseDto,
 } from '../components/workspace/CostAndScenarioComparisonPanel';
+import {
+  DprExportCenterPanel,
+  PreFlightReportDto,
+  ProjectExportListDto,
+} from '../components/workspace/DprExportCenterPanel';
 import { ClassificationBadge } from '../components/ui/Badge';
 import { Callout } from '../components/ui/Callout';
 import { StatTile } from '../components/ui/StatTile';
@@ -92,6 +97,8 @@ export const WorkspacePage: React.FC = () => {
   const [ratesState, setRatesState] = useState<ProjectRateListDto | null>(null);
   const [comparisonState, setComparisonState] =
     useState<ProjectScenarioComparisonDto | null>(null);
+  const [preflightState, setPreflightState] = useState<PreFlightReportDto | null>(null);
+  const [exportLogState, setExportLogState] = useState<ProjectExportListDto | null>(null);
   const [placeTieInModeActive, setPlaceTieInModeActive] = useState<boolean>(false);
 
   const [visibleVectorLayers, setVisibleVectorLayers] = useState<Record<string, boolean>>({
@@ -105,16 +112,21 @@ export const WorkspacePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchScenariosAndConstants = useCallback(async (projectId: string) => {
-    const [scenData, constData, ratesData, compData] = await Promise.all([
-      apiRequest<PlanningScenarioListDto>(`/api/v1/projects/${projectId}/scenarios`),
-      apiRequest<EngineeringConstantListDto>('/api/v1/engineering-constants'),
-      apiRequest<ProjectRateListDto>(`/api/v1/projects/${projectId}/rates`),
-      apiRequest<ProjectScenarioComparisonDto>(`/api/v1/projects/${projectId}/comparison`),
-    ]);
+    const [scenData, constData, ratesData, compData, preflightData, exportsData] =
+      await Promise.all([
+        apiRequest<PlanningScenarioListDto>(`/api/v1/projects/${projectId}/scenarios`),
+        apiRequest<EngineeringConstantListDto>('/api/v1/engineering-constants'),
+        apiRequest<ProjectRateListDto>(`/api/v1/projects/${projectId}/rates`),
+        apiRequest<ProjectScenarioComparisonDto>(`/api/v1/projects/${projectId}/comparison`),
+        apiRequest<PreFlightReportDto>(`/api/v1/projects/${projectId}/report/preflight`),
+        apiRequest<ProjectExportListDto>(`/api/v1/projects/${projectId}/exports`),
+      ]);
     setScenariosState(scenData);
     setEngineeringConstants(constData);
     setRatesState(ratesData);
     setComparisonState(compData);
+    setPreflightState(preflightData);
+    setExportLogState(exportsData);
   }, []);
 
   const fetchInfraAndDemand = useCallback(
@@ -438,6 +450,14 @@ export const WorkspacePage: React.FC = () => {
           </div>
         </aside>
       </div>
+
+      {/* Milestone M7: Complete 24-Section DPR Pre-Flight Audit & Export Center */}
+      <DprExportCenterPanel
+        projectId={project.id}
+        preflight={preflightState}
+        exportLog={exportLogState}
+        onRefreshAuditAndLogs={() => fetchScenariosAndConstants(project.id)}
+      />
 
       {/* Milestone M6: Traceable Cost Estimation, BOQ & Scenario Comparison */}
       <CostAndScenarioComparisonPanel

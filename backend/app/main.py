@@ -32,6 +32,7 @@ from app.api.v1 import (
     jobs,
     planning,
     projects,
+    reports,
     settlements,
     spikes,
     tiles,
@@ -91,6 +92,7 @@ app.include_router(infrastructure.router)
 app.include_router(project_settings_router.router)
 app.include_router(planning.router)
 app.include_router(costing.router)
+app.include_router(reports.router)
 app.include_router(jobs.router)
 app.include_router(tiles.router)
 app.include_router(spikes.router)

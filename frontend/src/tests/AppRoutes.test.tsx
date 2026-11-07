@@ -25,8 +25,9 @@ import { SettlementAssessmentPanel } from '../components/workspace/SettlementAss
 import { InfrastructureAndDemandPanel } from '../components/workspace/InfrastructureAndDemandPanel';
 import { NetworkEngineeringPanel } from '../components/workspace/NetworkEngineeringPanel';
 import { CostAndScenarioComparisonPanel } from '../components/workspace/CostAndScenarioComparisonPanel';
+import { DprExportCenterPanel } from '../components/workspace/DprExportCenterPanel';
 
-describe('Milestone M1, M2, M3, M4, M5 & M6 Frontend Components', () => {
+describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
   it('renders LoginPage with Survey Sheet header and default planner credentials button', () => {
     render(
       <MemoryRouter>
@@ -738,5 +739,110 @@ describe('Milestone M1, M2, M3, M4, M5 & M6 Frontend Components', () => {
     await waitFor(() => {
       expect(onPinScenario).toHaveBeenCalledWith('scen-mg');
     });
+  });
+
+  it('renders DprExportCenterPanel with pre-flight checklist, 24-section index, and SHA-256 export audit log', () => {
+    render(
+      <DprExportCenterPanel
+        projectId="00000000-0000-4000-8000-000000000001"
+        onRefreshAuditAndLogs={async () => {}}
+        preflight={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          project_version: 3,
+          active_scenario_key: 'HYBRID_OPTIMAL',
+          can_export: true,
+          hard_blockers_failed: 0,
+          soft_warnings_count: 1,
+          requires_not_field_verified_watermark: true,
+          watermark_text: 'PRELIMINARY ENGINEERING — NOT FIELD VERIFIED',
+          snapshot_hash: 'a1b2c3d4e5f60123456789abcdefa1b2c3d4e5f60123456789abcdef01234567',
+          checks: [
+            {
+              check_code: 'NO_UNSET_BOQ_RATES',
+              title: 'All Required BOQ Schedule of Rates Populated',
+              category: 'HARD_BLOCKER',
+              status: 'PASS',
+              detail: 'All active BOQ line items have non-null unit rates.',
+              remediation: 'None required.',
+            },
+            {
+              check_code: 'AXIS_2_FIELD_VERIFICATION',
+              title: 'Axis-2 Field / Utility Verification Coverage',
+              category: 'SOFT_WARNING',
+              status: 'WARN',
+              detail: 'Verification coverage is 48.0% (< 100%).',
+              remediation: 'Record Gram Sabha / DISCOM feeder ledger verifications.',
+            },
+          ],
+          sections: Array.from({ length: 24 }, (_, idx) => ({
+            section_number: idx + 1,
+            section_key: `SEC_${String(idx + 1).padStart(2, '0')}`,
+            title: `DPR Section ${idx + 1} Title`,
+            group: 'Part I — Project Profile',
+            is_populated: idx !== 4,
+            data_status_note:
+              idx === 4
+                ? 'No data available — reason: Zero Axis-2 field verification records.'
+                : 'Populated with traceable project & engineering records.',
+          })),
+        }}
+        exportLog={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          total_exports: 1,
+          items: [
+            {
+              id: 'exp-1',
+              project_id: '00000000-0000-4000-8000-000000000001',
+              scenario_id: 'scen-1',
+              scenario_key: 'HYBRID_OPTIMAL',
+              export_kind: 'PDF_DPR_24',
+              filename: 'electrimap_dpr_24sec_00000000_hybrid_optimal.pdf',
+              mime_type: 'application/pdf',
+              file_size_bytes: 58420,
+              file_sha256: '9f8e7d6c5b4a32109f8e7d6c5b4a32109f8e7d6c5b4a32109f8e7d6c5b4a3210',
+              snapshot_hash: 'a1b2c3d4e5f60123456789abcdefa1b2c3d4e5f60123456789abcdef01234567',
+              preflight_passed: true,
+              preflight_warnings_count: 1,
+              created_by: 'usr-1',
+              notes: 'Complete 24-Section Preliminary DPR',
+              created_at: '2026-11-07T12:00:00Z',
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/READY TO EXPORT/i)).toBeInTheDocument();
+    expect(screen.getByText(/24\/24/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /Download 24-Section DPR \(\.pdf\)/i }),
+    ).toHaveAttribute(
+      'href',
+      '/api/v1/projects/00000000-0000-4000-8000-000000000001/exports/dpr-pdf',
+    );
+    expect(
+      screen.getByRole('link', { name: /Download Formula BOQ \(\.xlsx\)/i }),
+    ).toHaveAttribute(
+      'href',
+      '/api/v1/projects/00000000-0000-4000-8000-000000000001/exports/boq-xlsx',
+    );
+    expect(
+      screen.getByRole('link', { name: /Download Cleaned GIS Package \(\.zip\)/i }),
+    ).toHaveAttribute(
+      'href',
+      '/api/v1/projects/00000000-0000-4000-8000-000000000001/exports/gis-package',
+    );
+
+    // Switch to 24-Section DPR Compilation Index tab
+    fireEvent.click(screen.getByRole('button', { name: /2\. 24-Section DPR Compilation Index/i }));
+    expect(
+      screen.getByText(/No data available — reason: Zero Axis-2 field verification records/i),
+    ).toBeInTheDocument();
+
+    // Switch to SHA-256 Export Audit Log tab
+    fireEvent.click(screen.getByRole('button', { name: /3\. Cryptographic SHA-256 Export Audit Log/i }));
+    expect(
+      screen.getByText(/electrimap_dpr_24sec_00000000_hybrid_optimal\.pdf/i),
+    ).toBeInTheDocument();
   });
 });

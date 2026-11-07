@@ -10,7 +10,7 @@
 - [x] **PROMPT-1:** Product Discovery, Requirements Validation & PRD *(Approved 2026-11-05)*
 - [x] **PROMPT-2:** Technical Architecture, UI/UX Design System & Roadmap *(Approved 2026-11-06)*
 - [x] **PROMPT-3:** Environment Inspection, Git/GitHub Setup & Permanent Instructions *(Approved 2026-11-06)*
-- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M6 Completed)*
+- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M7 Completed)*
 - [ ] **PROMPT-5:** Production Readiness, Debugging & Handover
 
 ---
@@ -103,12 +103,12 @@
 ---
 
 ## Milestone M7: Complete 24-Section DPR, Excel & GIS Exports
-- [ ] **M7-1:** Comprehensive 24-section PDF DPR compilation engine
-- [ ] **M7-2:** Pre-flight engineering and data integrity audit validation
-- [ ] **M7-3:** Formula-driven multi-sheet Excel BOQ workbook generator
-- [ ] **M7-4:** Cleaned GIS vector package export (GeoJSON/Shapefile/CSV)
-- [ ] **M7-5:** Export job logging and cryptographic document hashing
-- [ ] **M7-6:** DPR preview, map framing, and export download center
+- [x] **M7-1:** Comprehensive 24-section PDF DPR compilation engine
+- [x] **M7-2:** Pre-flight engineering and data integrity audit validation
+- [x] **M7-3:** Formula-driven multi-sheet Excel BOQ workbook generator
+- [x] **M7-4:** Cleaned GIS vector package export (GeoJSON/Shapefile/CSV)
+- [x] **M7-5:** Export job logging and cryptographic document hashing
+- [x] **M7-6:** DPR preview, map framing, and export download center
 
 ---
 
