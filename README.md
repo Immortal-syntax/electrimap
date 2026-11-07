@@ -51,7 +51,13 @@ A web-based pre-feasibility GIS workbench for assessing rural and tribal electri
 - **Milestone M4: Infrastructure Gap Analysis & Multi-Sector Demand Engine**
   - Tie-in asset registration, honest gap analysis (nearest 11 kV grid line, terrain slope, water crossing penalties), 7-category demand engine (Domestic, Commercial, Agricultural, Institutional, etc.), and 10-year compound growth projections.
 - **Milestone M5: Engineering Optimization & Network Layout**
-  - REC-standard transformer sizing (16, 25, 63, 100 kVA), 11 kV HT feeder least-cost routing with terrain and water barriers, 3-phase LT distribution MST, IEEE voltage drop calculations, off-grid solar-plus-storage microgrid sizing, and scenario evaluation (`GRID_EXTENSION_ONLY`, `MINIGRID_SOLAR_STORAGE`, `HYBRID_OPTIMAL`).
+  - REC-standard transformer sizing (16, 25, 63, 100 kVA), 11 kV HT feeder least-cost routing with terrain and water barriers, 3-phase LT distribution MST, IEEE voltage drop calculations, off-grid solar-plus-storage microgrid sizing, and scenario evaluation (`GRID_ONLY`, `MINIGRID_ONLY`, `SHS_ONLY`, `HYBRID_RECOMMENDED`).
+- **Milestone M6: Traceable Cost Estimation, BOQ & Scenario Comparison**
+  - Odisha OPTCL/TPSODL/REC/MNRE Schedule of Rates (SoR) with custom CSV import/export, explicit `UNSET` unit cost export-blocking, terrain difficulty multipliers, and 10-year Net Present Cost ($\text{NPC}_{\text{INR}}$) & Levelized Cost of Energy ($\text{LCOE}_{\text{INR/kWh}}$) comparison.
+- **Milestone M7: Complete 24-Section DPR, Formula Excel BOQ & Cleaned GIS Exports**
+  - Pre-flight engineering & data integrity audit gate, full 24-section ReportLab PDF DPR with `"PRELIMINARY ENGINEERING — NOT FIELD VERIFIED"` watermarks, 5-sheet live-formula `openpyxl` Excel BOQ, cleaned GIS `.zip` package, and SHA-256 cryptographic export audit trail.
+- **Milestone M8 & Prompt 5: System Hardening, Benchmarking & Production Readiness**
+  - Vector tile SHA-256 `ETag` caching (`304 Not Modified`), `/api/v1/system/benchmark` telemetry, HTTP security headers middleware, WCAG 2.1 AA accessibility & keyboard navigation, E2E + security fuzzing suite, multi-container Docker stack, [Planner User Manual](docs/USER_MANUAL.md), and [Production Readiness Audit](docs/PRODUCTION_READINESS_AUDIT.md).
 
 ---
 
@@ -136,8 +142,8 @@ npm run dev
 ```
 
 The application will be accessible at [http://localhost:5173](http://localhost:5173). Default planner credentials:
-- **Email**: `planner@electrimap.gov.in`
-- **Password**: `SurveySheet#2026`
+- **Email**: `planner@electrimap.in`
+- **Password**: `ElectriMap#2026`
 
 ---
 

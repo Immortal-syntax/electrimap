@@ -2,7 +2,7 @@ ElectriMap DPR
 Copyright 2026 Swayam Kumar and ElectriMap DPR Contributors
 
 This product includes software developed at
-ElectriMap DPR (https://github.com/swayamkr/electrimap).
+ElectriMap DPR (https://github.com/Immortal-syntax/electrimap).
 
 ===============================================================================
 Third-Party Data and Attribution Notices
@@ -41,4 +41,10 @@ Third-Party Data and Attribution Notices
    Government of India.
    Published under the National Data Sharing and Accessibility Policy (NDSAP) /
    Open Government Data (OGD) Platform India (https://data.gov.in).
+
+7. VIIRS Nighttime Lights (NOAA / Earth Observation Group) & High Resolution Electricity Access (HREA)
+   Annual VIIRS VNL v2.2 nighttime radiance composites produced by the Earth Observation Group (EOG),
+   Payne Institute for Public Policy, Colorado School of Mines, and High Resolution Electricity Access
+   (HREA) indicators developed by the University of Michigan and World Bank (CC BY 4.0).
+
 

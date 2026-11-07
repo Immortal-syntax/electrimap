@@ -15,7 +15,7 @@
  */
 
 import { create } from 'zustand';
-import { apiRequest, setCsrfToken } from '../lib/apiClient';
+import { apiRequest, getCsrfToken, setCsrfToken } from '../lib/apiClient';
 
 export interface UserProfile {
   id: string;
@@ -49,7 +49,9 @@ export const useSessionStore = create<SessionState>((set) => ({
   checkSession: async () => {
     set({ isLoading: true, error: null });
     try {
-      const data = await apiRequest<AuthSessionPayload>('/api/v1/auth/me');
+      const needsCsrf = !getCsrfToken();
+      const endpoint = needsCsrf ? '/api/v1/auth/me?issue_csrf=1' : '/api/v1/auth/me';
+      const data = await apiRequest<AuthSessionPayload>(endpoint);
       if (data.csrf_token) {
         setCsrfToken(data.csrf_token);
       }

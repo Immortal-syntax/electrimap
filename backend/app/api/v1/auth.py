@@ -17,9 +17,10 @@
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_current_user
+from app.api.v1.deps import get_current_session_and_user, get_current_user
 from app.core.config import get_settings
-from app.db.models.auth import User
+from app.core.security import generate_secure_token, hash_token
+from app.db.models.auth import User, UserSession
 from app.db.session import get_db
 from app.schemas.auth import AuthSessionResponse, LoginRequest, UserResponse
 from app.services.auth_service import authenticate_and_create_session, revoke_session
@@ -91,10 +92,18 @@ def logout(
 
 @router.get("/me", response_model=AuthSessionResponse)
 def get_me(
-    user: User = Depends(get_current_user),
+    request: Request,
+    pair: tuple[User, UserSession] = Depends(get_current_session_and_user),
+    db: Session = Depends(get_db),
 ) -> AuthSessionResponse:
-    """Return currently authenticated user profile."""
+    """Return currently authenticated user profile, issuing a fresh CSRF token if requested."""
+    user, session_row = pair
+    csrf_token: str | None = None
+    if request.query_params.get("issue_csrf") == "1":
+        csrf_token = generate_secure_token(32)
+        session_row.csrf_token_hash = hash_token(csrf_token)
+        db.commit()
     return AuthSessionResponse(
         user=_to_user_response(user),
-        csrf_token=None,
+        csrf_token=csrf_token,
     )

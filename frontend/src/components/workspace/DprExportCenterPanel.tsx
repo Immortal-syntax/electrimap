@@ -142,6 +142,9 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
                 href={`/api/v1/projects/${projectId}/exports/dpr-pdf`}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => {
+                  setTimeout(() => void handleRefresh(), 1500);
+                }}
                 className="px-3 py-1.5 text-xs font-mono bg-accent text-white rounded-xs hover:opacity-90"
               >
                 Download 24-Section DPR (.pdf)
@@ -150,6 +153,9 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
                 href={`/api/v1/projects/${projectId}/exports/boq-xlsx`}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => {
+                  setTimeout(() => void handleRefresh(), 1500);
+                }}
                 className="px-3 py-1.5 text-xs font-mono bg-emerald-800 text-white rounded-xs hover:opacity-90"
               >
                 Download Formula BOQ (.xlsx)
@@ -168,6 +174,9 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
             href={`/api/v1/projects/${projectId}/exports/gis-package`}
             target="_blank"
             rel="noreferrer"
+            onClick={() => {
+              setTimeout(() => void handleRefresh(), 1500);
+            }}
             className="px-3 py-1.5 text-xs font-mono border border-accent text-accent bg-accent-tint/30 rounded-xs hover:bg-accent-tint/60"
           >
             Download Cleaned GIS Package (.zip)

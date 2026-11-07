@@ -43,10 +43,16 @@ let csrfTokenMemory: string | null = null;
 export function setCsrfToken(token: string | null): void {
   csrfTokenMemory = token;
   if (typeof window !== 'undefined') {
-    if (token) {
-      window.sessionStorage.setItem('em_csrf_token', token);
-    } else {
-      window.sessionStorage.removeItem('em_csrf_token');
+    try {
+      if (token) {
+        window.sessionStorage.setItem('em_csrf_token', token);
+        window.localStorage.setItem('em_csrf_token', token);
+      } else {
+        window.sessionStorage.removeItem('em_csrf_token');
+        window.localStorage.removeItem('em_csrf_token');
+      }
+    } catch {
+      // Ignore storage quota or privacy-mode exceptions
     }
   }
 }
@@ -54,7 +60,13 @@ export function setCsrfToken(token: string | null): void {
 export function getCsrfToken(): string | null {
   if (csrfTokenMemory) return csrfTokenMemory;
   if (typeof window !== 'undefined') {
-    csrfTokenMemory = window.sessionStorage.getItem('em_csrf_token');
+    try {
+      csrfTokenMemory =
+        window.sessionStorage.getItem('em_csrf_token') ??
+        window.localStorage.getItem('em_csrf_token');
+    } catch {
+      csrfTokenMemory = null;
+    }
   }
   return csrfTokenMemory;
 }

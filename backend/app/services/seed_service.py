@@ -381,3 +381,14 @@ def ensure_seed_data(db: Session) -> None:
             )
 
     db.commit()
+
+
+if __name__ == "__main__":
+    from app.db.base import Base
+    from app.db.session import SessionLocal, engine
+
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as _db:
+        ensure_seed_data(_db)
+    print("Seeded ElectriMap DPR database successfully.")
+

@@ -20,6 +20,8 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.v1 import (
@@ -68,10 +70,52 @@ app = FastAPI(
         "GIS and Satellite-Based Assessment and Preliminary Detailed Project Report (DPR) "
         "Workbench for Rural and Tribal Electrification in India."
     ),
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
     lifespan=lifespan,
 )
+
+# Also support /api/docs and /api/openapi.json for reverse proxy flexibility
+@app.get("/api/docs", include_in_schema=False)
+async def serve_api_docs() -> Response:
+    """Serve Swagger UI at /api/docs so both :8000/docs and :5173/api/docs work."""
+    return get_swagger_ui_html(
+        openapi_url="/api/openapi.json",
+        title=f"{app.title} - Swagger UI",
+    )
+
+
+@app.get("/api/redoc", include_in_schema=False)
+async def serve_api_redoc() -> Response:
+    """Serve ReDoc UI at /api/redoc."""
+    return get_redoc_html(
+        openapi_url="/api/openapi.json",
+        title=f"{app.title} - ReDoc",
+    )
+
+
+@app.get("/api/openapi.json", include_in_schema=False)
+async def serve_api_openapi() -> Response:
+    """Serve OpenAPI schema at /api/openapi.json for proxied Swagger UI."""
+    return JSONResponse(app.openapi())
+
+
+@app.get("/", tags=["System"])
+def get_api_root() -> dict[str, Any]:
+    """Root API index returning service metadata and documentation links."""
+    return {
+        "status": "ok",
+        "service": "electrimap-backend",
+        "version": settings.app_version,
+        "docs_url": "/docs",
+        "api_docs_url": "/api/docs",
+        "redoc_url": "/redoc",
+        "openapi_url": "/openapi.json",
+        "health_url": "/api/v1/health",
+    }
+
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -98,16 +142,34 @@ async def add_security_headers(
         "Permissions-Policy",
         "geolocation=(), microphone=(), camera=()",
     )
-    response.headers.setdefault(
-        "Content-Security-Policy",
-        (
-            "default-src 'self'; "
-            "img-src 'self' data: blob: https://*.openstreetmap.org https://*.maps.eox.at; "
-            "style-src 'self' 'unsafe-inline'; "
-            "script-src 'self'; "
-            "connect-src 'self' https://*.openstreetmap.org https://*.maps.eox.at"
-        ),
-    )
+    if request.url.path in {"/docs", "/api/docs", "/redoc", "/api/redoc"}:
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            (
+                "default-src 'self'; "
+                "img-src 'self' data: https://fastapi.tiangolo.com; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net "
+                "https://fonts.googleapis.com; "
+                "font-src 'self' data: https://fonts.gstatic.com; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "worker-src 'self' blob:; "
+                "connect-src 'self'"
+            ),
+        )
+    else:
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            (
+                "default-src 'self'; "
+                "img-src 'self' data: blob: https://*.openstreetmap.org "
+                "https://*.maps.eox.at; "
+                "style-src 'self' 'unsafe-inline'; "
+                "script-src 'self'; "
+                "worker-src 'self' blob:; "
+                "connect-src 'self' https://tiles.openfreemap.org "
+                "https://*.openstreetmap.org https://*.maps.eox.at"
+            ),
+        )
     return response
 
 

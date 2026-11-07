@@ -68,6 +68,30 @@ def test_m8_system_benchmark_security_headers_and_tile_etag_caching() -> None:
         )
         assert t_resp2.status_code == 304
 
+        # Verify API root, /docs, /api/docs, /openapi.json, /api/openapi.json & Swagger CSP
+        root_resp = client.get("/")
+        assert root_resp.status_code == 200
+        assert root_resp.json()["docs_url"] == "/docs"
+
+        for doc_path in ("/docs", "/api/docs", "/redoc", "/api/redoc"):
+            doc_resp = client.get(doc_path)
+            assert doc_resp.status_code == 200
+            assert "https://cdn.jsdelivr.net" in doc_resp.headers.get(
+                "content-security-policy", ""
+            )
+
+        for schema_path in ("/openapi.json", "/api/openapi.json"):
+            schema_resp = client.get(schema_path)
+            assert schema_resp.status_code == 200
+            assert "paths" in schema_resp.json()
+
+        # Verify /api/v1/auth/me?issue_csrf=1 issues a fresh valid CSRF token
+        me_csrf_resp = client.get("/api/v1/auth/me?issue_csrf=1")
+        assert me_csrf_resp.status_code == 200
+        fresh_csrf = me_csrf_resp.json()["csrf_token"]
+        assert isinstance(fresh_csrf, str) and len(fresh_csrf) >= 32
+
+
 
 def test_m8_complete_end_to_end_user_journey_new_project_to_exports() -> None:
     """Verify E2E journey: New Project -> AOI -> Data -> Clusters -> Verify -> Infra -> DPR."""
