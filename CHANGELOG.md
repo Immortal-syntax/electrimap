@@ -5,7 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
-## [Unreleased] - 2026-11-06
+## [Unreleased] - 2026-11-07
+
+### Added
+- **Milestone M6 — Traceable Cost Estimation, BOQ & Scenario Comparison (`M6-1` to `M6-5`):**
+  - Schedule of Rates (SoR) domain (`backend/app/domain/costing/rates.py`) with 18 verified Odisha OPTCL/TPSODL/REC/MNRE unit rates (`STANDARD_SOR_ITEMS`), CSV import/export (`parse_and_validate_sor_csv`, `export_sor_to_csv`), row-level validation error reporting, and explicit `UNSET` rate support enforcing Core Principle #4.
+  - Life-cycle financial and economic engine (`backend/app/domain/engineering/economics.py`) computing Capital Recovery Factor ($\text{CRF}$), Present Worth Factor ($\text{PWF}$), 10-year Net Present Cost ($\text{NPC}_{\text{INR}}$), Levelized Cost of Energy ($\text{LCOE}_{\text{INR/kWh}}$), Year-7 LiFePO4 battery replacement present value, wholesale grid energy cost (including technical losses), scheme capital grant share, and avoided $\text{CO}_2$ emissions.
+  - Automated Bill of Quantities (BOQ) engine (`backend/app/domain/costing/boq.py`) with terrain difficulty multipliers ($1.00\times$ plain, $1.12\times$ rolling hilly, $1.25\times$ steep forest), GST (18%), contingency (3%), PMC overheads (5%), and `has_unset_rates` pre-flight blocking.
+  - `ProjectRateItem` and `ScenarioBoqLine` models (`backend/app/db/models/costing.py`), Alembic migration `0007_m6_costing_boq_scenarios.py`, costing & scenario comparison service (`backend/app/services/costing_service.py`), REST router (`backend/app/api/v1/costing.py`), and DPR PDF Sections 15–17 (`backend/app/services/settlement_pdf_service.py`).
+  - Frontend `CostAndScenarioComparisonPanel.tsx` integrated into `WorkspacePage.tsx` with 6-tile financial KPI strip, UNSET rate export-block banner, itemized BOQ spreadsheet, 4-scenario side-by-side comparison cards + per-habitation NPC/LCOE table, and interactive SoR editor + CSV importer.
 
 ### Fixed
 - **Antigravity IDE Python Environments & PET Subsystem Resolution:**

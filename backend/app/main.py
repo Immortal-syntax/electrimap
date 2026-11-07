@@ -26,6 +26,7 @@ from app.api.v1 import (
     admin_units,
     aoi,
     auth,
+    costing,
     data,
     infrastructure,
     jobs,
@@ -89,6 +90,7 @@ app.include_router(verification.router)
 app.include_router(infrastructure.router)
 app.include_router(project_settings_router.router)
 app.include_router(planning.router)
+app.include_router(costing.router)
 app.include_router(jobs.router)
 app.include_router(tiles.router)
 app.include_router(spikes.router)

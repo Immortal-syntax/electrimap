@@ -50,10 +50,15 @@ from shapely.geometry import Polygon
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.db.models.auth import User
 from app.db.models.project import ProjectAoi
 from app.db.models.spatial import Building
 from app.domain.gis.crs import project_geometry
+from app.services.costing_service import (
+    get_project_scenario_comparison,
+    list_project_rates,
+)
 from app.services.data_service import list_project_layers_with_provenance
 from app.services.infrastructure_service import (
     compute_and_persist_gap_analysis,
@@ -1035,6 +1040,270 @@ def generate_preliminary_settlement_pdf(
     )
     sld_img = Image(io.BytesIO(sld_png_bytes), width=174 * mm, height=78 * mm)
     story.append(sld_img)
+
+    # Milestone M6: Sections 15-17 (Schedule of Rates, Itemized BOQ & Scenario Comparison)
+    rates_state = list_project_rates(db, project_id, user)
+    comparison = get_project_scenario_comparison(db, project_id, user)
+    if comparison.has_unset_rates:
+        raise AppError(
+            code="UNSET_RATES_BLOCK_EXPORT",
+            message=(
+                comparison.export_blocked_reason
+                or "DPR export is blocked because one or more required unit rates are UNSET."
+            ),
+            status_code=422,
+            details={"unset_item_codes": comparison.unset_item_codes},
+        )
+
+    active_boq = comparison.active_scenario_boq
+    story.append(PageBreak())
+
+    # Section 15: Schedule of Rates (SoR) Provenance & Costing Methodology
+    story.append(
+        Paragraph(
+            f"15. SCHEDULE OF RATES (SOR) PROVENANCE & COSTING BASIS ({rates_state.template_key})",
+            sec_style,
+        )
+    )
+    sor_meta_rows = [
+        [
+            "Active Rate Schedule",
+            rates_state.template_name[:46],
+            "Total Catalog Items",
+            (
+                f"{rates_state.total_items} items "
+                f"({rates_state.user_edited_count} user-edited, {rates_state.unset_count} UNSET)"
+            ),
+        ],
+        [
+            "Tax & Overheads",
+            (
+                f"GST {active_boq.gst_pct:.1f}% | "
+                f"Contingency {active_boq.contingency_pct:.1f}% | "
+                f"PMC {active_boq.pmc_overhead_pct:.1f}%"
+            ),
+            "Life-Cycle Parameters",
+            (
+                f"Discount Rate {active_boq.discount_rate * 100.0:.1f}% | "
+                f"Horizon {active_boq.horizon_years} Yrs | "
+                f"Scheme Grant {active_boq.capital_subsidy_pct:.0f}%"
+            ),
+        ],
+    ]
+    t15 = Table(sor_meta_rows, colWidths=[36 * mm, 52 * mm, 36 * mm, 52 * mm])
+    t15.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F1F5F9")),
+                ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#F1F5F9")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("PADDING", (0, 0), (-1, -1), 2.5),
+            ]
+        )
+    )
+    story.append(t15)
+
+    # Section 16: Itemized Bill of Quantities (BOQ) & Capital Cost Abstract
+    story.append(
+        Paragraph(
+            f"16. ITEMIZED BILL OF QUANTITIES (BOQ) & CAPITAL COST ABSTRACT "
+            f"({active_boq.scenario_key})",
+            sec_style,
+        )
+    )
+    boq_rows = [
+        [
+            "Item Code",
+            "Description",
+            "Category",
+            "Qty",
+            "Unit",
+            "Rate (INR)",
+            "Source Tag",
+            "Amount (INR)",
+        ]
+    ]
+    for ln in active_boq.aggregated_lines:
+        boq_rows.append(
+            [
+                ln.item_code,
+                ln.description[:36],
+                ln.category,
+                f"{ln.quantity:.2f}",
+                ln.unit,
+                f"{ln.rate_inr:,.2f}" if ln.rate_inr is not None else "UNSET",
+                ln.rate_source_type[:18],
+                f"{ln.amount_inr:,.2f}",
+            ]
+        )
+    boq_rows.extend(
+        [
+            [
+                "SUB-A",
+                "Direct Equipment & Line Supply Subtotal",
+                "—",
+                "—",
+                "INR",
+                "—",
+                "COMPUTED",
+                f"{active_boq.base_equipment_inr:,.2f}",
+            ],
+            [
+                "SUB-B",
+                "Difficult Hilly/Forest Terrain Erection Premium",
+                "—",
+                "—",
+                "INR",
+                "—",
+                "COMPUTED",
+                f"{active_boq.terrain_premium_inr:,.2f}",
+            ],
+            [
+                "SUB-C",
+                f"Goods & Services Tax (GST @ {active_boq.gst_pct:.1f}%)",
+                "—",
+                "—",
+                "INR",
+                "—",
+                "STATUTORY",
+                f"{active_boq.gst_amount_inr:,.2f}",
+            ],
+            [
+                "SUB-D",
+                (
+                    f"Contingency ({active_boq.contingency_pct:.1f}%) + "
+                    f"PMC Overheads ({active_boq.pmc_overhead_pct:.1f}%)"
+                ),
+                "—",
+                "—",
+                "INR",
+                "—",
+                "NORMATIVE",
+                f"{(active_boq.contingency_amount_inr + active_boq.pmc_overhead_amount_inr):,.2f}",
+            ],
+            [
+                "TOTAL",
+                f"GRAND TOTAL CAPITAL OUTLAY (INR {active_boq.total_capex_lakhs:.2f} Lakhs)",
+                "—",
+                "—",
+                "INR",
+                "—",
+                "VERIFIED_SUM",
+                f"{active_boq.total_capex_inr:,.2f}",
+            ],
+        ]
+    )
+    t16 = Table(
+        boq_rows,
+        colWidths=[22 * mm, 46 * mm, 22 * mm, 14 * mm, 12 * mm, 18 * mm, 20 * mm, 22 * mm],
+    )
+    t16.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E2E8F0")),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.0),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("PADDING", (0, 0), (-1, -1), 2.0),
+            ]
+        )
+    )
+    story.append(t16)
+
+    # Section 17: Multi-Scenario Financial Comparison & Life-Cycle Economics (NPC & LCOE)
+    story.append(
+        Paragraph(
+            "17. MULTI-SCENARIO FINANCIAL COMPARISON, 10-YR NPC & LCOE ABSTRACT",
+            sec_style,
+        )
+    )
+    comp_rows = [
+        [
+            "Scenario Key",
+            "Pinned",
+            "CAPEX (INR)",
+            "Net Outlay (INR)",
+            "10-Yr NPC (INR)",
+            "LCOE (INR/kWh)",
+            "Cost / HH (INR)",
+        ]
+    ]
+    for sc in comparison.scenarios:
+        comp_rows.append(
+            [
+                sc.scenario_key,
+                "BASELINE" if sc.is_active_baseline else "ALT",
+                f"{sc.total_capex_inr:,.2f}",
+                f"{sc.net_utility_capex_inr:,.2f}",
+                f"{sc.npc_inr:,.2f}",
+                f"{sc.lcoe_inr_kwh:.2f} /kWh",
+                f"{sc.cost_per_household_inr:,.0f} /HH",
+            ]
+        )
+    t17 = Table(
+        comp_rows,
+        colWidths=[34 * mm, 16 * mm, 26 * mm, 26 * mm, 26 * mm, 24 * mm, 24 * mm],
+    )
+    t17.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("PADDING", (0, 0), (-1, -1), 2.5),
+            ]
+        )
+    )
+    story.append(t17)
+    story.append(Spacer(1, 2 * mm))
+
+    hab_comp_rows = [
+        [
+            "Cluster",
+            "Chosen Modality",
+            "Grid NPC (INR)",
+            "Mini-Grid NPC (INR)",
+            "SHS NPC (INR)",
+            "Least-Cost Option",
+        ]
+    ]
+    for h_row in comparison.habitation_comparisons:
+        hab_comp_rows.append(
+            [
+                f"{h_row.cluster_label} ({h_row.est_households} HH)",
+                h_row.active_modality,
+                f"{h_row.grid_npc_inr:,.0f}"
+                + (" (No Tie-In)" if h_row.grid_requires_tie_in else ""),
+                f"{h_row.minigrid_npc_inr:,.0f}",
+                f"{h_row.shs_npc_inr:,.0f}",
+                h_row.least_cost_npc_modality,
+            ]
+        )
+    t17_hab = Table(
+        hab_comp_rows,
+        colWidths=[28 * mm, 32 * mm, 30 * mm, 30 * mm, 26 * mm, 30 * mm],
+    )
+    t17_hab.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.2),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("PADDING", (0, 0), (-1, -1), 2.2),
+            ]
+        )
+    )
+    story.append(t17_hab)
 
     doc.build(
         story,

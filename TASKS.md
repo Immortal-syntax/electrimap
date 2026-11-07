@@ -10,7 +10,7 @@
 - [x] **PROMPT-1:** Product Discovery, Requirements Validation & PRD *(Approved 2026-11-05)*
 - [x] **PROMPT-2:** Technical Architecture, UI/UX Design System & Roadmap *(Approved 2026-11-06)*
 - [x] **PROMPT-3:** Environment Inspection, Git/GitHub Setup & Permanent Instructions *(Approved 2026-11-06)*
-- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M5 Completed)*
+- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M6 Completed)*
 - [ ] **PROMPT-5:** Production Readiness, Debugging & Handover
 
 ---
@@ -94,11 +94,11 @@
 ---
 
 ## Milestone M6: Traceable Cost Estimation & Scenarios
-- [ ] **M6-1:** Schedule of Rates (SoR) management and custom CSV import
-- [ ] **M6-2:** Automated Bill of Quantities (BOQ) generator and financial metrics
-- [ ] **M6-3:** Scenario comparison engine (Grid vs. Mini-Grid vs. SHS vs. Hybrid)
-- [ ] **M6-4:** Interactive Cost BOQ spreadsheet and Scenario Comparison UI
-- [ ] **M6-5:** DPR financial statements and cost abstract export
+- [x] **M6-1:** Schedule of Rates (SoR) management and custom CSV import
+- [x] **M6-2:** Automated Bill of Quantities (BOQ) generator and financial metrics
+- [x] **M6-3:** Scenario comparison engine (Grid vs. Mini-Grid vs. SHS vs. Hybrid)
+- [x] **M6-4:** Interactive Cost BOQ spreadsheet and Scenario Comparison UI
+- [x] **M6-5:** DPR financial statements and cost abstract export
 
 ---
 

@@ -41,6 +41,12 @@ import {
   NetworkEngineeringPanel,
   PlanningScenarioListDto,
 } from '../components/workspace/NetworkEngineeringPanel';
+import {
+  CostAndScenarioComparisonPanel,
+  ProjectRateListDto,
+  ProjectScenarioComparisonDto,
+  SorCsvImportResponseDto,
+} from '../components/workspace/CostAndScenarioComparisonPanel';
 import { ClassificationBadge } from '../components/ui/Badge';
 import { Callout } from '../components/ui/Callout';
 import { StatTile } from '../components/ui/StatTile';
@@ -57,10 +63,10 @@ const WORKFLOW_STEPS = [
   { key: 'data', label: '1. Data & AOI', state: 'READY' },
   { key: 'settlements', label: '2. Settlements', state: 'READY' },
   { key: 'infrastructure', label: '3. Infrastructure', state: 'READY' },
-  { key: 'planning', label: '4. Planning', state: 'ACTIVE' },
-  { key: 'engineering', label: '5. Engineering', state: 'ACTIVE' },
-  { key: 'cost', label: '6. Cost & BOQ', state: 'READY' },
-  { key: 'compare', label: '7. Compare & DPR', state: 'READY' },
+  { key: 'planning', label: '4. Planning', state: 'READY' },
+  { key: 'engineering', label: '5. Engineering', state: 'READY' },
+  { key: 'cost', label: '6. Cost & BOQ', state: 'ACTIVE' },
+  { key: 'compare', label: '7. Compare & DPR', state: 'ACTIVE' },
 ];
 
 export const WorkspacePage: React.FC = () => {
@@ -83,6 +89,9 @@ export const WorkspacePage: React.FC = () => {
   const [scenariosState, setScenariosState] = useState<PlanningScenarioListDto | null>(null);
   const [engineeringConstants, setEngineeringConstants] =
     useState<EngineeringConstantListDto | null>(null);
+  const [ratesState, setRatesState] = useState<ProjectRateListDto | null>(null);
+  const [comparisonState, setComparisonState] =
+    useState<ProjectScenarioComparisonDto | null>(null);
   const [placeTieInModeActive, setPlaceTieInModeActive] = useState<boolean>(false);
 
   const [visibleVectorLayers, setVisibleVectorLayers] = useState<Record<string, boolean>>({
@@ -96,12 +105,16 @@ export const WorkspacePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchScenariosAndConstants = useCallback(async (projectId: string) => {
-    const [scenData, constData] = await Promise.all([
+    const [scenData, constData, ratesData, compData] = await Promise.all([
       apiRequest<PlanningScenarioListDto>(`/api/v1/projects/${projectId}/scenarios`),
       apiRequest<EngineeringConstantListDto>('/api/v1/engineering-constants'),
+      apiRequest<ProjectRateListDto>(`/api/v1/projects/${projectId}/rates`),
+      apiRequest<ProjectScenarioComparisonDto>(`/api/v1/projects/${projectId}/comparison`),
     ]);
     setScenariosState(scenData);
     setEngineeringConstants(constData);
+    setRatesState(ratesData);
+    setComparisonState(compData);
   }, []);
 
   const fetchInfraAndDemand = useCallback(
@@ -425,6 +438,53 @@ export const WorkspacePage: React.FC = () => {
           </div>
         </aside>
       </div>
+
+      {/* Milestone M6: Traceable Cost Estimation, BOQ & Scenario Comparison */}
+      <CostAndScenarioComparisonPanel
+        projectId={project.id}
+        rates={ratesState}
+        comparison={comparisonState}
+        onUpdateRateItem={async (itemCode, rateInr, citation) => {
+          await apiRequest<ProjectRateListDto>(
+            `/api/v1/projects/${project.id}/rates/${itemCode}`,
+            {
+              method: 'PATCH',
+              body: JSON.stringify({ rate_inr: rateInr, citation }),
+            },
+          );
+          await fetchScenariosAndConstants(project.id);
+        }}
+        onResetRates={async () => {
+          await apiRequest<ProjectRateListDto>(
+            `/api/v1/projects/${project.id}/rates/reset`,
+            { method: 'POST' },
+          );
+          await fetchScenariosAndConstants(project.id);
+        }}
+        onImportRatesCsv={async (csvContent, templateName) => {
+          const res = await apiRequest<SorCsvImportResponseDto>(
+            `/api/v1/projects/${project.id}/rates/import-csv`,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                csv_content: csvContent,
+                template_name: templateName,
+              }),
+            },
+          );
+          if (res.is_valid) {
+            await fetchScenariosAndConstants(project.id);
+          }
+          return res;
+        }}
+        onPinScenario={async (scenarioId) => {
+          await apiRequest<ProjectScenarioComparisonDto>(
+            `/api/v1/projects/${project.id}/scenarios/${scenarioId}/pin`,
+            { method: 'POST' },
+          );
+          await fetchScenariosAndConstants(project.id);
+        }}
+      />
 
       {/* Milestone M5: Network Layout Routing, Voltage Drop, Technical Losses & Off-Grid Sizing */}
       <NetworkEngineeringPanel

@@ -15,6 +15,7 @@
 """SQLAlchemy ORM model registry for Alembic autogenerate and runtime metadata."""
 
 from app.db.models.auth import User, UserSession
+from app.db.models.costing import ProjectRateItem, ScenarioBoqLine
 from app.db.models.infrastructure import (
     ClusterGapAnalysis,
     InfrastructureAsset,
@@ -51,7 +52,9 @@ __all__ = [
     "ProjectAoi",
     "ProjectDemandEstimate",
     "ProjectLayer",
+    "ProjectRateItem",
     "ProjectSetting",
+    "ScenarioBoqLine",
     "SettlementCluster",
     "SolarResource",
     "User",

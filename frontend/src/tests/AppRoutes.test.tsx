@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { LoginPage } from '../pages/LoginPage';
@@ -24,8 +24,9 @@ import { DataManagementPanel } from '../components/workspace/DataManagementPanel
 import { SettlementAssessmentPanel } from '../components/workspace/SettlementAssessmentPanel';
 import { InfrastructureAndDemandPanel } from '../components/workspace/InfrastructureAndDemandPanel';
 import { NetworkEngineeringPanel } from '../components/workspace/NetworkEngineeringPanel';
+import { CostAndScenarioComparisonPanel } from '../components/workspace/CostAndScenarioComparisonPanel';
 
-describe('Milestone M1, M2, M3, M4 & M5 Frontend Components', () => {
+describe('Milestone M1, M2, M3, M4, M5 & M6 Frontend Components', () => {
   it('renders LoginPage with Survey Sheet header and default planner credentials button', () => {
     render(
       <MemoryRouter>
@@ -517,5 +518,225 @@ describe('Milestone M1, M2, M3, M4 & M5 Frontend Components', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /REC\/IS\/CEA Constants/i }));
     expect(screen.getByText('ht_11kv_r_ohm_per_km')).toBeInTheDocument();
+  });
+
+  it('renders CostAndScenarioComparisonPanel with BOQ table, 4-scenario comparison, and UNSET export-block alert', async () => {
+    const onPinScenario = vi.fn(async () => {});
+
+    render(
+      <CostAndScenarioComparisonPanel
+        projectId="00000000-0000-4000-8000-000000000001"
+        onUpdateRateItem={async () => {}}
+        onResetRates={async () => {}}
+        onImportRatesCsv={async () => ({
+          is_valid: true,
+          imported_count: 1,
+          unset_count: 0,
+          unset_item_codes: [],
+          errors: [],
+          rates: null,
+        })}
+        onPinScenario={onPinScenario}
+        rates={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          template_key: 'ODISHA_OPTCL_TPSODL_REC_2025',
+          template_name: 'Odisha OPTCL / TPSODL & MNRE Reference Schedule of Rates (FY 2024-25)',
+          total_items: 18,
+          unset_count: 1,
+          unset_item_codes: ['HT-COND-ACSR-50'],
+          user_edited_count: 1,
+          items: [
+            {
+              id: 'rate-1',
+              project_id: '00000000-0000-4000-8000-000000000001',
+              template_key: 'ODISHA_OPTCL_TPSODL_REC_2025',
+              template_name: 'Odisha OPTCL / TPSODL & MNRE Reference Schedule of Rates (FY 2024-25)',
+              item_code: 'HT-COND-ACSR-50',
+              description: '11 kV 3-Phase Overhead Line with ACSR Rabbit Conductor',
+              category: 'HT_11KV',
+              unit: 'km',
+              rate_inr: null,
+              source_type: 'UNSET',
+              citation: 'OPTCL / Odisha DISCOM Unified Schedule of Rates',
+              source_year: 2025,
+              is_user_edited: true,
+              updated_at: '2026-11-07T00:00:00Z',
+            },
+          ],
+        }}
+        comparison={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          active_scenario_id: 'scen-hybrid',
+          active_scenario_key: 'HYBRID_OPTIMAL',
+          discount_rate: 0.08,
+          horizon_years: 10,
+          has_unset_rates: true,
+          unset_item_codes: ['HT-COND-ACSR-50'],
+          export_blocked_reason:
+            'DPR export is blocked because 1 required Schedule of Rates item(s) are UNSET: HT-COND-ACSR-50.',
+          scenarios: [
+            {
+              scenario_id: 'scen-hybrid',
+              scenario_key: 'HYBRID_OPTIMAL',
+              scenario_name: 'Hybrid Least-Cost Optimal (Grid + Solar Mini-Grid + SHS)',
+              is_active_baseline: true,
+              requires_tie_in_warning: false,
+              vdrop_compliance_ok: true,
+              total_households_served: 122,
+              annual_delivered_energy_mwh: 167.44,
+              modality_counts: { GRID_AUGMENTATION: 1, SOLAR_MINIGRID: 1 },
+              base_equipment_inr: 3200000,
+              terrain_premium_inr: 400000,
+              gst_amount_inr: 648000,
+              contingency_amount_inr: 108000,
+              pmc_overhead_amount_inr: 180000,
+              total_capex_inr: 4536000,
+              total_capex_lakhs: 45.36,
+              capital_subsidy_inr: 4082400,
+              net_utility_capex_inr: 453600,
+              annual_om_inr: 125000,
+              annual_energy_purchase_inr: 210000,
+              npc_inr: 6980000,
+              npc_lakhs: 69.8,
+              lcoe_inr_kwh: 6.21,
+              cost_per_household_inr: 37180,
+              npc_per_household_inr: 57213,
+              avoided_co2_tonnes_yr: 42.5,
+              has_unset_rates: true,
+              unset_item_codes: ['HT-COND-ACSR-50'],
+            },
+            {
+              scenario_id: 'scen-mg',
+              scenario_key: 'MINIGRID_PRIORITY',
+              scenario_name: 'Decentralized Solar PV + LiFePO4 Mini-Grid Priority',
+              is_active_baseline: false,
+              requires_tie_in_warning: false,
+              vdrop_compliance_ok: true,
+              total_households_served: 122,
+              annual_delivered_energy_mwh: 167.44,
+              modality_counts: { SOLAR_MINIGRID: 2 },
+              base_equipment_inr: 4100000,
+              terrain_premium_inr: 500000,
+              gst_amount_inr: 828000,
+              contingency_amount_inr: 138000,
+              pmc_overhead_amount_inr: 230000,
+              total_capex_inr: 5796000,
+              total_capex_lakhs: 57.96,
+              capital_subsidy_inr: 5216400,
+              net_utility_capex_inr: 579600,
+              annual_om_inr: 173880,
+              annual_energy_purchase_inr: 0,
+              npc_inr: 7650000,
+              npc_lakhs: 76.5,
+              lcoe_inr_kwh: 6.81,
+              cost_per_household_inr: 47508,
+              npc_per_household_inr: 62705,
+              avoided_co2_tonnes_yr: 85.2,
+              has_unset_rates: false,
+              unset_item_codes: [],
+            },
+          ],
+          habitation_comparisons: [
+            {
+              cluster_id: 'cl-1',
+              cluster_label: 'C-001',
+              cluster_name: 'Bheja Main Core',
+              est_households: 60,
+              annual_energy_mwh_horizon: 80.3,
+              active_modality: 'SOLAR_MINIGRID',
+              least_cost_npc_modality: 'SOLAR_MINIGRID',
+              grid_capex_inr: 2900000,
+              grid_npc_inr: 4100000,
+              grid_lcoe_inr_kwh: 7.6,
+              grid_requires_tie_in: false,
+              minigrid_capex_inr: 2600000,
+              minigrid_npc_inr: 3500000,
+              minigrid_lcoe_inr_kwh: 6.49,
+              shs_capex_inr: 2200000,
+              shs_npc_inr: 3900000,
+              shs_lcoe_inr_kwh: 7.23,
+              rationale: 'Solar PV + LiFePO4 Mini-Grid avoids steep terrain 11 kV feeder costs.',
+            },
+          ],
+          active_scenario_boq: {
+            project_id: '00000000-0000-4000-8000-000000000001',
+            scenario_id: 'scen-hybrid',
+            scenario_key: 'HYBRID_OPTIMAL',
+            scenario_name: 'Hybrid Least-Cost Optimal (Grid + Solar Mini-Grid + SHS)',
+            is_active_baseline: true,
+            discount_rate: 0.08,
+            horizon_years: 10,
+            gst_pct: 18.0,
+            contingency_pct: 3.0,
+            pmc_overhead_pct: 5.0,
+            capital_subsidy_pct: 90.0,
+            base_equipment_inr: 3200000,
+            terrain_premium_inr: 400000,
+            subtotal_supply_erection_inr: 3600000,
+            gst_amount_inr: 648000,
+            contingency_amount_inr: 108000,
+            pmc_overhead_amount_inr: 180000,
+            total_capex_inr: 4536000,
+            total_capex_lakhs: 45.36,
+            has_unset_rates: true,
+            unset_item_codes: ['HT-COND-ACSR-50'],
+            export_blocked_reason:
+              'DPR export is blocked because 1 required Schedule of Rates item(s) are UNSET: HT-COND-ACSR-50.',
+            economics: {
+              modality: 'HYBRID_OPTIMAL',
+              capex_inr: 4536000,
+              capex_lakhs: 45.36,
+              capital_subsidy_inr: 4082400,
+              net_utility_capex_inr: 453600,
+              annual_om_inr: 125000,
+              annual_energy_purchase_inr: 210000,
+              pv_om_inr: 838760,
+              pv_energy_purchase_inr: 1409117,
+              pv_battery_replacement_inr: 196123,
+              npc_inr: 6980000,
+              npc_lakhs: 69.8,
+              annual_delivered_energy_kwh: 167440,
+              pv_delivered_energy_kwh: 1123536,
+              lcoe_inr_kwh: 6.21,
+              annualized_cost_inr_yr: 1040222,
+              cost_per_household_inr: 37180,
+              npc_per_household_inr: 57213,
+              avoided_co2_tonnes_yr: 42.5,
+            },
+            aggregated_lines: [
+              {
+                cluster_id: null,
+                cluster_label: 'ALL',
+                item_code: 'HT-COND-ACSR-50',
+                description: '11 kV 3-Phase Overhead Line with ACSR Rabbit Conductor',
+                category: 'HT_11KV',
+                unit: 'km',
+                quantity: 1.85,
+                quantity_basis: 'Aggregated across C-001',
+                rate_inr: null,
+                rate_source_type: 'UNSET',
+                citation: 'OPTCL / Odisha DISCOM Unified Schedule of Rates',
+                is_unset: true,
+                amount_inr: 0,
+              },
+            ],
+            cluster_breakdowns: [],
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(/DPR Export Blocked — UNSET Unit Rates Detected/i),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/HT-COND-ACSR-50/i).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/₹45.36 L/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /2\. Compare 4 Scenarios/i }));
+    expect(screen.getByText(/MINIGRID_PRIORITY/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Pin as Baseline/i }));
+    await waitFor(() => {
+      expect(onPinScenario).toHaveBeenCalledWith('scen-mg');
+    });
   });
 });
