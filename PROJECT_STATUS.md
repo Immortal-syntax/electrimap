@@ -22,6 +22,7 @@
   - **Milestone M7:** Complete 24-Section DPR, Formula-Driven Excel BOQ, Cleaned GIS Package & Cryptographic Export Audit Log (**COMPLETED & VERIFIED**)
   - **Milestone M8:** System Hardening, Performance Benchmarking, WCAG 2.1 AA Accessibility, E2E User Journey & Security Fuzzing Suite, Multi-Container Docker Stack & Planner User Manual (**COMPLETED & VERIFIED**)
   - **Prompt 5 Production Readiness Audit:** 18-domain Code Review & Production Readiness Audit (`docs/PRODUCTION_READINESS_AUDIT.md`), standalone worker handler bootstrap fix (`PR-01`), production `SESSION_SECRET` fail-fast validation & HTTP/HTTPS cookie flag refinement (`PR-02`), Docker Compose `DATA_DIR` parity (`PR-03`), and 100% Apache 2.0 header & documentation synchronization (`PR-04`) (**COMPLETED & VERIFIED**)
+  - **GIS Map Rendering Audit & Repair:** Repaired blank map canvases in `MapCanvas.tsx` and `MapSpikePreview.tsx` by adding mandatory MapLibre `glyphs` PBF endpoint to all basemap styles, removing invalid `line-dasharray: [1, 0]` on solid AOI outlines, upgrading retired Sentinel-2 `s2cloudless-2016_3857` (HTTP 404) to `s2cloudless-2020_3857` (HTTP 200), adding open cartographic tiles + local survey coordinate graticule to `survey_paper`, eliminating stale closure & `isStyleLoaded()` race conditions via `syncLayersRef` + `upsertGeoJsonSource`, adding `ResizeObserver` + automatic `fitBounds`, and fixing the auth race condition in `NewProjectWizardPage.tsx` (**COMPLETED & VERIFIED**)
 - **Git Repository Status:**
   - Remote: `https://github.com/Immortal-syntax/electrimap.git`
   - Active Branch: `main`
@@ -54,7 +55,7 @@
 - **Backend Test Suite (`pytest backend/tests -v`):** **60 passed** (`0 failed`).
 - **Frontend Typecheck (`npm run typecheck`):** Passed (`0 errors`).
 - **Frontend Linting (`npm run lint`):** Passed (`0 warnings, 0 errors`).
-- **Frontend Unit Tests (`npm run test -- --run`):** **13 passed** (`QualityTag.test.tsx`, `AppRoutes.test.tsx`).
+- **Frontend Unit Tests (`npm run test -- --run`):** **14 passed** (`QualityTag.test.tsx`, `AppRoutes.test.tsx`).
 - **Frontend Production Build (`npm run build`):** Passed cleanly (`dist/` built).
 
 ---

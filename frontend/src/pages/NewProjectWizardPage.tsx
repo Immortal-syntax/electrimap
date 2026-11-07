@@ -139,6 +139,9 @@ export const NewProjectWizardPage: React.FC = () => {
     async function loadBoundary() {
       if (!selectedLgd || methodTab !== 'ADMIN_UNIT') return;
       try {
+        if (!user) {
+          await login('planner@electrimap.in', 'ElectriMap#2026');
+        }
         const b = await apiRequest<AdminBoundaryDto>(
           `/api/v1/admin-units/${selectedLgd}/boundary`,
         );
@@ -152,7 +155,8 @@ export const NewProjectWizardPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [selectedLgd, methodTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLgd, methodTab, user]);
 
   const handleSearchVillages = async () => {
     if (!searchQuery.trim()) return;

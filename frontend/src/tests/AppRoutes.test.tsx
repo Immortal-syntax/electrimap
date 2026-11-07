@@ -27,6 +27,60 @@ import { InfrastructureAndDemandPanel } from '../components/workspace/Infrastruc
 import { NetworkEngineeringPanel } from '../components/workspace/NetworkEngineeringPanel';
 import { CostAndScenarioComparisonPanel } from '../components/workspace/CostAndScenarioComparisonPanel';
 import { DprExportCenterPanel } from '../components/workspace/DprExportCenterPanel';
+import { MapCanvas } from '../components/map/MapCanvas';
+import {
+  MapSpikePreview,
+  generateSyntheticPointsGeoJson,
+} from '../components/map/MapSpikePreview';
+
+vi.mock('maplibre-gl', () => {
+  const sources = new Map<string, { setData: ReturnType<typeof vi.fn>; updateImage: ReturnType<typeof vi.fn> }>();
+  const layers = new Set<string>();
+
+  class MockMap {
+    on = vi.fn((event: string, cb: () => void) => {
+      if (event === 'load' || event === 'style.load') {
+        cb();
+      }
+    });
+    once = vi.fn((_event: string, cb: () => void) => {
+      cb();
+    });
+    off = vi.fn();
+    addControl = vi.fn();
+    resize = vi.fn();
+    remove = vi.fn();
+    getZoom = vi.fn(() => 13.4);
+    getStyle = vi.fn(() => ({ version: 8, sources: {}, layers: [] }));
+    isStyleLoaded = vi.fn(() => true);
+    setStyle = vi.fn();
+    fitBounds = vi.fn();
+    flyTo = vi.fn();
+    addSource = vi.fn((id: string) => {
+      sources.set(id, { setData: vi.fn(), updateImage: vi.fn() });
+    });
+    getSource = vi.fn((id: string) => sources.get(id));
+    removeSource = vi.fn((id: string) => {
+      sources.delete(id);
+    });
+    addLayer = vi.fn((spec: { id: string }) => {
+      layers.add(spec.id);
+    });
+    getLayer = vi.fn((id: string) => (layers.has(id) ? { id } : undefined));
+    removeLayer = vi.fn((id: string) => {
+      layers.delete(id);
+    });
+    setPaintProperty = vi.fn();
+    queryRenderedFeatures = vi.fn(() => []);
+  }
+
+  return {
+    Map: MockMap,
+    NavigationControl: vi.fn(),
+    ScaleControl: vi.fn(),
+    AttributionControl: vi.fn(),
+  };
+});
 
 describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
   it('renders LoginPage with Survey Sheet header and default planner credentials button', () => {
@@ -865,5 +919,53 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     const mainLandmark = screen.getByRole('main', { name: /Main engineering workbench/i });
     expect(mainLandmark).toHaveAttribute('id', 'main-content');
     expect(mainLandmark).toHaveAttribute('tabIndex', '-1');
+  });
+
+  it('renders MapCanvas and MapSpikePreview with basemap switching, Fit AOI button, symbology legend, and 50k stress test', () => {
+    const pts = generateSyntheticPointsGeoJson(100);
+    expect(pts.features).toHaveLength(100);
+
+    render(
+      <div>
+        <MapSpikePreview />
+        <MapCanvas
+          aoiGeometry={{
+            type: 'Polygon',
+            coordinates: [
+              [
+                [82.66, 18.55],
+                [82.7, 18.55],
+                [82.7, 18.59],
+                [82.66, 18.59],
+                [82.66, 18.55],
+              ],
+            ],
+          }}
+          boundarySource="HARMONISED"
+          drawModeActive={true}
+        />
+      </div>,
+    );
+
+    expect(
+      screen.getByLabelText('Koraput Electrification Assessment Map'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('ElectriMap Interactive GIS Map Canvas'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Fit AOI/i })).toBeInTheDocument();
+    expect(screen.getByText(/Likely Electrified \(Proxy\)/i)).toBeInTheDocument();
+
+    const satButtons = screen.getAllByRole('button', { name: /Sentinel-2 Satellite/i });
+    fireEvent.click(satButtons[0]!);
+    fireEvent.click(satButtons[1]!);
+
+    const stressBtn = screen.getByRole('button', {
+      name: /Run 50k Footprint Stress Test/i,
+    });
+    fireEvent.click(stressBtn);
+    expect(
+      screen.getByRole('button', { name: /Clear 50k Points/i }),
+    ).toBeInTheDocument();
   });
 });
