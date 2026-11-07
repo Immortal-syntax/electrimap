@@ -34,6 +34,13 @@ This file tracks active engineering bottlenecks, data caveats, performance limit
   - Upgraded `maplibre-gl` from `4.7.1` to `6.16.0` to eliminate the critical CVSS 10.0 XSS advisory (`GHSA-jrc7-96c5-q579`).
   - ElectriMap DPR is a pure client-side SPA with static route paths, avoiding SSR hydration vulnerabilities in `react-router`. Vitest is used strictly as a local/CI CLI test runner without public UI server exposure.
 
+### KI-08: Antigravity IDE Missing Native Python Environment Tools (PET) Binary
+- **Severity:** High (Developer UX & IDE Environment Tooling)
+- **Status:** Resolved (2026-11-07)
+- **Impact:** Persistent yellow "Select Python Interpreter" warning in status bar. Python Environment Tools (`pet.exe`) failed to spawn (`ENOENT`), causing `ms-python.vscode-python-envs` to fail 3 restart attempts and leave the workspace interpreter unselected.
+- **Root Cause:** Extension gallery packaged `ms-python.vscode-python-envs-1.20.1-universal` and `ms-python.python-2026.4.0-universal` without platform-specific Windows binaries (`python-env-tools\bin\pet.exe`). Stale workspace state in `state.vscdb` additionally pointed to root `.venv` instead of `backend\.venv`.
+- **Resolution:** Placed Windows x64 `pet.exe` (v0.1.0) into `python-env-tools\bin\` for both extensions, updated workspace state in `state.vscdb` to authorize `backend\.venv\Scripts\python.exe`, and verified interpreter resolution via JSON-RPC.
+
 ---
 
 ## 2. Geospatial & Data Limitations

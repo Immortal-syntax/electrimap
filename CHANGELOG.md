@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased] - 2026-11-06
 
 ### Fixed
+- **Antigravity IDE Python Environments & PET Subsystem Resolution:**
+  - Diagnosed persistent yellow "Select Python Interpreter" status bar warning as an extension locator failure in `ms-python.vscode-python-envs` caused by missing native `python-env-tools\bin\pet.exe` binary in universal extension packages.
+  - Deployed native Windows x64 `pet.exe` (v0.1.0) into `ms-python.vscode-python-envs-1.20.1-universal` and `ms-python.python-2026.4.0-universal`, resolving `ENOENT` spawn errors.
+  - Cleared stale workspace interpreter pointers to root `.venv` in `state.vscdb` and updated authoritative interpreter to `backend\.venv\Scripts\python.exe`.
 - **IDE Language Server & Static Type Diagnostics (Resolved 23 Problems Panel Findings):**
   - Configured workspace settings (`.vscode/settings.json`, `.vscode/extensions.json`, `pyrightconfig.json`) resolving missing interpreter and `backend` module import resolution errors across spike scripts.
   - Resolved `BaseGeometry.geoms` attribute error in `backend/app/domain/gis/boundary.py` via safe collection attribute inspection (`getattr`).
