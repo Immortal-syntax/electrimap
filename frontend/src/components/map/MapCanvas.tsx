@@ -79,17 +79,13 @@ function buildBasemapStyle(mode: BasemapMode): StyleSpecification {
       version: 8,
       glyphs: GLYPHS_URL,
       sources: {
-        'carto-voyager': {
+        'osm-standard': {
           type: 'raster',
-          tiles: [
-            'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-            'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-            'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-          ],
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
           tileSize: 256,
           maxzoom: 19,
           attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL)',
         },
       },
       layers: [
@@ -101,7 +97,7 @@ function buildBasemapStyle(mode: BasemapMode): StyleSpecification {
         {
           id: 'streets-tiles',
           type: 'raster',
-          source: 'carto-voyager',
+          source: 'osm-standard',
           minzoom: 0,
           maxzoom: 22,
         },
@@ -146,17 +142,13 @@ function buildBasemapStyle(mode: BasemapMode): StyleSpecification {
     version: 8,
     glyphs: GLYPHS_URL,
     sources: {
-      'carto-positron': {
+      'osm-survey': {
         type: 'raster',
-        tiles: [
-          'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-          'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-          'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-        ],
+        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
         tileSize: 256,
         maxzoom: 19,
         attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL)',
       },
     },
     layers: [
@@ -168,13 +160,13 @@ function buildBasemapStyle(mode: BasemapMode): StyleSpecification {
       {
         id: 'survey-paper-tiles',
         type: 'raster',
-        source: 'carto-positron',
+        source: 'osm-survey',
         minzoom: 0,
         maxzoom: 22,
         paint: {
-          'raster-opacity': 0.85,
-          'raster-saturation': -0.35,
-          'raster-contrast': 0.05,
+          'raster-opacity': 0.72,
+          'raster-saturation': -0.65,
+          'raster-brightness-min': 0.12,
         },
       },
     ],
