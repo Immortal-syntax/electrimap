@@ -206,9 +206,7 @@ def run_project_gap_analysis(
     projected_assets: list[tuple[InfraAssetInput, BaseGeometry]] = []
     for asset in infra_assets:
         if asset.geom_wgs84 is not None and not asset.geom_wgs84.is_empty:
-            utm_geom = project_geometry(
-                asset.geom_wgs84, source_epsg=4326, target_epsg=metric_epsg
-            )
+            utm_geom = project_geometry(asset.geom_wgs84, source_epsg=4326, target_epsg=metric_epsg)
             projected_assets.append((asset, utm_geom))
 
     projected_waterways: list[BaseGeometry] = []
@@ -228,13 +226,10 @@ def run_project_gap_analysis(
     aug_cnt = 0
 
     for cl in clusters:
-        c_utm = project_geometry(
-            cl.centroid_wgs84, source_epsg=4326, target_epsg=metric_epsg
-        )
+        c_utm = project_geometry(cl.centroid_wgs84, source_epsg=4326, target_epsg=metric_epsg)
         eff_class = (
             cl.verified_class
-            if cl.verification_state in {"FIELD_VERIFIED", "UTILITY_VERIFIED"}
-            and cl.verified_class
+            if cl.verification_state in {"FIELD_VERIFIED", "UTILITY_VERIFIED"} and cl.verified_class
             else cl.proxy_class
         )
 
@@ -281,9 +276,7 @@ def run_project_gap_analysis(
             straight_vals.append(straight_val)
             terrain_vals.append(terrain_val)
 
-            reproj_line = project_geometry(
-                corridor_utm, source_epsg=metric_epsg, target_epsg=4326
-            )
+            reproj_line = project_geometry(corridor_utm, source_epsg=metric_epsg, target_epsg=4326)
             if isinstance(reproj_line, LineString):
                 corridor_wgs84 = reproj_line
         else:

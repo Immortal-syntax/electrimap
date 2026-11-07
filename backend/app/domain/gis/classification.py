@@ -139,8 +139,7 @@ def classify_habitation_clusters(
     road_union_utm: BaseGeometry | None = None
     if road_geoms_wgs84:
         utm_roads = [
-            project_geometry(g, source_epsg=4326, target_epsg=metric_epsg)
-            for g in road_geoms_wgs84
+            project_geometry(g, source_epsg=4326, target_epsg=metric_epsg) for g in road_geoms_wgs84
         ]
         road_union_utm = unary_union(utm_roads)
 
@@ -155,8 +154,7 @@ def classify_habitation_clusters(
     dt_union_utm: BaseGeometry | None = None
     if dt_geoms_wgs84:
         utm_dts = [
-            project_geometry(g, source_epsg=4326, target_epsg=metric_epsg)
-            for g in dt_geoms_wgs84
+            project_geometry(g, source_epsg=4326, target_epsg=metric_epsg) for g in dt_geoms_wgs84
         ]
         dt_union_utm = unary_union(utm_dts)
 
@@ -169,8 +167,8 @@ def classify_habitation_clusters(
         c_utm_pt = Point(float(c_utm.centroid.x), float(c_utm.centroid.y))
         cluster_utm_centroids.append(c_utm_pt)
 
-        slope_mean, slope_max, canopy_share, mean_rad, nl_score = (
-            _sample_raster_stats_for_cluster(c.geom, aoi_bbox, grids)
+        slope_mean, slope_max, canopy_share, mean_rad, nl_score = _sample_raster_stats_for_cluster(
+            c.geom, aoi_bbox, grids
         )
         d_road_m = (
             round(float(c_utm_pt.distance(road_union_utm)), 1)
@@ -183,9 +181,7 @@ def classify_habitation_clusters(
             else None
         )
         d_dt_m = (
-            round(float(c_utm_pt.distance(dt_union_utm)), 1)
-            if dt_union_utm is not None
-            else None
+            round(float(c_utm_pt.distance(dt_union_utm)), 1) if dt_union_utm is not None else None
         )
 
         is_likely_elec = (
@@ -244,9 +240,7 @@ def classify_habitation_clusters(
             )
         elif st["is_likely_elec"]:
             proxy_class = "LIKELY_ELECTRIFIED"
-            proxy_confidence = (
-                "MEDIUM" if (d_road_m is not None and d_road_m <= 500.0) else "LOW"
-            )
+            proxy_confidence = "MEDIUM" if (d_road_m is not None and d_road_m <= 500.0) else "LOW"
             reasons.append(
                 f"Nightlight LightScore={nl_score:.2f} (>= {cfg.nl_electrified_min:.2f}) "
                 "indicates sustained nocturnal radiance."
@@ -347,9 +341,7 @@ def reconcile_census_households(
         )
 
     years_elapsed = max(0, base_year - 2011)
-    projected_hh = round(
-        census_2011_households * ((1.0 + annual_growth_rate) ** years_elapsed)
-    )
+    projected_hh = round(census_2011_households * ((1.0 + annual_growth_rate) ** years_elapsed))
     delta_hh = satellite_estimated_households - projected_hh
     delta_pct = round((delta_hh / max(projected_hh, 1)) * 100.0, 1)
     exceeds_30 = abs(delta_pct) > 30.0

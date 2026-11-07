@@ -93,9 +93,7 @@ def reproject_arbitrary_crs_to_wgs84(geom: BaseGeometry, source_crs: str) -> Bas
     if epsg_code == WGS84_EPSG:
         return geom
 
-    transformer = pyproj.Transformer.from_crs(
-        crs_obj, f"EPSG:{WGS84_EPSG}", always_xy=True
-    )
+    transformer = pyproj.Transformer.from_crs(crs_obj, f"EPSG:{WGS84_EPSG}", always_xy=True)
 
     def _reproject_coords(coords: np.ndarray) -> np.ndarray:
         return np.column_stack(transformer.transform(coords[:, 0], coords[:, 1]))

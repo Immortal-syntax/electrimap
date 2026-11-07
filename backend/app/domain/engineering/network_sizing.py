@@ -110,9 +110,7 @@ def _extract_metric_building_points(
     for idx in range(n_nodes):
         angle = (2.0 * math.pi * idx) / n_nodes
         radius_m = 45.0 + 35.0 * (idx % 3)
-        pts_synth.append(
-            (cx + radius_m * math.cos(angle), cy + radius_m * math.sin(angle))
-        )
+        pts_synth.append((cx + radius_m * math.cos(angle), cy + radius_m * math.sin(angle)))
     return pts_synth
 
 
@@ -221,9 +219,7 @@ def route_cluster_11kv_ht_feeder(
             ht_line_wgs84=None,
         )
 
-    tie_pt_m = project_geometry(
-        Point(tie_in_wgs84[0], tie_in_wgs84[1]), WGS84_EPSG, metric_epsg
-    )
+    tie_pt_m = project_geometry(Point(tie_in_wgs84[0], tie_in_wgs84[1]), WGS84_EPSG, metric_epsg)
     assert isinstance(tie_pt_m, Point)
     tx_m, ty_m = float(tie_pt_m.x), float(tie_pt_m.y)
     primary_dt = placed_dts[0]
@@ -298,15 +294,11 @@ def route_cluster_11kv_ht_feeder(
 
     lines_m: list[LineString] = [main_line_m]
     for sec_dt in placed_dts[1:]:
-        inter_line = LineString(
-            [(primary_dt.x_m, primary_dt.y_m), (sec_dt.x_m, sec_dt.y_m)]
-        )
+        inter_line = LineString([(primary_dt.x_m, primary_dt.y_m), (sec_dt.x_m, sec_dt.y_m)])
         if inter_line.length > 1.0:
             lines_m.append(inter_line)
 
-    geom_m: BaseGeometry = (
-        lines_m[0] if len(lines_m) == 1 else MultiLineString(lines_m)
-    )
+    geom_m: BaseGeometry = lines_m[0] if len(lines_m) == 1 else MultiLineString(lines_m)
     total_ht_length_m = round(float(geom_m.length), 1)
     geom_wgs84 = project_geometry(geom_m, metric_epsg, WGS84_EPSG)
     ht_line_out: LineString | MultiLineString | None = (
@@ -380,9 +372,7 @@ def build_cluster_415v_lt_mst(
     service_nodes_m = _cluster_service_poles(raw_pts_m, merge_radius_m=28.0)
 
     # Partition service nodes to their nearest placed DT
-    dt_buckets: dict[int, list[tuple[float, float]]] = {
-        idx: [] for idx in range(len(placed_dts))
-    }
+    dt_buckets: dict[int, list[tuple[float, float]]] = {idx: [] for idx in range(len(placed_dts))}
     for sx, sy in service_nodes_m:
         best_dt_idx = min(
             range(len(placed_dts)),
@@ -429,9 +419,7 @@ def build_cluster_415v_lt_mst(
             curr_u, dist_so_far = queue.popleft()
             if dist_so_far > max_branch_m:
                 max_branch_m = dist_so_far
-            neighbors = [
-                (nbr, edge_w) for nbr, edge_w in adj[curr_u] if nbr not in visited
-            ]
+            neighbors = [(nbr, edge_w) for nbr, edge_w in adj[curr_u] if nbr not in visited]
             for nbr, edge_w in neighbors:
                 visited.add(nbr)
                 next_dist = dist_so_far + edge_w
@@ -478,4 +466,3 @@ def build_dt_multipoint_wgs84(
     if not placed_dts:
         return None
     return MultiPoint([Point(dt.lon, dt.lat) for dt in placed_dts])
-

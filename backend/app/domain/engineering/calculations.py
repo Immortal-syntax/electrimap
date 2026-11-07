@@ -240,13 +240,9 @@ def compute_annual_technical_losses(
     for dt in placed_dts:
         loading_ratio = dt.allocated_peak_kva / max(1.0, dt.rating_kva)
         dt_iron_kwh_yr += (dt.spec.no_load_loss_w / 1000.0) * 8760.0
-        dt_copper_kwh_yr += (
-            (dt.spec.full_load_loss_w / 1000.0) * (loading_ratio**2) * llf * 8760.0
-        )
+        dt_copper_kwh_yr += (dt.spec.full_load_loss_w / 1000.0) * (loading_ratio**2) * llf * 8760.0
 
-    total_loss_kwh_yr = (
-        ht_loss_kwh_yr + lt_loss_kwh_yr + dt_iron_kwh_yr + dt_copper_kwh_yr
-    )
+    total_loss_kwh_yr = ht_loss_kwh_yr + lt_loss_kwh_yr + dt_iron_kwh_yr + dt_copper_kwh_yr
     total_loss_mwh_yr = total_loss_kwh_yr / 1000.0
     delivered_mwh_yr = max(0.001, annual_energy_mwh_horizon)
     loss_pct = (total_loss_mwh_yr / (delivered_mwh_yr + total_loss_mwh_yr)) * 100.0
