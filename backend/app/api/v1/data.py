@@ -98,12 +98,17 @@ def get_project_layers(
 def get_layer_raster_image(
     project_id: str,
     layer_key: str,
+    period: str = "2024_ANNUAL",
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     """Render colorized PNG overlay (`dem_slope`, `landcover`, `nightlights`)."""
     png_bytes, bbox = get_layer_raster_png_and_bounds(
-        db, project_id=project_id, layer_key=layer_key, user=user
+        db,
+        project_id=project_id,
+        layer_key=layer_key,
+        user=user,
+        observation_period=period,
     )
     bbox_str = ",".join(str(x) for x in bbox)
     return Response(

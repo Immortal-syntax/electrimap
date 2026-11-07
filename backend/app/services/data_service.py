@@ -783,6 +783,7 @@ def get_layer_raster_png_and_bounds(
     project_id: str,
     layer_key: str,
     user: User,
+    observation_period: str = "2024_ANNUAL",
 ) -> tuple[bytes, list[float]]:
     """Return colorized PNG bytes and [min_lon, min_lat, max_lon, max_lat] for a raster layer."""
     proj = get_owned_project_or_404(db, project_id, user)
@@ -807,7 +808,11 @@ def get_layer_raster_png_and_bounds(
             ),
             status_code=422,
         )
-    png_bytes = render_raster_layer_png(layer_key, (min_lon, min_lat, max_lon, max_lat))
+    png_bytes = render_raster_layer_png(
+        layer_key,
+        (min_lon, min_lat, max_lon, max_lat),
+        observation_period=observation_period,
+    )
     return png_bytes, [min_lon, min_lat, max_lon, max_lat]
 
 

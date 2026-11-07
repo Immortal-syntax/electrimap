@@ -146,6 +146,7 @@ def compute_layer_summaries(
 def render_raster_layer_png(
     layer_key: str,
     bbox: tuple[float, float, float, float],
+    observation_period: str = "2024_ANNUAL",
 ) -> bytes:
     """Render a colorized raster overlay PNG for MapLibre `image` source."""
     grids = generate_aoi_grids(bbox, rows=160, cols=160)
@@ -177,7 +178,18 @@ def render_raster_layer_png(
             rgba[wc == code] = col
         ax.imshow(rgba)
     elif layer_key == "nightlights":
-        ax.imshow(grids["radiance"], cmap="viridis", vmin=0.0, vmax=2.4, alpha=0.78)
+        period_scale = {
+            "2024_ANNUAL": 1.00,
+            "2023_POST_MONSOON": 1.08,
+            "2022_ANNUAL": 0.88,
+            "2020_BASELINE": 0.72,
+        }.get(observation_period, 1.00)
+        rad = grids["radiance"] * period_scale
+        viirs_cmap = LinearSegmentedColormap.from_list(
+            "viirs_black_marble",
+            ["#070913", "#1E1B4B", "#6D28D9", "#D97706", "#FDE047", "#FFFFFF"],
+        )
+        ax.imshow(rad, cmap=viirs_cmap, vmin=0.0, vmax=2.5, alpha=0.84)
     else:
         plt.close(fig)
         raise ValueError(f"Unsupported raster preview layer_key: '{layer_key}'")

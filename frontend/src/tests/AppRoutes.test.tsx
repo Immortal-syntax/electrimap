@@ -71,6 +71,7 @@ vi.mock('maplibre-gl', () => {
       layers.delete(id);
     });
     setPaintProperty = vi.fn();
+    setLayoutProperty = vi.fn();
     queryRenderedFeatures = vi.fn(() => []);
   }
 
@@ -956,9 +957,33 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     expect(screen.getByRole('button', { name: /Fit AOI/i })).toBeInTheDocument();
     expect(screen.getByText(/Likely Electrified \(Proxy\)/i)).toBeInTheDocument();
 
+    // Verify all 4 free basemaps (including Terrain Topo and Sentinel-2 Satellite)
+    const topoButtons = screen.getAllByRole('button', { name: /Terrain \(Topo\)/i });
+    fireEvent.click(topoButtons[0]!);
     const satButtons = screen.getAllByRole('button', { name: /Sentinel-2 Satellite/i });
     fireEvent.click(satButtons[0]!);
     fireEvent.click(satButtons[1]!);
+
+    // Verify Beginner Guide toggle
+    const guideBtns = screen.getAllByRole('button', { name: /\? Beginner Guide/i });
+    fireEvent.click(guideBtns[0]!);
+    expect(
+      screen.getByText(/Understanding the Specialised Electricity GIS Layers/i),
+    ).toBeInTheDocument();
+
+    // Verify Measure Tool toggle
+    const measureBtn = screen.getByRole('button', { name: /Measure Span \/ Area/i });
+    fireEvent.click(measureBtn);
+    expect(screen.getByText(/Measurement Active:/i)).toBeInTheDocument();
+
+    // Verify Village & Substation Search
+    const searchInput = screen.getByLabelText(
+      /Search villages, substations, or habitations/i,
+    );
+    fireEvent.change(searchInput, { target: { value: 'Nandapur' } });
+    expect(
+      screen.getByText(/33\/11 kV Nandapur Primary Distribution Substation/i),
+    ).toBeInTheDocument();
 
     const stressBtn = screen.getByRole('button', {
       name: /Run 50k Footprint Stress Test/i,
