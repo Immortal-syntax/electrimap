@@ -14,9 +14,11 @@
 
 """Vector tile (`ST_AsMVT` / binary tile) endpoint with project ownership verification."""
 
+import hashlib
 import json
+import time
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -38,16 +40,29 @@ def get_vector_tile(
     z: int,
     x: int,
     y: int,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Serve Mapbox Vector Tile (.mvt) for project buildings, osm_features, or clusters."""
+    """Serve Mapbox Vector Tile (.mvt) with ETag caching and render latency headers."""
+    t0 = time.perf_counter()
     proj = get_owned_project_or_404(db, project_id, user)
     if layer not in {"buildings", "osm_features", "clusters"}:
         raise AppError(
             code="UNKNOWN_TILE_LAYER",
             message=f"Unsupported tile layer '{layer}'.",
             status_code=404,
+        )
+
+    etag_seed = f"{proj.id}:v{proj.version}:{layer}:{z}:{x}:{y}".encode()
+    etag_val = f'"{hashlib.sha256(etag_seed).hexdigest()[:24]}"'
+    if request.headers.get("if-none-match") == etag_val:
+        return Response(
+            status_code=304,
+            headers={
+                "ETag": etag_val,
+                "Cache-Control": "private, max-age=120",
+            },
         )
 
     dialect_name = db.bind.dialect.name if db.bind is not None else "sqlite"
@@ -85,9 +100,15 @@ def get_vector_tile(
             ).scalar_one_or_none()
             or b""
         )
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
         return Response(
             content=bytes(mvt_bytes),
             media_type="application/vnd.mapbox-vector-tile",
+            headers={
+                "ETag": etag_val,
+                "Cache-Control": "private, max-age=120",
+                "X-Tile-Render-Ms": f"{elapsed_ms:.2f}",
+            },
         )
 
     # On local SQLite fallback, serialize compact tile payload with ownership verified
@@ -101,7 +122,13 @@ def get_vector_tile(
     payload_bytes = json.dumps(
         {"tile": [z, x, y], "layer": layer, "feature_count": len(fc["features"])}
     ).encode("utf-8")
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
     return Response(
         content=payload_bytes,
         media_type="application/vnd.mapbox-vector-tile",
+        headers={
+            "ETag": etag_val,
+            "Cache-Control": "private, max-age=120",
+            "X-Tile-Render-Ms": f"{elapsed_ms:.2f}",
+        },
     )

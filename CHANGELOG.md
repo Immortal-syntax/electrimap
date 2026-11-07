@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased] - 2026-11-07
 
 ### Added
+- **Milestone M8 — System Hardening, Performance Benchmarking, Accessibility, E2E & Security Fuzzing, Docker Stack & User Manual (`M8-1` to `M8-6`):**
+  - Vector tile SHA-256 `ETag` (`304 Not Modified`), `Cache-Control`, and `X-Tile-Render-Ms` telemetry in `backend/app/api/v1/tiles.py`, plus live performance & readiness benchmark endpoint (`GET /api/v1/system/benchmark`) in `backend/app/api/v1/diagnostics.py`.
+  - HTTP Security Headers middleware (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy`) in `backend/app/main.py`.
+  - WCAG 2.1 AA accessibility & keyboard navigation upgrades in `frontend/src/components/layout/AppShell.tsx` and `frontend/src/pages/WorkspacePage.tsx` (`Skip to main content`, `aria-current="page"`, keyboard-navigable 7-Step `Workflow Steps` rail with `aria-current="step"` and `aria-live="polite"` status announcer).
+  - End-to-end user journey and security penetration/fuzzing integration test suite (`backend/tests/integration/test_m8_e2e_complete_journey_and_security.py`).
+  - Multi-container production & offline evaluation Docker stack (`backend/Dockerfile`, `frontend/Dockerfile`, `frontend/nginx.conf`, and full 4-service `docker-compose.yml` with `OFFLINE_MODE=true`).
+  - Comprehensive Planner & Evaluator User Manual (`docs/USER_MANUAL.md`).
 - **Milestone M7 — Complete 24-Section DPR, Excel BOQ & Cleaned GIS Exports (`M7-1` to `M7-6`):**
   - Pure domain pre-flight engineering & data integrity audit (`backend/app/domain/reporting/preflight.py`) with canonical 24-section catalog (`DPR_24_SECTIONS`), Hard Blocker vs. Soft Warning evaluation (`evaluate_dpr_preflight`), and deterministic SHA-256 snapshot and file hashing (`compute_snapshot_sha256`, `compute_file_sha256`).
   - Complete 24-section PDF DPR compilation engine (`backend/app/services/settlement_pdf_service.py`) rendering Sections 1–24 in sequential order, explicit `"No data available — reason: ..."` disclosures (`FR-10.4`), and dynamic `"PRELIMINARY ENGINEERING — NOT FIELD VERIFIED"` diagonal watermarks (`FR-10.3`).

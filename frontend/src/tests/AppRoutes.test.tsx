@@ -18,6 +18,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { LoginPage } from '../pages/LoginPage';
+import { AppShell } from '../components/layout/AppShell';
 import { ProvenanceChip } from '../components/ui/ProvenanceChip';
 import { JobProgress } from '../components/ui/JobProgress';
 import { DataManagementPanel } from '../components/workspace/DataManagementPanel';
@@ -844,5 +845,25 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     expect(
       screen.getByText(/electrimap_dpr_24sec_00000000_hybrid_optimal\.pdf/i),
     ).toBeInTheDocument();
+  });
+
+  it('renders AppShell with WCAG 2.1 AA skip-to-main-content link, aria-current page state, and main landmark', () => {
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <AppShell>
+          <div>Workbench Inner Content</div>
+        </AppShell>
+      </MemoryRouter>,
+    );
+
+    const skipLink = screen.getByRole('link', { name: /Skip to main content/i });
+    expect(skipLink).toHaveAttribute('href', '#main-content');
+
+    const portfolioLink = screen.getByRole('link', { name: /Projects Portfolio/i });
+    expect(portfolioLink).toHaveAttribute('aria-current', 'page');
+
+    const mainLandmark = screen.getByRole('main', { name: /Main engineering workbench/i });
+    expect(mainLandmark).toHaveAttribute('id', 'main-content');
+    expect(mainLandmark).toHaveAttribute('tabIndex', '-1');
   });
 });

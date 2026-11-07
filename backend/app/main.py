@@ -14,11 +14,11 @@
 
 """FastAPI application entry point for ElectriMap DPR."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,7 @@ from app.api.v1 import (
     auth,
     costing,
     data,
+    diagnostics,
     infrastructure,
     jobs,
     planning,
@@ -81,6 +82,35 @@ app.add_middleware(
 )
 
 register_exception_handlers(app)
+
+
+@app.middleware("http")
+async def add_security_headers(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Attach hardened HTTP security headers to every API response (Task M8-4)."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "geolocation=(), microphone=(), camera=()",
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        (
+            "default-src 'self'; "
+            "img-src 'self' data: blob: https://*.openstreetmap.org https://*.maps.eox.at; "
+            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "
+            "connect-src 'self' https://*.openstreetmap.org https://*.maps.eox.at"
+        ),
+    )
+    return response
+
+
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(admin_units.router)
@@ -96,6 +126,7 @@ app.include_router(reports.router)
 app.include_router(jobs.router)
 app.include_router(tiles.router)
 app.include_router(spikes.router)
+app.include_router(diagnostics.router)
 
 
 @app.get("/api/v1/health", tags=["System"])

@@ -65,13 +65,28 @@ interface ReferenceGeoJsonPayload {
 }
 
 const WORKFLOW_STEPS = [
-  { key: 'data', label: '1. Data & AOI', state: 'READY' },
-  { key: 'settlements', label: '2. Settlements', state: 'READY' },
-  { key: 'infrastructure', label: '3. Infrastructure', state: 'READY' },
-  { key: 'planning', label: '4. Planning', state: 'READY' },
-  { key: 'engineering', label: '5. Engineering', state: 'READY' },
-  { key: 'cost', label: '6. Cost & BOQ', state: 'ACTIVE' },
-  { key: 'compare', label: '7. Compare & DPR', state: 'ACTIVE' },
+  { key: 'data', label: '1. Data & AOI', state: 'READY', targetId: 'step-section-data' },
+  {
+    key: 'settlements',
+    label: '2. Settlements',
+    state: 'READY',
+    targetId: 'step-section-settlements',
+  },
+  {
+    key: 'infrastructure',
+    label: '3. Infrastructure',
+    state: 'READY',
+    targetId: 'step-section-infrastructure',
+  },
+  { key: 'planning', label: '4. Planning', state: 'READY', targetId: 'step-section-engineering' },
+  {
+    key: 'engineering',
+    label: '5. Engineering',
+    state: 'READY',
+    targetId: 'step-section-engineering',
+  },
+  { key: 'cost', label: '6. Cost & BOQ', state: 'READY', targetId: 'step-section-cost' },
+  { key: 'compare', label: '7. Compare & DPR', state: 'ACTIVE', targetId: 'step-section-dpr' },
 ];
 
 export const WorkspacePage: React.FC = () => {
@@ -108,6 +123,7 @@ export const WorkspacePage: React.FC = () => {
   const [activeRasterOverlay, setActiveRasterOverlay] = useState<RasterOverlayKey>('none');
   const [rasterOpacity, setRasterOpacity] = useState<number>(0.65);
 
+  const [activeStepKey, setActiveStepKey] = useState<string>('compare');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -331,19 +347,36 @@ export const WorkspacePage: React.FC = () => {
           <div className="small-caps-heading px-2 py-1 border-b border-rule mb-1">
             Workflow Steps
           </div>
-          {WORKFLOW_STEPS.map((step) => (
-            <div
-              key={step.key}
-              className={`px-2.5 py-2 rounded-xs text-xs font-medium flex items-center justify-between ${
-                step.state === 'ACTIVE'
-                  ? 'bg-accent-tint text-accent border border-accent/40'
-                  : 'text-ink-2'
-              }`}
-            >
-              <span>{step.label}</span>
-              <span className="font-mono text-[10px]">{step.state}</span>
-            </div>
-          ))}
+          <nav aria-label="7-Step Engineering Workflow Navigation" className="space-y-1">
+            {WORKFLOW_STEPS.map((step) => {
+              const isCurrent = activeStepKey === step.key;
+              return (
+                <button
+                  key={step.key}
+                  type="button"
+                  aria-current={isCurrent ? 'step' : undefined}
+                  onClick={() => {
+                    setActiveStepKey(step.key);
+                    const el = document.getElementById(step.targetId);
+                    if (el && typeof el.scrollIntoView === 'function') {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }}
+                  className={`w-full text-left px-2.5 py-2 rounded-xs text-xs font-medium flex items-center justify-between transition-colors focus:outline-none focus:ring-2 focus:ring-accent ${
+                    isCurrent
+                      ? 'bg-accent-tint text-accent border border-accent/40'
+                      : 'text-ink-2 hover:bg-paper'
+                  }`}
+                >
+                  <span>{step.label}</span>
+                  <span className="font-mono text-[10px]">{isCurrent ? 'ACTIVE' : step.state}</span>
+                </button>
+              );
+            })}
+          </nav>
+          <div className="sr-only" aria-live="polite">
+            Active workflow step: {activeStepKey}
+          </div>
         </aside>
 
         {/* Center MapCanvas */}
@@ -452,107 +485,119 @@ export const WorkspacePage: React.FC = () => {
       </div>
 
       {/* Milestone M7: Complete 24-Section DPR Pre-Flight Audit & Export Center */}
-      <DprExportCenterPanel
-        projectId={project.id}
-        preflight={preflightState}
-        exportLog={exportLogState}
-        onRefreshAuditAndLogs={() => fetchScenariosAndConstants(project.id)}
-      />
+      <div id="step-section-dpr">
+        <DprExportCenterPanel
+          projectId={project.id}
+          preflight={preflightState}
+          exportLog={exportLogState}
+          onRefreshAuditAndLogs={() => fetchScenariosAndConstants(project.id)}
+        />
+      </div>
 
       {/* Milestone M6: Traceable Cost Estimation, BOQ & Scenario Comparison */}
-      <CostAndScenarioComparisonPanel
-        projectId={project.id}
-        rates={ratesState}
-        comparison={comparisonState}
-        onUpdateRateItem={async (itemCode, rateInr, citation) => {
-          await apiRequest<ProjectRateListDto>(
-            `/api/v1/projects/${project.id}/rates/${itemCode}`,
-            {
-              method: 'PATCH',
-              body: JSON.stringify({ rate_inr: rateInr, citation }),
-            },
-          );
-          await fetchScenariosAndConstants(project.id);
-        }}
-        onResetRates={async () => {
-          await apiRequest<ProjectRateListDto>(
-            `/api/v1/projects/${project.id}/rates/reset`,
-            { method: 'POST' },
-          );
-          await fetchScenariosAndConstants(project.id);
-        }}
-        onImportRatesCsv={async (csvContent, templateName) => {
-          const res = await apiRequest<SorCsvImportResponseDto>(
-            `/api/v1/projects/${project.id}/rates/import-csv`,
-            {
-              method: 'POST',
-              body: JSON.stringify({
-                csv_content: csvContent,
-                template_name: templateName,
-              }),
-            },
-          );
-          if (res.is_valid) {
+      <div id="step-section-cost">
+        <CostAndScenarioComparisonPanel
+          projectId={project.id}
+          rates={ratesState}
+          comparison={comparisonState}
+          onUpdateRateItem={async (itemCode, rateInr, citation) => {
+            await apiRequest<ProjectRateListDto>(
+              `/api/v1/projects/${project.id}/rates/${itemCode}`,
+              {
+                method: 'PATCH',
+                body: JSON.stringify({ rate_inr: rateInr, citation }),
+              },
+            );
             await fetchScenariosAndConstants(project.id);
-          }
-          return res;
-        }}
-        onPinScenario={async (scenarioId) => {
-          await apiRequest<ProjectScenarioComparisonDto>(
-            `/api/v1/projects/${project.id}/scenarios/${scenarioId}/pin`,
-            { method: 'POST' },
-          );
-          await fetchScenariosAndConstants(project.id);
-        }}
-      />
+          }}
+          onResetRates={async () => {
+            await apiRequest<ProjectRateListDto>(
+              `/api/v1/projects/${project.id}/rates/reset`,
+              { method: 'POST' },
+            );
+            await fetchScenariosAndConstants(project.id);
+          }}
+          onImportRatesCsv={async (csvContent, templateName) => {
+            const res = await apiRequest<SorCsvImportResponseDto>(
+              `/api/v1/projects/${project.id}/rates/import-csv`,
+              {
+                method: 'POST',
+                body: JSON.stringify({
+                  csv_content: csvContent,
+                  template_name: templateName,
+                }),
+              },
+            );
+            if (res.is_valid) {
+              await fetchScenariosAndConstants(project.id);
+            }
+            return res;
+          }}
+          onPinScenario={async (scenarioId) => {
+            await apiRequest<ProjectScenarioComparisonDto>(
+              `/api/v1/projects/${project.id}/scenarios/${scenarioId}/pin`,
+              { method: 'POST' },
+            );
+            await fetchScenariosAndConstants(project.id);
+          }}
+        />
+      </div>
 
       {/* Milestone M5: Network Layout Routing, Voltage Drop, Technical Losses & Off-Grid Sizing */}
-      <NetworkEngineeringPanel
-        projectId={project.id}
-        scenariosState={scenariosState}
-        constants={engineeringConstants}
-        onScenariosUpdated={() => fetchScenariosAndConstants(project.id)}
-      />
+      <div id="step-section-engineering">
+        <NetworkEngineeringPanel
+          projectId={project.id}
+          scenariosState={scenariosState}
+          constants={engineeringConstants}
+          onScenariosUpdated={() => fetchScenariosAndConstants(project.id)}
+        />
+      </div>
 
       {/* Milestone M4: Infrastructure Gap Analysis, Assumptions Register & 7-Category Demand Engine */}
-      <InfrastructureAndDemandPanel
-        projectId={project.id}
-        infrastructure={infrastructure}
-        gapAnalysis={gapAnalysis}
-        settings={settings}
-        demand={demand}
-        placeTieInModeActive={placeTieInModeActive}
-        onTogglePlaceTieInMode={() => setPlaceTieInModeActive((prev) => !prev)}
-        onInfrastructureAndDemandUpdated={() => fetchSettlementsAndLedger(project.id)}
-      />
+      <div id="step-section-infrastructure">
+        <InfrastructureAndDemandPanel
+          projectId={project.id}
+          infrastructure={infrastructure}
+          gapAnalysis={gapAnalysis}
+          settings={settings}
+          demand={demand}
+          placeTieInModeActive={placeTieInModeActive}
+          onTogglePlaceTieInMode={() => setPlaceTieInModeActive((prev) => !prev)}
+          onInfrastructureAndDemandUpdated={() => fetchSettlementsAndLedger(project.id)}
+        />
+      </div>
 
       {/* Milestone M3: Habitation Clustering, Two-Axis Classification & Verification Ledger */}
-      <SettlementAssessmentPanel
-        projectId={project.id}
-        settlements={settlements}
-        ledger={verificationLedger}
-        selectedClusterId={selectedClusterId}
-        onSelectCluster={(cid) => setSelectedClusterId(cid)}
-        onSettlementsUpdated={() => fetchSettlementsAndLedger(project.id)}
-      />
+      <div id="step-section-settlements">
+        <SettlementAssessmentPanel
+          projectId={project.id}
+          settlements={settlements}
+          ledger={verificationLedger}
+          selectedClusterId={selectedClusterId}
+          onSelectCluster={(cid) => setSelectedClusterId(cid)}
+          onSettlementsUpdated={() => fetchSettlementsAndLedger(project.id)}
+        />
+      </div>
 
       {/* Milestone M2: Data Management, Layer Toggles & Provenance Registry Panel */}
-      <DataManagementPanel
-        projectId={project.id}
-        layers={layers}
-        visibleVectorLayers={visibleVectorLayers}
-        onToggleVectorLayer={(layerKey) =>
-          setVisibleVectorLayers((prev) => ({
-            ...prev,
-            [layerKey]: !prev[layerKey],
-          }))
-        }
-        activeRasterOverlay={activeRasterOverlay}
-        onChangeRasterOverlay={setActiveRasterOverlay}
-        rasterOpacity={rasterOpacity}
-        onChangeRasterOpacity={setRasterOpacity}
-        onLayersUpdated={() => fetchLayersAndVectors(project.id)}
-      />
+      <div id="step-section-data">
+        <DataManagementPanel
+          projectId={project.id}
+          layers={layers}
+          visibleVectorLayers={visibleVectorLayers}
+          onToggleVectorLayer={(layerKey) =>
+            setVisibleVectorLayers((prev) => ({
+              ...prev,
+              [layerKey]: !prev[layerKey],
+            }))
+          }
+          activeRasterOverlay={activeRasterOverlay}
+          onChangeRasterOverlay={setActiveRasterOverlay}
+          rasterOpacity={rasterOpacity}
+          onChangeRasterOpacity={setRasterOpacity}
+          onLayersUpdated={() => fetchLayersAndVectors(project.id)}
+        />
+      </div>
     </div>
   );
 };

@@ -55,6 +55,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           <nav aria-label="Primary navigation" className="flex items-center gap-3 text-xs">
             <Link
               to="/"
+              aria-current={location.pathname === '/' ? 'page' : undefined}
               className={`px-2 py-1 rounded-xs font-medium ${
                 location.pathname === '/'
                   ? 'bg-accent-tint text-accent'
@@ -65,6 +66,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             </Link>
             <Link
               to="/projects"
+              aria-current={location.pathname === '/projects' ? 'page' : undefined}
               className={`px-2 py-1 rounded-xs font-medium ${
                 location.pathname === '/projects'
                   ? 'bg-accent-tint text-accent'
@@ -75,6 +77,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             </Link>
             <Link
               to="/projects/new"
+              aria-current={location.pathname === '/projects/new' ? 'page' : undefined}
               className={`px-2 py-1 rounded-xs font-medium ${
                 location.pathname === '/projects/new'
                   ? 'bg-accent-tint text-accent'
@@ -107,7 +110,12 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         </div>
       </header>
 
-      <main id="main-content" className="flex-1 flex flex-col">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        aria-label="Main engineering workbench"
+        className="flex-1 flex flex-col focus:outline-none"
+      >
         {children}
       </main>
     </div>

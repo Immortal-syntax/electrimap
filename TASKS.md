@@ -10,7 +10,7 @@
 - [x] **PROMPT-1:** Product Discovery, Requirements Validation & PRD *(Approved 2026-11-05)*
 - [x] **PROMPT-2:** Technical Architecture, UI/UX Design System & Roadmap *(Approved 2026-11-06)*
 - [x] **PROMPT-3:** Environment Inspection, Git/GitHub Setup & Permanent Instructions *(Approved 2026-11-06)*
-- [-] **PROMPT-4:** Milestone Implementation & Continuous Verification *(In Progress — Milestone M7 Completed)*
+- [x] **PROMPT-4:** Milestone Implementation & Continuous Verification *(Completed — Milestones M0–M8 Verified)*
 - [ ] **PROMPT-5:** Production Readiness, Debugging & Handover
 
 ---
@@ -113,10 +113,10 @@
 ---
 
 ## Milestone M8: System Hardening, Benchmarking & Production Audit
-- [ ] **M8-1:** Geospatial spatial query and map rendering performance optimization
-- [ ] **M8-2:** Comprehensive accessibility audit and keyboard navigation review
-- [ ] **M8-3:** End-to-end automated integration tests for complete user journeys
-- [ ] **M8-4:** Security penetration review, input fuzzing, and dependency audit
-- [ ] **M8-5:** Docker container configuration and offline evaluation readiness
-- [ ] **M8-6:** Comprehensive technical documentation and user manual finalization
+- [x] **M8-1:** Geospatial spatial query and map rendering performance optimization
+- [x] **M8-2:** Comprehensive accessibility audit and keyboard navigation review
+- [x] **M8-3:** End-to-end automated integration tests for complete user journeys
+- [x] **M8-4:** Security penetration review, input fuzzing, and dependency audit
+- [x] **M8-5:** Docker container configuration and offline evaluation readiness
+- [x] **M8-6:** Comprehensive technical documentation and user manual finalization
 
