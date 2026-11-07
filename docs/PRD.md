@@ -1,7 +1,7 @@
-# PRD.md — ElectriMap DPR (DRAFT, Prompt 1)
+# PRD.md — ElectriMap DPR
 
-> **Version:** 0.1-draft · **Date:** 2026-11-05 · **Status:** Awaiting approval
-> **Basis:** Approved Prompt 0 (Deliverables A–J) and PROJECT_CONTEXT.md (draft).
+> **Version:** 1.0 · **Date:** 2026-11-07 · **Status:** Approved & Implemented (Milestones M0–M8 Complete)
+> **Basis:** Approved Prompt 0 (Deliverables A–J) and `docs/PROJECT_CONTEXT.md`.
 > **Constraints:** Free resources only · college-level, professional documentation standard · India first, extensible.
 > **Conventions:** `FR-` functional requirement · `NFR-` non-functional requirement · `US-` user story · `AC-` acceptance criterion · Priority **P0** = must have (MVP), **P1** = important (after MVP), **P2** = future.
 

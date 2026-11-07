@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased] - 2026-11-07
 
 ### Added
+- **Prompt 5 — Production Readiness Audit, Code Review & Hardening (`docs/PRODUCTION_READINESS_AUDIT.md`):**
+  - Conducted 18-domain Code Review and Production Readiness Audit with release checklist, deployment runbook, and mandatory human/field/DISCOM validation disclosures (`docs/PRODUCTION_READINESS_AUDIT.md`).
+  - Added `ensure_default_handlers_registered()` in `backend/app/worker.py` (`PR-01`) so standalone worker processes (`python -m app.worker`) automatically register `ACQUIRE_PROJECT_DATA` and `CLUSTER_SETTLEMENTS` handlers.
+  - Added `@model_validator` in `backend/app/core/config.py` (`PR-02`) rejecting weak/placeholder `SESSION_SECRET` when `APP_ENV=production` and decoupling HTTP `demo` cookie security (`effective_cookie_secure`) from HTTPS `production` mode.
+  - Synchronized `DATA_DIR` and `SESSION_SECRET` environment variables across `docker-compose.yml` (`PR-03`) and achieved 100% Apache 2.0 header coverage across all migrations and stylesheets (`PR-04`).
 - **Milestone M8 — System Hardening, Performance Benchmarking, Accessibility, E2E & Security Fuzzing, Docker Stack & User Manual (`M8-1` to `M8-6`):**
   - Vector tile SHA-256 `ETag` (`304 Not Modified`), `Cache-Control`, and `X-Tile-Render-Ms` telemetry in `backend/app/api/v1/tiles.py`, plus live performance & readiness benchmark endpoint (`GET /api/v1/system/benchmark`) in `backend/app/api/v1/diagnostics.py`.
   - HTTP Security Headers middleware (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy`) in `backend/app/main.py`.

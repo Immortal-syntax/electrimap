@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +47,7 @@ class Settings(BaseSettings):
         default="dev-only-session-secret-replace-in-production-64-bytes-long-0000"
     )
     session_cookie_name: str = "em_session"
+    session_cookie_secure: bool | None = None
     session_ttl_hours: int = 12
     session_absolute_days: int = 7
 
@@ -63,6 +64,29 @@ class Settings(BaseSettings):
     dem_cog_base: str = "https://copernicus-dem-30m.s3.eu-central-1.amazonaws.com"
     worldcover_cog_base: str = "https://esa-worldcover.s3.eu-central-1.amazonaws.com"
     nightlights_source: str = "HREA_IND"
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """Reject weak or default session secrets when running in production mode."""
+        if self.app_env == "production":
+            secret = self.session_secret.strip()
+            if (
+                len(secret) < 32
+                or secret.startswith("dev-only-")
+                or secret.startswith("replace_this_")
+            ):
+                raise ValueError(
+                    "APP_ENV=production requires a strong custom SESSION_SECRET "
+                    "(at least 32 characters, not the default placeholder)."
+                )
+        return self
+
+    @property
+    def effective_cookie_secure(self) -> bool:
+        """Return True when session cookies must carry the Secure flag (HTTPS)."""
+        if self.session_cookie_secure is not None:
+            return self.session_cookie_secure
+        return self.app_env == "production"
 
     @property
     def cors_origin_list(self) -> list[str]:

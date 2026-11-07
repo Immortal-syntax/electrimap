@@ -57,7 +57,7 @@ def login(
         user_agent=user_agent,
     )
 
-    is_secure = settings.app_env != "development"
+    is_secure = settings.effective_cookie_secure
     response.set_cookie(
         key=settings.session_cookie_name,
         value=raw_session_token,

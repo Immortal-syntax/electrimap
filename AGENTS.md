@@ -58,6 +58,8 @@
 - Product Requirements & Scope: `docs/PRD.md`
 - Architecture & Database Schema: `docs/ARCHITECTURE.md`
 - UI/UX & Design Tokens: `docs/DESIGN_SYSTEM.md`
+- Planner & Evaluator User Manual: `docs/USER_MANUAL.md`
+- Production Readiness Audit & Release Plan: `docs/PRODUCTION_READINESS_AUDIT.md`
 - Architecture Decisions Log: `docs/DECISIONS.md`
 - Known Issues & Environment Caveats: `docs/KNOWN_ISSUES.md`
 - Roadmaps & Tasks: `TASKS.md`

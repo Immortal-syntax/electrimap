@@ -1,7 +1,7 @@
-# ARCHITECTURE.md — ElectriMap DPR (DRAFT, Prompt 2)
+# ARCHITECTURE.md — ElectriMap DPR
 
-> **Status:** Draft for approval · **Date:** 2026-11-06
-> **Builds on:** Approved Prompt 0 (feasibility/methodology) and Prompt 1 (PRD v0.1, changes C1–C8 approved).
+> **Status:** Approved & Implemented (v1.0 — Milestones M0–M8 Complete) · **Date:** 2026-11-07
+> **Builds on:** Approved Prompt 0 (feasibility/methodology) and Prompt 1 (PRD v1.0, changes C1–C8 approved).
 > **Hard constraints:** free resources only · solo developer + AI agents · local-first · MVP over enterprise complexity.
 
 ---

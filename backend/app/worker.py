@@ -38,8 +38,19 @@ def register_job_handler(
     JOB_HANDLERS[job_type] = handler
 
 
+def ensure_default_handlers_registered() -> None:
+    """Import service modules that register background job handlers for standalone worker."""
+    if (
+        "ACQUIRE_PROJECT_DATA" not in JOB_HANDLERS
+        or "CLUSTER_SETTLEMENTS" not in JOB_HANDLERS
+    ):
+        import app.services.data_service  # noqa: F401
+        import app.services.settlement_service  # noqa: F401
+
+
 def process_one_queued_job(worker_id: str = "worker-main") -> bool:
     """Claim and execute at most one queued job. Returns True if a job was processed."""
+    ensure_default_handlers_registered()
     with SessionLocal() as db:
         job = claim_next_queued_job(db, worker_id=worker_id)
         if job is None:

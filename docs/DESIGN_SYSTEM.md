@@ -1,6 +1,6 @@
-# DESIGN_SYSTEM.md — ElectriMap DPR (DRAFT, Prompt 2)
+# DESIGN_SYSTEM.md — ElectriMap DPR
 
-> Status: draft for approval · Applies to the React SPA and (where noted) the PDF DPR.
+> **Status:** Approved & Implemented (v1.0 — Milestones M0–M8 Complete) · Applies to the React SPA and (where noted) the PDF DPR.
 
 ---
 

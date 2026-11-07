@@ -305,3 +305,38 @@ def test_m8_security_penetration_csrf_idor_and_upload_fuzzing() -> None:
             params={"q": "Bheja' OR '1'='1'; DROP TABLE projects; --"},
         )
         assert sqli_resp.status_code == 200
+
+
+def test_m8_production_config_and_worker_registration_hardening() -> None:
+    """Verify production secret fail-fast guard and standalone worker handler bootstrap."""
+    import pytest
+
+    from app.core.config import Settings
+    from app.worker import JOB_HANDLERS, ensure_default_handlers_registered
+
+    # 1. Production environment must reject default placeholder or short SESSION_SECRET
+    with pytest.raises(ValueError, match="APP_ENV=production requires a strong custom"):
+        Settings(
+            app_env="production",
+            session_secret="dev-only-session-secret-replace-in-production-64-bytes-long-0000",
+        )
+
+    with pytest.raises(ValueError, match="APP_ENV=production requires a strong custom"):
+        Settings(app_env="production", session_secret="too-short")
+
+    # 2. Valid production secret succeeds and enforces Secure cookie flag
+    prod_settings = Settings(
+        app_env="production",
+        session_secret="strong-production-secret-at-least-32-characters-long-verified-ok",
+    )
+    assert prod_settings.effective_cookie_secure is True
+
+    # 3. Demo/dev settings default to non-Secure cookie over local HTTP unless overridden
+    demo_settings = Settings(app_env="demo")
+    assert demo_settings.effective_cookie_secure is False
+
+    # 4. Standalone worker bootstrapper registers default handlers
+    ensure_default_handlers_registered()
+    assert "ACQUIRE_PROJECT_DATA" in JOB_HANDLERS
+    assert "CLUSTER_SETTLEMENTS" in JOB_HANDLERS
+

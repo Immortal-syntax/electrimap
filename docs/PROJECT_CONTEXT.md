@@ -1,7 +1,7 @@
-# PROJECT_CONTEXT.md — ElectriMap DPR (DRAFT, Prompt 1)
+# PROJECT_CONTEXT.md — ElectriMap DPR
 
-> **Status:** Draft produced in Prompt 1 (Product Discovery). Not yet committed to the repository — file creation is governed by Prompt 3.
-> **Foundation:** Approved Prompt 0 specification (Deliverables A–J), plus user decisions recorded on 2026-11-05.
+> **Status:** Approved & Implemented (v1.0 — Prompts 0–5 & Milestones M0–M8 Complete)
+> **Foundation:** Approved Prompt 0–2 specifications and full implementation across Milestones M0–M8 (2026-11-05 to 2026-11-07).
 
 ---
 
@@ -87,13 +87,13 @@ Census of India 2011 (PCA and Village Directory) · Local Government Directory (
 
 | Item | State |
 |---|---|
-| Prompt 0 — Project definition and research | **Approved** (2026-11-05) |
-| Prompt 1 — Product discovery and PRD | **In review** (this draft) |
-| Prompt 2 — Architecture, design system, roadmap | Not started |
-| Prompt 3 — Environment and repository setup | Not started |
-| Technology stack | Recommended in Prompt 0, **not finalised** — finalised in Prompt 2 |
-| Code | None written |
+| Prompt 0 — Project definition and research | **Approved & Complete** (2026-11-05) |
+| Prompt 1 — Product discovery and PRD | **Approved & Complete** (2026-11-05) |
+| Prompt 2 — Architecture, design system, roadmap | **Approved & Complete** (2026-11-06) |
+| Prompt 3 — Environment and repository setup | **Approved & Complete** (2026-11-06) |
+| Prompt 4 — Full implementation (Milestones M0–M8) | **Approved & Complete** (2026-11-07) |
+| Prompt 5 — Code review, production readiness & handover | **Complete** (2026-11-07) |
 
-## 10. Planned Documentation Map (to be created in Prompt 3)
+## 10. Permanent Documentation Map
 
-`AGENTS.md` (shared agent rules) · `CLAUDE.md` (Claude entry point) · `PROJECT_CONTEXT.md` (this file) · `PRD.md` · `ARCHITECTURE.md` · `DESIGN_SYSTEM.md` · `TASKS.md` · `PROJECT_STATUS.md` · `CHANGELOG.md` · `KNOWN_ISSUES.md` · `DECISIONS.md`
+`AGENTS.md` (shared agent rules) · `CLAUDE.md` (Claude entry point) · `docs/PROJECT_CONTEXT.md` (this file) · `docs/PRD.md` · `docs/ARCHITECTURE.md` · `docs/DESIGN_SYSTEM.md` · `docs/USER_MANUAL.md` · `docs/PRODUCTION_READINESS_AUDIT.md` · `TASKS.md` · `PROJECT_STATUS.md` · `CHANGELOG.md` · `docs/KNOWN_ISSUES.md` · `docs/DECISIONS.md`

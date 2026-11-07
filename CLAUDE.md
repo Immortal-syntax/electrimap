@@ -8,10 +8,10 @@
 
 ## 1. Required Reading Order (Before Taking Action)
 1. Read `AGENTS.md` (Core rules, approved stack, conventions, and Git policy).
-2. Read `PROJECT_STATUS.md` (Current milestone, active work, recent commits).
+2. Read `PROJECT_STATUS.md` (Current milestone, active work, recent commits, and verification commands).
 3. Read `TASKS.md` (Active task queue and completion criteria).
 4. Read `docs/KNOWN_ISSUES.md` (Active environmental and technical caveats).
-5. Refer to `docs/ARCHITECTURE.md` and `docs/PRD.md` for architectural or requirements questions.
+5. Refer to `docs/ARCHITECTURE.md`, `docs/PRD.md`, `docs/USER_MANUAL.md`, and `docs/PRODUCTION_READINESS_AUDIT.md` for architectural, operational, or release questions.
 
 ---
 
