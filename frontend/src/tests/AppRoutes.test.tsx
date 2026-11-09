@@ -33,11 +33,18 @@ import {
   generateSyntheticPointsGeoJson,
 } from '../components/map/MapSpikePreview';
 
+const mockMapInstances: Array<{ options: Record<string, unknown> }> = [];
+
 vi.mock('maplibre-gl', () => {
   const sources = new Map<string, { setData: ReturnType<typeof vi.fn>; updateImage: ReturnType<typeof vi.fn> }>();
   const layers = new Set<string>();
 
   class MockMap {
+    options: Record<string, unknown>;
+    constructor(options: Record<string, unknown> = {}) {
+      this.options = options;
+      mockMapInstances.push(this);
+    }
     on = vi.fn((event: string, cb: () => void) => {
       if (event === 'load' || event === 'style.load') {
         cb();
@@ -956,6 +963,19 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     expect(
       screen.getByLabelText('ElectriMap Interactive GIS Map Canvas'),
     ).toBeInTheDocument();
+
+    // Verify map zoom-out constraints and India maxBounds (prevents globe navigation)
+    expect(mockMapInstances.length).toBeGreaterThanOrEqual(2);
+    const canvasMap = mockMapInstances[mockMapInstances.length - 1]!;
+    const previewMap = mockMapInstances[mockMapInstances.length - 2]!;
+    expect(canvasMap.options.minZoom).toBe(5.0);
+    expect(canvasMap.options.maxZoom).toBe(20.0);
+    expect(canvasMap.options.renderWorldCopies).toBe(false);
+    expect(canvasMap.options.maxBounds).toEqual([[65.0, 5.0], [100.0, 38.5]]);
+    expect(previewMap.options.minZoom).toBe(5.0);
+    expect(previewMap.options.maxZoom).toBe(20.0);
+    expect(previewMap.options.renderWorldCopies).toBe(false);
+    expect(previewMap.options.maxBounds).toEqual([[65.0, 5.0], [100.0, 38.5]]);
     expect(screen.getByRole('button', { name: /Fit AOI/i })).toBeInTheDocument();
     expect(screen.getByText(/Likely Electrified \(Proxy\)/i)).toBeInTheDocument();
 

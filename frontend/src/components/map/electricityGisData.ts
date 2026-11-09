@@ -29,6 +29,33 @@ export type VoltageFilterMode =
   | 'SUBSTATIONS_AND_DTS'
   | 'TOWERS_AND_POLES';
 
+/**
+ * Strict India continental & territorial bounding box in WGS 84 (`EPSG:4326`):
+ * SW: [65.0°E, 5.0°N] (Arabian Sea / Indian Ocean buffer south of Kanyakumari & Nicobar)
+ * NE: [100.0°E, 38.5°N] (Himalayas & Arunachal northern and eastern frontier)
+ *
+ * Constrains the map camera to the Indian subcontinent, preventing accidental panning
+ * away into outer oceans or other continents.
+ */
+export const INDIA_MAX_BOUNDS: [[number, number], [number, number]] = [
+  [65.0, 5.0],
+  [100.0, 38.5],
+];
+
+/**
+ * Minimum zoom level allowed on ElectriMap GIS canvases.
+ * Set to 5.0 so users can view India at the national or state level (e.g. Odisha, MP),
+ * but are strictly prevented from zooming out to the global world view (zoom 0–4).
+ */
+export const MAP_MIN_ZOOM = 5.0;
+
+/**
+ * Maximum zoom level allowed on ElectriMap GIS canvases.
+ * Set to 20.0 to enable detailed millimeter/meter-level inspection of individual LT service poles,
+ * distribution transformers, building footprints, and conductor spans.
+ */
+export const MAP_MAX_ZOOM = 20.0;
+
 export interface SearchableLocationItem {
   id: string;
   label: string;

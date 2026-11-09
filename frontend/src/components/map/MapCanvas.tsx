@@ -26,7 +26,10 @@ import {
   DEFAULT_PROPOSED_NETWORK_FC,
   DEFAULT_SETTLEMENTS_FC,
   DEFAULT_VILLAGE_ELECTRIFICATION_FC,
+  INDIA_MAX_BOUNDS,
   KORAPUT_SEARCH_CATALOG,
+  MAP_MAX_ZOOM,
+  MAP_MIN_ZOOM,
   SearchableLocationItem,
   VIIRS_PERIOD_OPTIONS,
   ViirsObservationPeriod,
@@ -88,6 +91,12 @@ export interface MapCanvasProps {
   ) => void;
   /** Optional height class override */
   heightClass?: string;
+  /** Minimum zoom level allowed (defaults to MAP_MIN_ZOOM = 5.0 to prevent zooming out to world globe) */
+  minZoom?: number;
+  /** Maximum zoom level allowed (defaults to MAP_MAX_ZOOM = 20.0 for deep pole/structure inspection) */
+  maxZoom?: number;
+  /** Constraining bounding box in EPSG:4326 [[minLon, minLat], [maxLon, maxLat]] (defaults to INDIA_MAX_BOUNDS) */
+  maxBounds?: [[number, number], [number, number]];
 }
 
 export interface InspectedFeatureState {
@@ -381,6 +390,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   drawModeActive = false,
   onDrawnPolygonChange,
   heightClass = 'h-[540px]',
+  minZoom = MAP_MIN_ZOOM,
+  maxZoom = MAP_MAX_ZOOM,
+  maxBounds = INDIA_MAX_BOUNDS,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -1495,6 +1507,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       style: buildBasemapStyle(basemap),
       center: KORAPUT_DEFAULT_CENTER,
       zoom: KORAPUT_DEFAULT_ZOOM,
+      minZoom,
+      maxZoom,
+      maxBounds,
+      renderWorldCopies: false,
       attributionControl: false,
     });
 

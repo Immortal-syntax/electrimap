@@ -28,6 +28,7 @@
     2. Eliminating the 42x infinite reload loop on Layer B by caching raster URL/bounds keys (`lastRasterKeyRef`), and placing raster layers beneath vector layers (`beforeId: 'village-status-fill'`).
     3. Normalizing GeoJSON schemas (`feature_kind` to `layer_type`, cluster centroids) so database features match layer filters, and ensuring `DataManagementPanel` layer toggles hide layers cleanly.
     4. Adding `"Show All (A–F)"` and `"Hide All Overlays"` toggle controls and triggering `map.triggerRepaint()` on state updates (**COMPLETED & VERIFIED**)
+  - **Map Zoom & Geographic Extent Constraining (Globe Navigation Prevention):** Configured strict spatial boundaries in `electricityGisData.ts`, `MapCanvas.tsx`, and `MapSpikePreview.tsx` (`minZoom = 5.0`, `maxZoom = 20.0`, `maxBounds = [[65.0, 5.0], [100.0, 38.5]]`, and `renderWorldCopies = false`), completely preventing users from zooming out to the global world view or panning outside the Indian subcontinent (**COMPLETED & VERIFIED**)
 - **Git Repository Status:**
   - Remote: `https://github.com/Immortal-syntax/electrimap.git`
   - Active Branch: `main`

@@ -26,7 +26,10 @@ import {
   DEFAULT_PROPOSED_NETWORK_FC,
   DEFAULT_SETTLEMENTS_FC,
   DEFAULT_VILLAGE_ELECTRIFICATION_FC,
+  INDIA_MAX_BOUNDS,
   KORAPUT_SEARCH_CATALOG,
+  MAP_MAX_ZOOM,
+  MAP_MIN_ZOOM,
   SearchableLocationItem,
   VIIRS_PERIOD_OPTIONS,
   ViirsObservationPeriod,
@@ -1079,6 +1082,10 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
       style: buildBasemapStyle(basemap),
       center: KORAPUT_CENTER,
       zoom: DEFAULT_ZOOM,
+      minZoom: MAP_MIN_ZOOM,
+      maxZoom: MAP_MAX_ZOOM,
+      maxBounds: INDIA_MAX_BOUNDS,
+      renderWorldCopies: false,
       attributionControl: false,
     });
 
