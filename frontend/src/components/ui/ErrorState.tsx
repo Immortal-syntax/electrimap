@@ -41,20 +41,22 @@ export function ErrorState({
   return (
     <div
       role="alert"
-      className={`bg-error-bg border border-error-border border-l-4 border-l-error rounded-sm ${
-        compact ? 'p-3.5' : 'p-5'
-      } flex flex-col gap-2.5 ${className}`.trim()}
+      className={`bg-error-bg/90 border border-error-border rounded-md shadow-xs ${
+        compact ? 'p-4' : 'p-5'
+      } flex flex-col gap-3 ${className}`.trim()}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5 min-w-0">
-          <Icon icon={AlertTriangle} size="md" className="text-error mt-0.5 shrink-0" />
+        <div className="flex items-start gap-3 min-w-0">
+          <span className="p-1.5 rounded-full bg-sheet border border-error-border/70 shrink-0">
+            <Icon icon={AlertTriangle} size="md" className="text-error" />
+          </span>
           <div className="space-y-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-xs font-semibold uppercase tracking-wider font-mono text-error">
+              <h3 className="text-xs font-semibold tracking-tight text-error">
                 {title}
               </h3>
               {errorCode && (
-                <span className="px-1.5 py-0.5 text-2xs font-mono bg-sheet border border-error-border text-error rounded-xs">
+                <span className="px-2 py-0.5 text-2xs font-mono bg-sheet border border-error-border text-error rounded-full">
                   {errorCode}
                 </span>
               )}

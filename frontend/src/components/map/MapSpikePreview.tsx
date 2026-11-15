@@ -75,6 +75,14 @@ export interface ReferenceGeoJsonBundle {
 export interface MapSpikePreviewProps {
   /** Optional pre-loaded reference GeoJSON bundle (used by tests or parent) */
   referenceData?: ReferenceGeoJsonBundle | null;
+  /** Showcase 'hero' hides heavy workbench chrome behind compact floating HUD controls; 'workbench' keeps full suite */
+  variant?: 'workbench' | 'hero';
+  /** Custom map height Tailwind class */
+  heightClass?: string;
+  /** Override initial layer drawer state */
+  defaultLayerPanelOpen?: boolean;
+  /** Optional CTA callback shown in hero floating HUD to launch the full /map workspace */
+  onOpenFullMap?: () => void;
 }
 
 function buildSurveyGraticuleGeoJson(): GeoJSON.FeatureCollection {
@@ -330,7 +338,13 @@ function setLayerVisibilitySafe(
 
 export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
   referenceData = null,
+  variant = 'workbench',
+  heightClass,
+  defaultLayerPanelOpen,
+  onOpenFullMap,
 }) => {
+  const isHero = variant === 'hero';
+  const resolvedHeightClass = heightClass ?? (isHero ? 'h-[460px] lg:h-[540px]' : 'h-[480px]');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const lastRasterKeyRef = useRef<string | null>(null);
@@ -351,7 +365,9 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
   const [zoomLevel, setZoomLevel] = useState<number>(DEFAULT_ZOOM);
 
   // Specialised Electricity GIS Layer Controls (Layers A through F)
-  const [layerPanelOpen, setLayerPanelOpen] = useState<boolean>(true);
+  const [layerPanelOpen, setLayerPanelOpen] = useState<boolean>(
+    defaultLayerPanelOpen ?? (variant !== 'hero'),
+  );
   const [beginnerGuideOpen, setBeginnerGuideOpen] = useState<boolean>(false);
   const [layerAEnabled, setLayerAEnabled] = useState<boolean>(true);
   const [voltageFilter, setVoltageFilter] = useState<VoltageFilterMode>('ALL');
@@ -614,12 +630,16 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
             id: 'viirs-radiance-glow-label',
             type: 'symbol',
             source: 'viirs-radiance-source',
+            minzoom: 12.2,
             layout: {
               'text-field': glowTextExpr as unknown as string,
               'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
               'text-size': 10,
               'text-offset': [0, -1.8],
               'text-anchor': 'bottom',
+              'text-allow-overlap': false,
+              'text-optional': true,
+              'text-padding': 8,
             },
             paint: {
               'text-color': '#FEF08A',
@@ -715,11 +735,15 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               ],
               'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
               'text-size': 11,
+              'text-allow-overlap': false,
+              'text-optional': true,
+              'text-padding': 6,
+              'text-max-width': 11,
             },
             paint: {
               'text-color': '#1E293B',
-              'text-halo-color': '#F7F5F0',
-              'text-halo-width': 1.6,
+              'text-halo-color': 'rgba(255, 255, 255, 0.94)',
+              'text-halo-width': 1.8,
             },
           });
         }
@@ -784,6 +808,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
             id: 'ref-cluster-labels',
             type: 'symbol',
             source: 'ref-cluster-points',
+            minzoom: 12.0,
             layout: {
               'text-field': [
                 'concat',
@@ -793,13 +818,17 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               ],
               'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
               'text-size': 10.5,
-              'text-offset': [0, 1.25],
+              'text-offset': [0, 1.3],
               'text-anchor': 'top',
+              'text-allow-overlap': false,
+              'text-optional': true,
+              'text-padding': 8,
+              'text-max-width': 12,
             },
             paint: {
               'text-color': '#141413',
-              'text-halo-color': '#F7F5F0',
-              'text-halo-width': 1.5,
+              'text-halo-color': 'rgba(255, 255, 255, 0.94)',
+              'text-halo-width': 1.8,
             },
           });
         }
@@ -900,6 +929,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
             id: 'layer-a-labels',
             type: 'symbol',
             source: 'layer-a-existing-infra',
+            minzoom: 13.0,
             filter: [
               'in',
               ['get', 'infra_category'],
@@ -915,13 +945,17 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               ],
               'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
               'text-size': 10,
-              'text-offset': [0, -1.3],
+              'text-offset': [0, -1.6],
               'text-anchor': 'bottom',
+              'text-allow-overlap': false,
+              'text-optional': true,
+              'text-padding': 8,
+              'text-max-width': 13,
             },
             paint: {
               'text-color': '#1E1B4B',
-              'text-halo-color': '#FFFFFF',
-              'text-halo-width': 1.6,
+              'text-halo-color': 'rgba(255, 255, 255, 0.94)',
+              'text-halo-width': 1.8,
             },
           });
         }
@@ -1473,7 +1507,13 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
   ].filter(Boolean).length;
 
   return (
-    <div className="bg-sheet border border-rule-strong rounded-xs overflow-hidden flex flex-col">
+    <div
+      className={`bg-sheet border border-rule/80 overflow-hidden flex flex-col ${
+        isHero ? 'rounded-xl shadow-overlay' : 'rounded-lg shadow-card'
+      }`}
+    >
+      {!isHero && (
+        <>
       {/* Map Header Controls */}
       <div className="px-3 py-2.5 border-b border-rule flex flex-wrap items-center justify-between gap-2 bg-paper">
         <div className="flex flex-wrap items-center gap-2">
@@ -1687,6 +1727,9 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
         </div>
       )}
 
+        </>
+      )}
+
       {tileWarning && (
         <div
           role="alert"
@@ -1723,7 +1766,11 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
         {layerPanelOpen && (
           <aside
             aria-label="Landing Page Electricity GIS Layers"
-            className="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-rule-strong bg-paper p-3 space-y-2.5 max-h-[480px] overflow-y-auto text-xs"
+            className={
+              isHero
+                ? 'w-full lg:w-72 lg:absolute lg:top-16 lg:left-3.5 lg:z-30 lg:max-h-[380px] lg:rounded-md lg:shadow-overlay border border-rule/80 bg-sheet/95 backdrop-blur-md p-3.5 space-y-2.5 overflow-y-auto text-xs'
+                : 'w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-rule-subtle bg-paper p-3.5 space-y-2.5 max-h-[480px] overflow-y-auto text-xs'
+            }
           >
             <div className="flex items-center justify-between border-b border-rule pb-2">
               <span className="text-xs font-semibold text-ink">
@@ -2065,8 +2112,8 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
 
         {/* Map Viewport */}
         <div
-          className="relative flex-1 w-full h-[480px] bg-[#EFECE6] overflow-hidden"
-          style={{ minHeight: '480px' }}
+          className={`relative flex-1 w-full ${resolvedHeightClass} bg-[#EFECE6] overflow-hidden`}
+          style={{ minHeight: isHero ? '460px' : '480px' }}
         >
           <div
             ref={containerRef}
@@ -2075,12 +2122,101 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
             style={{ width: '100%', height: '100%' }}
           />
 
-          {/* Preliminary Engineering Watermark Banner */}
-          <div className="pointer-events-none absolute top-3 left-3 z-10 bg-sheet border border-rule px-2.5 py-1 rounded-xs shadow-xs">
-            <div className="text-xs text-warn font-semibold">
-              PRELIMINARY ENGINEERING ESTIMATE — FIELD SURVEY REQUIRED
+          {isHero ? (
+            <>
+              {/* Hero Floating Geospatial HUD */}
+              <div className="pointer-events-none absolute top-3.5 left-3 right-14 z-20 flex flex-wrap items-center justify-between gap-2">
+                <div className="pointer-events-auto map-hud-surface rounded-full p-1 flex flex-wrap items-center gap-1 max-w-full">
+                  <button
+                    type="button"
+                    onClick={() => setLayerPanelOpen((prev) => !prev)}
+                    aria-pressed={layerPanelOpen}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                      layerPanelOpen
+                        ? 'bg-accent text-white'
+                        : 'text-ink-2 hover:bg-subtle hover:text-ink'
+                    }`}
+                  >
+                    {layerPanelOpen ? 'Close Layers' : 'Layers (A–F)'}
+                  </button>
+                  <span
+                    className="h-4 w-px bg-rule mx-0.5 hidden sm:inline-block"
+                    aria-hidden="true"
+                  />
+                  {(['survey_paper', 'satellite', 'terrain'] as BasemapMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => handleBasemapChange(mode)}
+                      aria-pressed={basemap === mode}
+                      className={`px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                        basemap === mode
+                          ? 'bg-navy-900 text-white'
+                          : 'text-ink-2 hover:bg-subtle hover:text-ink'
+                      }`}
+                    >
+                      {mode === 'survey_paper'
+                        ? 'Survey'
+                        : mode === 'satellite'
+                          ? 'Satellite'
+                          : 'Terrain'}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setLayerBEnabled((prev) => !prev)}
+                    aria-pressed={layerBEnabled}
+                    className={`px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      layerBEnabled
+                        ? 'bg-warn-bg text-warn border border-warn-border'
+                        : 'text-ink-2 hover:bg-subtle hover:text-ink'
+                    }`}
+                  >
+                    VIIRS Lights
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        mapRef.current?.flyTo({
+                          center: KORAPUT_CENTER,
+                          zoom: DEFAULT_ZOOM,
+                          duration: 450,
+                        });
+                      } catch {
+                        // Ignore in tests
+                      }
+                    }}
+                    className="px-2.5 py-1.5 rounded-full text-xs font-medium text-ink-2 hover:bg-subtle hover:text-ink transition-colors"
+                  >
+                    Fit AOI
+                  </button>
+                </div>
+
+                {onOpenFullMap && (
+                  <button
+                    type="button"
+                    onClick={onOpenFullMap}
+                    className="pointer-events-auto hidden sm:inline-flex px-4 py-2 rounded-full bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold shadow-control transition-colors whitespace-nowrap"
+                  >
+                    Open Full GIS Workspace →
+                  </button>
+                )}
+              </div>
+
+              <div className="pointer-events-none absolute bottom-9 left-3 z-10 map-hud-surface px-3 py-1 rounded-full max-w-[calc(100%-10rem)]">
+                <div className="text-2xs text-warn font-semibold truncate">
+                  PRELIMINARY — FIELD SURVEY REQUIRED
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="pointer-events-none absolute top-3 left-3 z-10 map-hud-surface px-3 py-1 rounded-full">
+              <div className="text-xs text-warn font-semibold">
+                PRELIMINARY ENGINEERING ESTIMATE — FIELD SURVEY REQUIRED
+              </div>
             </div>
-          </div>
+          )}
 
           <GisFeatureInspectorDrawer
             feature={inspectedFeature}

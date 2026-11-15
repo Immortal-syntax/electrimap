@@ -657,15 +657,15 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                 <table className="w-full text-left border-collapse text-body-sm">
                   <thead>
                     <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
-                      <th className="py-2.5 px-3">Item Code</th>
-                      <th className="py-2.5 px-3">Description &amp; Specification</th>
-                      <th className="py-2.5 px-3">Category</th>
-                      <th className="py-2.5 px-3">Quantity Basis</th>
-                      <th className="py-2.5 px-3 text-right">Qty</th>
-                      <th className="py-2.5 px-3">Unit</th>
-                      <th className="py-2.5 px-3 text-right">Unit Rate (₹)</th>
-                      <th className="py-2.5 px-3">Rate Provenance</th>
-                      <th className="py-2.5 px-3 text-right">Line Amount (₹)</th>
+                      <th className="py-2.5 px-2 whitespace-nowrap">Item Code</th>
+                      <th className="py-2.5 px-2 min-w-[150px] max-w-[200px]">Description &amp; Specification</th>
+                      <th className="py-2.5 px-2 whitespace-nowrap">Category</th>
+                      <th className="py-2.5 px-2 max-w-[130px]">Quantity Basis</th>
+                      <th className="py-2.5 px-2 text-right whitespace-nowrap">Qty</th>
+                      <th className="py-2.5 px-2 whitespace-nowrap">Unit</th>
+                      <th className="py-2.5 px-2 text-right whitespace-nowrap">Unit Rate (₹)</th>
+                      <th className="py-2.5 px-2 whitespace-nowrap">Rate Provenance</th>
+                      <th className="py-2.5 px-2 text-right whitespace-nowrap">Line Amount (₹)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-rule-subtle">
@@ -674,26 +674,26 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                         key={`${ln.cluster_label ?? 'ALL'}-${ln.item_code}`}
                         className={ln.is_unset ? 'bg-error-bg/70' : 'hover:bg-surface-hover'}
                       >
-                        <td className="py-2.5 px-3 font-mono font-semibold text-ink whitespace-nowrap text-xs">
+                        <td className="py-2.5 px-2 font-mono font-semibold text-ink whitespace-nowrap text-xs">
                           {ln.item_code}
                         </td>
-                        <td className="py-2.5 px-3 text-ink max-w-xs">
-                          <div className="font-medium text-xs">{ln.description}</div>
+                        <td className="py-2.5 px-2 text-ink min-w-[150px] max-w-[200px]">
+                          <div className="font-medium text-xs leading-snug">{ln.description}</div>
                           <div className="text-xs text-ink-2 truncate" title={ln.citation}>
                             Ref: {ln.citation}
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 text-xs text-ink-2 whitespace-nowrap">
+                        <td className="py-2.5 px-2 text-xs text-ink-2 whitespace-nowrap">
                           {ln.category}
                         </td>
-                        <td className="py-2.5 px-3 text-ink-2 text-xs">
+                        <td className="py-2.5 px-2 text-ink-2 text-xs max-w-[130px] leading-snug">
                           {ln.quantity_basis}
                         </td>
-                        <td className="py-2.5 px-3 font-mono tabular-nums text-right font-semibold text-ink whitespace-nowrap text-xs">
+                        <td className="py-2.5 px-2 font-mono tabular-nums text-right font-semibold text-ink whitespace-nowrap text-xs">
                           {ln.quantity.toFixed(2)}
                         </td>
-                        <td className="py-2.5 px-3 text-xs text-ink-2 whitespace-nowrap">{ln.unit}</td>
-                        <td className="py-2.5 px-3 font-mono tabular-nums text-right whitespace-nowrap text-xs">
+                        <td className="py-2.5 px-2 text-xs text-ink-2 whitespace-nowrap">{ln.unit}</td>
+                        <td className="py-2.5 px-2 font-mono tabular-nums text-right whitespace-nowrap text-xs">
                           {ln.rate_inr !== null ? (
                             formatInr(ln.rate_inr)
                           ) : (
@@ -702,7 +702,7 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                             </Badge>
                           )}
                         </td>
-                        <td className="py-2 px-2.5 whitespace-nowrap">
+                        <td className="py-2 px-2 whitespace-nowrap">
                           <Badge
                             variant={
                               ln.is_unset
@@ -716,7 +716,7 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                             {ln.rate_source_type}
                           </Badge>
                         </td>
-                        <td className="py-2 px-2.5 font-mono text-right font-semibold text-ink whitespace-nowrap">
+                        <td className="py-2 px-2 font-mono text-right font-semibold text-ink whitespace-nowrap text-xs">
                           {ln.is_unset ? 'BLOCKED (UNSET)' : formatInr(ln.amount_inr)}
                         </td>
                       </tr>
@@ -724,10 +724,10 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                   </tbody>
                   <tfoot className="bg-subtle border-t-2 border-rule text-xs">
                     <tr>
-                      <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-ink-2">
+                      <td colSpan={8} className="py-1.5 px-2 text-right font-medium text-ink-2">
                         A. Direct Equipment, Conductor &amp; Support Supply Subtotal:
                       </td>
-                      <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
+                      <td className="py-1.5 px-2 text-right font-mono font-semibold text-ink whitespace-nowrap">
                         {formatInr(
                           activeClusterBreakdown
                             ? activeClusterBreakdown.base_equipment_inr
@@ -736,10 +736,10 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                       </td>
                     </tr>
                     <tr>
-                      <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-ink-2">
+                      <td colSpan={8} className="py-1.5 px-2 text-right font-medium text-ink-2">
                         B. Difficult Hilly / Forest Terrain Erection Multiplier Premium:
                       </td>
-                      <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
+                      <td className="py-1.5 px-2 text-right font-mono font-semibold text-ink whitespace-nowrap">
                         {formatInr(
                           activeClusterBreakdown
                             ? activeClusterBreakdown.terrain_premium_inr
@@ -748,10 +748,10 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                       </td>
                     </tr>
                     <tr>
-                      <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-ink-2">
+                      <td colSpan={8} className="py-1.5 px-2 text-right font-medium text-ink-2">
                         C. Goods &amp; Services Tax (GST @ {boq.gst_pct.toFixed(1)}%):
                       </td>
-                      <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
+                      <td className="py-1.5 px-2 text-right font-mono font-semibold text-ink whitespace-nowrap">
                         {formatInr(
                           activeClusterBreakdown
                             ? activeClusterBreakdown.gst_amount_inr
@@ -760,24 +760,24 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                       </td>
                     </tr>
                     <tr>
-                      <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-ink-2">
+                      <td colSpan={8} className="py-1.5 px-2 text-right font-medium text-ink-2">
                         D. Physical Contingency ({boq.contingency_pct.toFixed(1)}%) + PMC &amp; Dept.
                         Overheads ({boq.pmc_overhead_pct.toFixed(1)}%):
                       </td>
-                      <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
+                      <td className="py-1.5 px-2 text-right font-mono font-semibold text-ink whitespace-nowrap">
                         {formatInr(
                           activeClusterBreakdown
                             ? activeClusterBreakdown.contingency_amount_inr +
-                                activeClusterBreakdown.pmc_overhead_amount_inr
+                            activeClusterBreakdown.pmc_overhead_amount_inr
                             : boq.contingency_amount_inr + boq.pmc_overhead_amount_inr,
                         )}
                       </td>
                     </tr>
                     <tr className="bg-subtle border-t border-rule-strong">
-                      <td colSpan={8} className="py-2 px-2.5 text-right font-bold text-ink">
+                      <td colSpan={8} className="py-2 px-2 text-right font-bold text-ink">
                         GRAND TOTAL CAPITAL OUTLAY (CAPEX):
                       </td>
-                      <td className="py-2 px-2.5 text-right font-mono font-bold text-accent text-sm">
+                      <td className="py-2 px-2 text-right font-mono font-bold text-accent text-sm whitespace-nowrap">
                         {formatInr(
                           activeClusterBreakdown
                             ? activeClusterBreakdown.total_capex_inr
@@ -807,11 +807,10 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                 {comparison.scenarios.map((sc) => (
                   <div
                     key={sc.scenario_id}
-                    className={`p-3.5 rounded-sm border flex flex-col justify-between ${
-                      sc.is_active_baseline
+                    className={`p-3.5 rounded-sm border flex flex-col justify-between ${sc.is_active_baseline
                         ? 'border-accent bg-accent-tint/35 ring-1 ring-accent'
                         : 'border-rule bg-sheet'
-                    }`}
+                      }`}
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-1">

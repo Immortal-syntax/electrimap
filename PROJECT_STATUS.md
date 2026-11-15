@@ -1,14 +1,14 @@
 # PROJECT_STATUS.md — Live Project State & Agent Handover Record
 
-> **Status:** Production-Ready (v1.0) · Phase: Prompt 5 Completed (Milestones M0–M8 & Production Readiness Audit Verified)  
-> **Last Synchronized:** 2026-11-07  
+> **Status:** Production-Ready (v1.0) · Phase: ElectriMap Vision Reset Frontend Composition Redesign Completed  
+> **Last Synchronized:** 2026-11-15  
 > **Active AI Agent:** Antigravity (Google DeepMind)  
 > **Secondary Compatibility:** Claude (Anthropic) via `CLAUDE.md` and `AGENTS.md`  
 
 ---
 
 ## 1. Executive Status Summary
-- **Current Phase & Milestone:** Prompt 5 — **PRODUCTION READINESS AUDIT, CODE REVIEW & MULTI-AGENT HANDOVER COMPLETED & VERIFIED**.
+- **Current Phase & Milestone:** **ELECTRIMAP VISION RESET — COMPLETE FRONTEND COMPOSITION REDESIGN** completed & verified on branch `experiment` (built atop verified Milestones M0–M8 & Production Readiness Audit).
 - **Completed Milestones & Audits:**
   - **Milestone M0:** Tooling, Database Setup & Technical Risk Spikes S1–S4 (**APPROVED & COMPLETED**)
   - **Milestone M1:** Core Authentication, Project CRUD & AOI Module (**APPROVED & COMPLETED**)
@@ -29,10 +29,15 @@
     3. Normalizing GeoJSON schemas (`feature_kind` to `layer_type`, cluster centroids) so database features match layer filters, and ensuring `DataManagementPanel` layer toggles hide layers cleanly.
     4. Adding `"Show All (A–F)"` and `"Hide All Overlays"` toggle controls and triggering `map.triggerRepaint()` on state updates (**COMPLETED & VERIFIED**)
   - **Map Zoom & Geographic Extent Constraining (Globe Navigation Prevention):** Configured strict spatial boundaries in `electricityGisData.ts`, `MapCanvas.tsx`, and `MapSpikePreview.tsx` (`minZoom = 5.0`, `maxZoom = 20.0`, `maxBounds = [[65.0, 5.0], [100.0, 38.5]]`, and `renderWorldCopies = false`), completely preventing users from zooming out to the global world view or panning outside the Indian subcontinent (**COMPLETED & VERIFIED**)
+  - **ElectriMap Vision Reset — Complete Frontend Composition Redesign (30 modified files in `frontend/`, zero backend edits):**
+    1. Updated daylight cartographic design tokens, typography, elevation shadows, and rounded geometry across `tokens.css`, `globals.css`, `tailwind.config.ts`, `AppShell.tsx`, `LoginPage.tsx`, and shared `components/ui/*` primitives.
+    2. Replaced static hero graphics on `LandingPage.tsx` with live interactive `<MapSpikePreview variant="hero" />` featuring frosted HUD controls cleared from MapLibre scale/zoom controls and decluttered zoom-tiered symbol labels.
+    3. Refactored `ProjectsPage.tsx` into a foregrounded project register with inline summary telemetry, search/sort controls, and interactive scheme filter pills.
+    4. Integrated live overview mapping (`<MapCanvas variant="overview" />`) into `WorkspacePage.tsx` and `ProjectOverviewDashboard.tsx` alongside a streamlined project identity header preserving `PRELIMINARY — NOT FIELD VERIFIED`, CRS metadata, and full epistemic rules.
+    5. Polished `MapCanvas.tsx` workstation toolbar/Layer Drawer (`Loading Raster...` `flex-wrap`), `GisFeatureInspectorDrawer.tsx`, `GisSymbologyLegend.tsx`, `NewProjectWizardPage.tsx`, inline SVG favicon in `frontend/index.html`, and fixed BOQ table column widths in `CostAndScenarioComparisonPanel.tsx` (`1113px` exact container fit on desktop `1440px`) (**COMPLETED & VERIFIED**)
 - **Git Repository Status:**
   - Remote: `https://github.com/Immortal-syntax/electrimap.git`
-  - Active Branch: `main`
-  - Working tree verified with 100% passing tests, linting, and builds.
+  - Active Branch: `experiment` (ready for commit/push synchronization with `origin/experiment`).
 
 ---
 
@@ -55,19 +60,19 @@
 
 ---
 
-## 3. Verification & Test Results
-- **Backend Linting (`ruff check backend`):** Passed (`All checks passed!`).
-- **Backend Typecheck (`mypy --config-file backend/pyproject.toml backend/app backend/tests`):** Passed (`Success: no issues found in 113 source files`).
-- **Backend Test Suite (`pytest backend/tests -v`):** **60 passed** (`0 failed`).
-- **Frontend Typecheck (`npm run typecheck`):** Passed (`0 errors`).
-- **Frontend Linting (`npm run lint`):** Passed (`0 warnings, 0 errors`).
-- **Frontend Unit Tests (`npm run test -- --run`):** **14 passed** (`QualityTag.test.tsx`, `AppRoutes.test.tsx`).
-- **Frontend Production Build (`npm run build`):** Passed cleanly (`dist/` built).
+## 3. Verification & Test Results (Synchronized 2026-11-15)
+- **Backend Test Suite (`pytest -q`):** **60 passed** (`1 warning`, `18.28s`; zero backend files modified during Vision Reset).
+- **Frontend Typecheck (`npm run typecheck` -> `tsc --noEmit`):** Passed (`0 errors`).
+- **Frontend Linting (`npm run lint` -> `eslint . --max-warnings 0`):** Passed (`0 warnings, 0 errors`).
+- **Frontend Unit Tests (`npm run test -- --run` -> `vitest run --run`):** **38 passed** across 2 test suites (`QualityTag.test.tsx`: 10 passed; `AppRoutes.test.tsx`: 28 passed).
+- **Frontend Production Build (`npm run build` -> `tsc -b && vite build`):** Passed cleanly (`dist/` built in `9.09s`).
+- **Live Browser CDP Verification (Edge Headless, Desktop `1440x900`/`1920x1080` & Mobile `390x844`):** `0` horizontal overflow (`overflowPx: 0`), `0` console errors, `0` page errors, `0` HTTP `>= 400` failures, BOQ container/table exact `1113px` alignment on `/cost`.
+*(Prior M8/PR audit baseline also verified `ruff check backend` and `mypy --config-file backend/pyproject.toml backend/app backend/tests` on unchanged backend code.)*
 
 ---
 
 ## 4. Multi-Agent Handover & Continuity Context (Antigravity <-> Claude)
-- **Active Branch:** `main` (clean working tree, synchronized with `origin/main`).
+- **Active Branch:** `experiment` (synchronized with `origin/experiment`).
 - **How to Verify Locally:**
   - Backend: `.\backend\.venv\Scripts\ruff.exe check backend`, `.\backend\.venv\Scripts\mypy.exe --config-file backend/pyproject.toml backend/app backend/tests`, `.\backend\.venv\Scripts\pytest.exe backend/tests -q`
   - Frontend: `cd frontend && npm run typecheck && npm run lint && npm run test -- --run && npm run build`

@@ -109,6 +109,10 @@ export interface MapCanvasProps {
   ) => void;
   /** Optional height class override */
   heightClass?: string;
+  /** Visual composition mode: full workbench vs compact overview hero */
+  variant?: 'workbench' | 'overview';
+  /** Optional callback to open the full `/map` GIS workstation from overview mode */
+  onOpenFullMap?: () => void;
   /** Whether the collapsible GIS layer drawer opens expanded initially (default true) */
   defaultLayerPanelOpen?: boolean;
   /** Minimum zoom level allowed (defaults to MAP_MIN_ZOOM = 5.0 to prevent zooming out to world globe) */
@@ -243,7 +247,7 @@ function buildBasemapStyle(mode: BasemapMode): StyleSpecification {
       {
         id: 'survey-paper-bg',
         type: 'background',
-        paint: { 'background-color': '#F7F5F0' },
+        paint: { 'background-color': '#F4F7FA' },
       },
       {
         id: 'survey-paper-tiles',
@@ -403,6 +407,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   drawModeActive = false,
   onDrawnPolygonChange,
   heightClass = 'h-[540px]',
+  variant = 'workbench',
+  onOpenFullMap,
   defaultLayerPanelOpen = true,
   minZoom = MAP_MIN_ZOOM,
   maxZoom = MAP_MAX_ZOOM,
@@ -943,12 +949,16 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               id: 'viirs-radiance-glow-label',
               type: 'symbol',
               source: 'viirs-radiance-source',
+              minzoom: 12.2,
               layout: {
                 'text-field': glowTextExpr as unknown as string,
                 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
                 'text-size': 10,
                 'text-offset': [0, -1.8],
                 'text-anchor': 'bottom',
+                'text-allow-overlap': false,
+                'text-optional': true,
+                'text-padding': 8,
               },
               paint: {
                 'text-color': '#FEF08A',
@@ -1048,10 +1058,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               ],
               'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
               'text-size': 11,
+              'text-allow-overlap': false,
+              'text-optional': true,
+              'text-padding': 6,
+              'text-max-width': 11,
             },
             paint: {
               'text-color': '#1E293B',
-              'text-halo-color': '#F7F5F0',
+              'text-halo-color': 'rgba(255, 255, 255, 0.94)',
               'text-halo-width': 1.8,
             },
           });
@@ -1265,6 +1279,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             id: 'clusters-label',
             type: 'symbol',
             source: 'settlement-clusters',
+            minzoom: 12.0,
             filter: ['==', ['geometry-type'], 'Point'],
             layout: {
               'text-field': [
@@ -1288,10 +1303,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               'text-size': 10.5,
               'text-offset': [0, 1.3],
               'text-anchor': 'top',
+              'text-allow-overlap': false,
+              'text-optional': true,
+              'text-padding': 8,
+              'text-max-width': 12,
             },
             paint: {
               'text-color': '#141413',
-              'text-halo-color': '#F7F5F0',
+              'text-halo-color': 'rgba(255, 255, 255, 0.94)',
               'text-halo-width': 1.8,
             },
           });
@@ -1426,6 +1445,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             id: 'layer-a-labels',
             type: 'symbol',
             source: 'layer-a-existing-infra',
+            minzoom: 13.0,
             filter: [
               'in',
               ['get', 'infra_category'],
@@ -1441,13 +1461,17 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               ],
               'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
               'text-size': 10,
-              'text-offset': [0, -1.3],
+              'text-offset': [0, -1.6],
               'text-anchor': 'bottom',
+              'text-allow-overlap': false,
+              'text-optional': true,
+              'text-padding': 8,
+              'text-max-width': 13,
             },
             paint: {
               'text-color': '#1E1B4B',
-              'text-halo-color': '#FFFFFF',
-              'text-halo-width': 1.6,
+              'text-halo-color': 'rgba(255, 255, 255, 0.94)',
+              'text-halo-width': 1.8,
             },
           });
         }
@@ -1547,6 +1571,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             id: 'network-proposed-labels',
             type: 'symbol',
             source: 'network-layout',
+            minzoom: 12.8,
             filter: [
               'in',
               ['get', 'layer_type'],
@@ -1562,6 +1587,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               'text-size': 9.5,
               'text-offset': [0, -1.3],
               'text-anchor': 'bottom',
+              'text-allow-overlap': false,
+              'text-optional': true,
+              'text-padding': 6,
             },
             paint: {
               'text-color': '#991B1B',
@@ -2280,292 +2308,295 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const effectiveHeightClass = expandedCanvas ? 'h-[720px]' : heightClass;
 
   return (
-    <div className="bg-sheet border border-rule-strong rounded-xs overflow-hidden flex flex-col">
-      {/* Row 1: Top Specialised Electricity GIS Command & Navigation Bar */}
-      {/* Row 1: Layer Drawer Toggle, Search, Basemap Switcher & GIS Utilities */}
-      <div className="px-3 py-2.5 border-b border-rule flex flex-wrap items-center justify-between gap-2 bg-paper">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setLayerPanelOpen((prev) => !prev)}
-            className="h-8 px-3 text-xs font-medium rounded-xs border border-rule-strong bg-sheet text-ink hover:bg-accent-tint transition-colors whitespace-nowrap"
-            title="Toggle Specialised Electricity GIS Layer Manager (Layers A–F)"
+    <div className="bg-sheet border border-rule-subtle rounded-xl shadow-card overflow-hidden flex flex-col">
+      {variant === 'workbench' && (
+        <>
+          {/* Row 1: Top Specialised Electricity GIS Command & Navigation Bar */}
+          <div className="px-4 py-2.5 border-b border-rule-subtle flex flex-wrap items-center justify-between gap-2.5 bg-sheet/95 backdrop-blur-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setLayerPanelOpen((prev) => !prev)}
+                className="h-8 px-3 text-xs font-medium rounded-sm border border-rule bg-paper/80 text-ink hover:bg-accent-tint/50 transition-colors whitespace-nowrap"
+                title="Toggle Specialised Electricity GIS Layer Manager (Layers A–F)"
+              >
+                {layerPanelOpen
+                  ? '◀ Hide GIS Layers (A–F)'
+                  : '▶ Open GIS Layers (A–F)'}
+              </button>
+
+              {/* Village, Substation & Coordinate Search Bar */}
+              <div className="relative flex items-center">
+                <input
+                  type="search"
+                  aria-label="Search villages, substations, or habitations"
+                  placeholder="Search village, LGD, substation..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleRunOpenStreetMapSearch();
+                    }
+                  }}
+                  className="h-8 w-44 sm:w-60 px-3 text-xs bg-paper/80 border border-rule rounded-l-sm text-ink focus:bg-sheet focus:border-accent focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleRunOpenStreetMapSearch()}
+                  className="h-8 px-3 text-xs font-medium bg-sheet border border-l-0 border-rule rounded-r-sm text-ink-2 hover:text-ink hover:bg-paper transition-colors whitespace-nowrap"
+                >
+                  {searchingExternal ? '...' : 'Find'}
+                </button>
+
+                {searchResults.length > 0 && (
+                  <div className="absolute top-9 left-0 z-30 w-80 sm:w-96 bg-sheet border border-rule-subtle rounded-md shadow-overlay divide-y divide-rule-subtle max-h-64 overflow-y-auto">
+                    {searchResults.map((loc) => (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => handleSelectSearchLocation(loc)}
+                        className="w-full text-left p-2.5 hover:bg-accent-tint/40 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span className="text-xs font-semibold text-ink truncate">
+                            {loc.label}
+                          </span>
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-paper border border-rule-subtle text-ink-2 shrink-0">
+                            {loc.category}
+                          </span>
+                        </div>
+                        <div className="text-xs text-ink-2 mt-0.5">
+                          {loc.summary}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Basemap Switcher (4 Free Options), Camera Controls & GIS Utilities */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <div
+                role="group"
+                aria-label="Basemap switcher"
+                className="inline-flex rounded-sm border border-rule-subtle bg-paper p-0.5"
+              >
+                {(
+                  [
+                    { id: 'survey_paper', label: 'Survey Sheet' },
+                    { id: 'streets', label: 'Streets (OSM)' },
+                    { id: 'terrain', label: 'Terrain (Topo)' },
+                    { id: 'satellite', label: 'Sentinel-2 Satellite' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => handleBasemapChange(opt.id)}
+                    className={`h-7 px-2.5 text-xs font-medium rounded-xs transition-colors whitespace-nowrap ${
+                      basemap === opt.id
+                        ? 'bg-accent text-white shadow-xs'
+                        : 'text-ink-2 hover:text-ink hover:bg-sheet/80'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMeasureModeActive((prev) => !prev);
+                  setMeasurePoints([]);
+                }}
+                className={`h-8 px-3 text-xs font-medium rounded-sm border transition-colors whitespace-nowrap ${
+                  measureModeActive
+                    ? 'bg-info text-white border-info shadow-xs'
+                    : 'bg-sheet text-ink-2 border-rule hover:text-ink hover:bg-paper'
+                }`}
+              >
+                {measureModeActive
+                  ? 'Measuring (Click Map)'
+                  : 'Measure Span / Area'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBeginnerGuideOpen((prev) => !prev)}
+                className={`h-8 px-3 text-xs font-medium rounded-sm border transition-colors whitespace-nowrap ${
+                  beginnerGuideOpen
+                    ? 'bg-accent text-white border-accent shadow-xs'
+                    : 'bg-sheet text-ink-2 border-rule hover:text-ink hover:bg-paper'
+                }`}
+              >
+                ? Beginner Guide
+              </button>
+
+              <div
+                role="group"
+                aria-label="Map camera and viewport controls"
+                className="inline-flex items-center rounded-sm border border-rule bg-sheet divide-x divide-rule-subtle h-8 overflow-hidden"
+              >
+                <button
+                  type="button"
+                  aria-label="Zoom in map"
+                  onClick={() => handleZoomStep(1.0)}
+                  className="h-full px-2.5 text-xs font-medium text-ink-2 hover:text-ink hover:bg-paper"
+                  title="Zoom in (+1 level)"
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  aria-label="Zoom out map"
+                  onClick={() => handleZoomStep(-1.0)}
+                  className="h-full px-2.5 text-xs font-medium text-ink-2 hover:text-ink hover:bg-paper"
+                  title="Zoom out (-1 level)"
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpandedCanvas((prev) => !prev)}
+                  className="h-full px-2.5 text-xs font-medium text-ink-2 hover:text-ink hover:bg-paper whitespace-nowrap"
+                  title="Toggle expanded map canvas height"
+                >
+                  {expandedCanvas ? 'Standard Height' : 'Expand Map'}
+                </button>
+              </div>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => fitToActiveAoi()}
+                title="Zoom and center map on active Area of Interest"
+              >
+                Fit AOI
+              </Button>
+
+              {drawModeActive && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-medium text-accent bg-accent-tint px-3 py-1 rounded-full border border-accent/25">
+                    Draw Mode: Click map to add vertices ({drawnVertices.length} pts)
+                  </span>
+                  {drawnVertices.length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={handleClearDraw}>
+                      Clear Polygon
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {placeTieInModeActive && (
+                <span className="text-xs text-warn bg-warn-tint px-3 py-1 rounded-full border border-warn/30 font-semibold">
+                  Tie-In Mode: Click map to place Assumed 11 kV Tie-In Point
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Row 2: Single-Row Quick-Select & Feature Inspection Bar */}
+          <div
+            role="toolbar"
+            aria-label="Quick-jump geographic locations and features"
+            className="px-4 py-2 bg-paper/70 border-b border-rule-subtle flex items-center justify-between gap-2 text-xs"
           >
-            {layerPanelOpen
-              ? '◀ Hide GIS Layers (A–F)'
-              : '▶ Open GIS Layers (A–F)'}
-          </button>
-
-          {/* Village, Substation & Coordinate Search Bar */}
-          <div className="relative flex items-center">
-            <input
-              type="search"
-              aria-label="Search villages, substations, or habitations"
-              placeholder="Search village, LGD, substation..."
-              value={searchQuery}
-              onChange={(e) => handleSearchInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void handleRunOpenStreetMapSearch();
-                }
-              }}
-              className="h-8 w-44 sm:w-60 px-2.5 text-xs bg-sheet border border-rule-strong rounded-l-xs text-ink"
-            />
-            <button
-              type="button"
-              onClick={() => void handleRunOpenStreetMapSearch()}
-              className="h-8 px-3 text-xs font-medium bg-sheet border border-l-0 border-rule-strong rounded-r-xs text-ink-2 hover:text-ink whitespace-nowrap"
-            >
-              {searchingExternal ? '...' : 'Find'}
-            </button>
-
-            {searchResults.length > 0 && (
-              <div className="absolute top-9 left-0 z-30 w-80 sm:w-96 bg-sheet border border-rule-strong rounded-xs shadow-md divide-y divide-rule max-h-64 overflow-y-auto">
-                {searchResults.map((loc) => (
+            <div className="flex items-center gap-1.5 flex-nowrap flex-1 min-w-0 overflow-x-auto py-0.5">
+              <span className="text-xs font-medium text-ink-2 whitespace-nowrap shrink-0 mr-1">
+                Inspect Location / Asset:
+              </span>
+              {KORAPUT_SEARCH_CATALOG.map((loc) => {
+                const isSelected = activeLocationId === loc.id;
+                const shortName = formatQuickJumpLabel(loc);
+                return (
                   <button
                     key={loc.id}
                     type="button"
                     onClick={() => handleSelectSearchLocation(loc)}
-                    className="w-full text-left p-2.5 hover:bg-accent-tint/40 transition-colors"
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
+                      isSelected
+                        ? 'bg-accent text-white border-accent font-semibold shadow-xs'
+                        : 'bg-sheet text-ink-2 border-rule-subtle hover:border-rule hover:text-ink'
+                    }`}
+                    title={`${loc.label} — ${loc.summary}`}
                   >
-                    <div className="flex items-center justify-between gap-1.5">
-                      <span className="text-xs font-semibold text-ink truncate">
-                        {loc.label}
-                      </span>
-                      <span className="text-xs font-medium px-1.5 py-0.5 rounded-xs bg-paper border border-rule text-ink-2 shrink-0">
-                        {loc.category}
-                      </span>
-                    </div>
-                    <div className="text-xs text-ink-2 mt-0.5">
-                      {loc.summary}
-                    </div>
+                    {shortName}
                   </button>
-                ))}
-              </div>
+                );
+              })}
+            </div>
+            {inspectedFeature && (
+              <button
+                type="button"
+                onClick={() => {
+                  setInspectedFeature(null);
+                  setActiveLocationId(null);
+                }}
+                className="text-xs font-medium text-ink-2 underline hover:text-ink whitespace-nowrap shrink-0 pl-2 border-l border-rule-subtle"
+              >
+                Clear Selection
+              </button>
             )}
           </div>
-        </div>
 
-        {/* Basemap Switcher (4 Free Options), Camera Controls & GIS Utilities */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <div
-            role="group"
-            aria-label="Basemap switcher"
-            className="inline-flex rounded-xs border border-rule-strong bg-sheet p-0.5"
-          >
-            {(
-              [
-                { id: 'survey_paper', label: 'Survey Sheet' },
-                { id: 'streets', label: 'Streets (OSM)' },
-                { id: 'terrain', label: 'Terrain (Topo)' },
-                { id: 'satellite', label: 'Sentinel-2 Satellite' },
-              ] as const
-            ).map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => handleBasemapChange(opt.id)}
-                className={`h-7 px-2.5 text-xs font-medium rounded-xs transition-colors whitespace-nowrap ${
-                  basemap === opt.id
-                    ? 'bg-accent text-white'
-                    : 'text-ink-2 hover:text-ink hover:bg-paper'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setMeasureModeActive((prev) => !prev);
-              setMeasurePoints([]);
-            }}
-            className={`h-8 px-2.5 text-xs font-medium rounded-xs border transition-colors whitespace-nowrap ${
-              measureModeActive
-                ? 'bg-info text-white border-info'
-                : 'bg-sheet text-ink-2 border-rule-strong hover:text-ink'
-            }`}
-          >
-            {measureModeActive
-              ? 'Measuring (Click Map)'
-              : 'Measure Span / Area'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setBeginnerGuideOpen((prev) => !prev)}
-            className={`h-8 px-2.5 text-xs font-medium rounded-xs border transition-colors whitespace-nowrap ${
-              beginnerGuideOpen
-                ? 'bg-accent text-white border-accent'
-                : 'bg-sheet text-ink-2 border-rule-strong hover:text-ink'
-            }`}
-          >
-            ? Beginner Guide
-          </button>
-
-          <div
-            role="group"
-            aria-label="Map camera and viewport controls"
-            className="inline-flex items-center rounded-xs border border-rule-strong bg-sheet divide-x divide-rule h-8"
-          >
-            <button
-              type="button"
-              aria-label="Zoom in map"
-              onClick={() => handleZoomStep(1.0)}
-              className="h-full px-2.5 text-xs font-medium text-ink-2 hover:text-ink hover:bg-paper"
-              title="Zoom in (+1 level)"
-            >
-              +
-            </button>
-            <button
-              type="button"
-              aria-label="Zoom out map"
-              onClick={() => handleZoomStep(-1.0)}
-              className="h-full px-2.5 text-xs font-medium text-ink-2 hover:text-ink hover:bg-paper"
-              title="Zoom out (-1 level)"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              onClick={() => setExpandedCanvas((prev) => !prev)}
-              className="h-full px-2.5 text-xs font-medium text-ink-2 hover:text-ink hover:bg-paper whitespace-nowrap"
-              title="Toggle expanded map canvas height"
-            >
-              {expandedCanvas ? 'Standard Height' : 'Expand Map'}
-            </button>
-          </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => fitToActiveAoi()}
-            title="Zoom and center map on active Area of Interest"
-          >
-            Fit AOI
-          </Button>
-
-          {drawModeActive && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-medium text-accent bg-accent-tint px-2.5 py-1 rounded-xs border border-accent/30">
-                Draw Mode: Click map to add vertices ({drawnVertices.length} pts)
-              </span>
-              {drawnVertices.length > 0 && (
-                <Button variant="ghost" size="sm" onClick={handleClearDraw}>
-                  Clear Polygon
-                </Button>
-              )}
+          {/* Beginner-Friendly Plain-English Guide Drawer */}
+          {beginnerGuideOpen && (
+            <div className="p-4 bg-paper/80 border-b border-rule-subtle text-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-ink text-sm">
+                  Beginner Guide: How to Read the Electricity GIS Map
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBeginnerGuideOpen(false)}
+                  className="text-ink-2 underline text-xs font-medium"
+                >
+                  Close Guide
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-ink-2 leading-relaxed">
+                <div className="p-3 bg-sheet border border-rule-subtle rounded-md">
+                  <strong className="text-ink block mb-1">
+                    1. Existing vs. Proposed Lines
+                  </strong>
+                  <strong>Solid purple (33 kV)</strong> and{' '}
+                  <strong>solid dark-red (11 kV)</strong> lines show mapped existing
+                  grid lines from OpenStreetMap. <strong>Dashed red (11 kV)</strong>{' '}
+                  and <strong>dashed blue (415 V)</strong> lines show preliminary
+                  proposed routes — they are planning estimates, not installed
+                  lines.
+                </div>
+                <div className="p-3 bg-sheet border border-rule-subtle rounded-md">
+                  <strong className="text-ink block mb-1">
+                    2. What Nighttime Illumination (VIIRS) Means
+                  </strong>
+                  NASA VIIRS measures upward outdoor light at night in{' '}
+                  <code>nW/cm²/sr</code>. Bright areas indicate street or outdoor
+                  lighting.
+                  <strong>
+                    {' '}
+                    A dark pixel does NOT prove a village has no electricity
+                  </strong>{' '}
+                  — satellites cannot see indoor household bulbs, meters, or daytime
+                  solar systems.
+                </div>
+                <div className="p-3 bg-sheet border border-rule-subtle rounded-md">
+                  <strong className="text-ink block mb-1">
+                    3. Potential Electrification Gaps
+                  </strong>
+                  Amber/red dashed corridors highlight habitations (like Podapadar
+                  Tola &amp; Maliaguda PVTG) located far (&gt;1.5 km) from mapped 11
+                  kV transformers with low nighttime radiance. Click any symbol on
+                  the map or in the Quick-Select bar above to inspect its full data
+                  source and caveats.
+                </div>
+              </div>
             </div>
           )}
-
-          {placeTieInModeActive && (
-            <span className="text-xs text-warn bg-warn-tint px-2.5 py-1 rounded-xs border border-warn/40 font-semibold">
-              Tie-In Mode: Click map to place Assumed 11 kV Tie-In Point
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Row 2: Single-Row Quick-Select & Feature Inspection Bar */}
-      <div
-        role="toolbar"
-        aria-label="Quick-jump geographic locations and features"
-        className="px-3 py-1.5 bg-paper border-b border-rule flex items-center justify-between gap-2 text-xs"
-      >
-        <div className="flex items-center gap-1.5 flex-nowrap flex-1 min-w-0 overflow-x-auto py-0.5">
-          <span className="text-xs font-medium text-ink-2 whitespace-nowrap shrink-0 mr-1">
-            Inspect Location / Asset:
-          </span>
-          {KORAPUT_SEARCH_CATALOG.map((loc) => {
-            const isSelected = activeLocationId === loc.id;
-            const shortName = formatQuickJumpLabel(loc);
-            return (
-              <button
-                key={loc.id}
-                type="button"
-                onClick={() => handleSelectSearchLocation(loc)}
-                className={`px-2.5 py-1 rounded-xs text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
-                  isSelected
-                    ? 'bg-accent text-white border-accent font-semibold'
-                    : 'bg-sheet text-ink-2 border-rule hover:border-rule-strong hover:text-ink'
-                }`}
-                title={`${loc.label} — ${loc.summary}`}
-              >
-                {shortName}
-              </button>
-            );
-          })}
-        </div>
-        {inspectedFeature && (
-          <button
-            type="button"
-            onClick={() => {
-              setInspectedFeature(null);
-              setActiveLocationId(null);
-            }}
-            className="text-xs font-medium text-ink-2 underline hover:text-ink whitespace-nowrap shrink-0 pl-2 border-l border-rule"
-          >
-            Clear Selection
-          </button>
-        )}
-      </div>
-
-      {/* Beginner-Friendly Plain-English Guide Drawer */}
-      {beginnerGuideOpen && (
-        <div className="p-3.5 bg-paper border-b border-rule-strong text-xs space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-ink text-sm">
-              Beginner Guide: How to Read the Electricity GIS Map
-            </span>
-            <button
-              type="button"
-              onClick={() => setBeginnerGuideOpen(false)}
-              className="text-ink-2 underline text-xs font-medium"
-            >
-              Close Guide
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-ink-2 leading-relaxed">
-            <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs">
-              <strong className="text-ink block mb-1">
-                1. Existing vs. Proposed Lines
-              </strong>
-              <strong>Solid purple (33 kV)</strong> and{' '}
-              <strong>solid dark-red (11 kV)</strong> lines show mapped existing
-              grid lines from OpenStreetMap. <strong>Dashed red (11 kV)</strong>{' '}
-              and <strong>dashed blue (415 V)</strong> lines show preliminary
-              proposed routes — they are planning estimates, not installed
-              lines.
-            </div>
-            <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs">
-              <strong className="text-ink block mb-1">
-                2. What Nighttime Illumination (VIIRS) Means
-              </strong>
-              NASA VIIRS measures upward outdoor light at night in{' '}
-              <code>nW/cm²/sr</code>. Bright areas indicate street or outdoor
-              lighting.
-              <strong>
-                {' '}
-                A dark pixel does NOT prove a village has no electricity
-              </strong>{' '}
-              — satellites cannot see indoor household bulbs, meters, or daytime
-              solar systems.
-            </div>
-            <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs">
-              <strong className="text-ink block mb-1">
-                3. Potential Electrification Gaps
-              </strong>
-              Amber/red dashed corridors highlight habitations (like Podapadar
-              Tola &amp; Maliaguda PVTG) located far (&gt;1.5 km) from mapped 11
-              kV transformers with low nighttime radiance. Click any symbol on
-              the map or in the Quick-Select bar above to inspect its full data
-              source and caveats.
-            </div>
-          </div>
-        </div>
+        </>
       )}
 
       {/* Active Distance & Area Measurement Bar */}
@@ -2649,9 +2680,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         {layerPanelOpen && (
           <aside
             aria-label="Specialised Electricity GIS Layers"
-            className="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-rule-strong bg-paper p-3 space-y-3 max-h-[600px] overflow-y-auto text-xs"
+            className="w-full lg:w-[300px] shrink-0 border-b lg:border-b-0 lg:border-r border-rule-subtle bg-paper/85 p-3.5 space-y-3 max-h-[540px] lg:max-h-[calc(100vh-19.5rem)] overflow-y-auto text-xs"
           >
-            <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-rule pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-rule-subtle pb-2.5">
               <span className="text-xs font-semibold text-ink">
                 Electricity GIS Layers (A–F)
               </span>
@@ -2670,7 +2701,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   setLayerEEnabled(true);
                   setLayerFEnabled(true);
                 }}
-                className="flex-1 h-8 px-2.5 text-xs font-medium bg-sheet border border-rule-strong rounded-xs text-ink hover:bg-accent-tint whitespace-nowrap"
+                className="flex-1 h-8 px-2.5 text-xs font-medium bg-sheet border border-rule rounded-sm text-ink hover:bg-accent-tint/60 whitespace-nowrap transition-colors"
               >
                 Show All (A–F)
               </button>
@@ -2684,14 +2715,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   setLayerEEnabled(false);
                   setLayerFEnabled(false);
                 }}
-                className="flex-1 h-8 px-2.5 text-xs font-medium bg-sheet border border-rule-strong rounded-xs text-ink-2 hover:text-ink hover:bg-paper whitespace-nowrap"
+                className="flex-1 h-8 px-2.5 text-xs font-medium bg-sheet border border-rule rounded-sm text-ink-2 hover:text-ink hover:bg-paper whitespace-nowrap transition-colors"
               >
                 Hide All Overlays
               </button>
             </div>
 
             {/* Global Vector Opacity & Reference Pack Provenance Control */}
-            <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-2">
+            <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-2">
               <div className="flex items-center justify-between text-xs text-ink font-medium">
                 <span className="tabular-nums">
                   Vector Layer Opacity: {Math.round(vectorOpacity * 100)}%
@@ -2727,7 +2758,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               </div>
 
               {/* Layer A: Electricity Infrastructure */}
-              <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-1.5">
+              <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
                 <div className="flex flex-wrap items-start justify-between gap-1.5">
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
@@ -2794,7 +2825,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               </div>
 
               {/* Layer F: Proposed Electricity Network */}
-              <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-1.5">
+              <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
                 <div className="flex flex-wrap items-start justify-between gap-1.5">
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
@@ -2819,17 +2850,17 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
             {/* GROUP 2: Satellite Imagery, Nighttime Illumination & Environmental Rasters (Layer B) */}
             <div className="space-y-2">
-              <div className="text-xs font-semibold text-ink-2 px-0.5 pt-1 flex items-center justify-between">
+              <div className="text-xs font-semibold text-ink-2 px-0.5 pt-1 flex flex-wrap items-center justify-between gap-1.5">
                 <span>Group 2 · Satellite Nighttime Illumination &amp; Rasters</span>
                 {rasterLoading && (
-                  <span className="text-xs text-accent animate-pulse">
+                  <span className="text-xs text-accent animate-pulse shrink-0 whitespace-nowrap">
                     Loading Raster...
                   </span>
                 )}
               </div>
 
               {/* Satellite Optical Basemap Quick-Switch & Sensor Metadata */}
-              <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-1.5">
+              <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
                 <div className="flex items-center justify-between gap-1.5">
                   <span className="font-semibold text-ink text-xs">
                     Optical Satellite Basemap (Sentinel-2)
@@ -2866,7 +2897,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               </div>
 
               {/* Layer B: Nighttime Illumination (NASA VIIRS Black Marble) */}
-              <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-1.5">
+              <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
                 <div className="flex flex-wrap items-start justify-between gap-1.5">
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
@@ -3052,7 +3083,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               </div>
 
               {/* Environmental & Satellite Raster Overlay Selector (DEM Slope / ESA WorldCover / VIIRS) */}
-              <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-1.5">
+              <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
                 <div className="flex items-center justify-between gap-1.5">
                   <label
                     htmlFor="map-raster-overlay-select"
@@ -3172,7 +3203,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               </div>
 
               {/* Layer C: Village Electrification Status */}
-              <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-1.5">
+              <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
                 <div className="flex flex-wrap items-start justify-between gap-1.5">
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
@@ -3193,7 +3224,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               </div>
 
               {/* Layer D: Population & Settlements */}
-              <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-1.5">
+              <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
                 <div className="flex flex-wrap items-start justify-between gap-1.5">
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
@@ -3253,7 +3284,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               </div>
 
               {/* Layer E: Potential Electrification Gaps */}
-              <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-1.5">
+              <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
                 <div className="flex flex-wrap items-start justify-between gap-1.5">
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
@@ -3284,8 +3315,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
         {/* Center Interactive MapLibre GL JS Viewport */}
         <div
-          className={`relative flex-1 w-full ${effectiveHeightClass} bg-[#EFECE6] overflow-hidden`}
-          style={{ minHeight: '480px' }}
+          className={`relative flex-1 w-full ${effectiveHeightClass} bg-[#EFF3F8] overflow-hidden`}
+          style={{ minHeight: variant === 'overview' ? '440px' : '420px' }}
         >
           <div
             ref={containerRef}
@@ -3294,9 +3325,81 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             style={{ width: '100%', height: '100%' }}
           />
 
+          {/* Compact Overview Hero Floating HUD Bar */}
+          {variant === 'overview' && (
+            <div className="pointer-events-none absolute top-3 left-3 right-14 z-20 flex flex-wrap items-center justify-between gap-2">
+              <div className="pointer-events-auto map-hud-surface rounded-lg border border-rule-subtle shadow-control p-1 flex flex-wrap items-center gap-1 text-xs max-w-full">
+                <button
+                  type="button"
+                  onClick={() => setLayerPanelOpen((prev) => !prev)}
+                  className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${
+                    layerPanelOpen
+                      ? 'bg-accent text-white shadow-xs'
+                      : 'text-ink-2 hover:text-ink hover:bg-sheet'
+                  }`}
+                >
+                  {layerPanelOpen ? 'Hide Layers' : 'Layers (A–F)'}
+                </button>
+                <div className="h-4 w-px bg-rule-subtle" aria-hidden="true" />
+                {(
+                  [
+                    { id: 'survey_paper', label: 'Survey' },
+                    { id: 'satellite', label: 'Satellite' },
+                    { id: 'terrain', label: 'Terrain' },
+                  ] as const
+                ).map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => handleBasemapChange(mode.id)}
+                    className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${
+                      basemap === mode.id
+                        ? 'bg-sheet text-accent shadow-xs font-semibold'
+                        : 'text-ink-2 hover:text-ink hover:bg-sheet/70'
+                    }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setLayerBEnabled((prev) => !prev)}
+                  className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${
+                    layerBEnabled
+                      ? 'bg-warn text-white shadow-xs'
+                      : 'text-ink-2 hover:text-ink hover:bg-sheet/70'
+                  }`}
+                >
+                  VIIRS Lights
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fitToActiveAoi()}
+                  className="h-7 px-2.5 rounded-sm font-medium text-ink-2 hover:text-ink hover:bg-sheet/70 transition-colors"
+                >
+                  Fit AOI
+                </button>
+              </div>
+
+              {onOpenFullMap && (
+                <button
+                  type="button"
+                  onClick={onOpenFullMap}
+                  className="pointer-events-auto hidden sm:inline-flex h-8 px-3.5 rounded-full bg-accent text-white text-xs font-semibold shadow-control hover:bg-accent-hover transition-colors whitespace-nowrap items-center"
+                >
+                  Open Full GIS Workspace →
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Preliminary Engineering Watermark Banner */}
-          <div className="pointer-events-none absolute top-2.5 left-2.5 z-10 bg-sheet border border-rule px-2.5 py-1 rounded-xs shadow-xs">
-            <div className="text-xs text-warn font-semibold">
+          <div
+            className={`pointer-events-none absolute left-3 z-10 bg-sheet/90 backdrop-blur-md border border-rule-subtle px-3 py-1 rounded-full shadow-xs max-w-[calc(100%-10rem)] ${
+              variant === 'overview' ? 'bottom-9' : 'top-3'
+            }`}
+          >
+            <div className="text-2xs sm:text-xs text-warn font-semibold truncate">
               PRELIMINARY ENGINEERING ESTIMATE — FIELD SURVEY REQUIRED
             </div>
           </div>
@@ -3306,13 +3409,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             <div
               role="status"
               aria-label="Hovered GIS Feature Tooltip"
-              className="pointer-events-none absolute bottom-10 left-2.5 z-20 bg-sheet border border-accent px-3 py-2 rounded-xs shadow-sm max-w-xs text-xs"
+              className="pointer-events-none absolute bottom-12 left-3 z-20 bg-sheet/95 backdrop-blur-md border border-accent/40 px-3.5 py-2.5 rounded-md shadow-control max-w-xs text-xs"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-ink truncate">
                   {hoveredFeatureHint.title}
                 </span>
-                <span className="text-xs font-medium px-1.5 py-0.5 bg-paper border border-rule rounded-xs text-ink-2 shrink-0">
+                <span className="text-xs font-medium px-2 py-0.5 bg-paper border border-rule-subtle rounded-full text-ink-2 shrink-0">
                   {hoveredFeatureHint.badge}
                 </span>
               </div>

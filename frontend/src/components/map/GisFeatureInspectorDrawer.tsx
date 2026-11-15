@@ -83,10 +83,10 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
     <div
       role="region"
       aria-label="Selected GIS Feature Inspector"
-      className="absolute bottom-9 right-3 z-20 w-80 sm:w-96 max-h-[82%] overflow-y-auto bg-sheet text-ink border-2 border-accent rounded-xs shadow-lg p-3.5 space-y-2.5 text-xs"
+      className="absolute bottom-10 right-3 z-20 w-80 sm:w-96 max-h-[82%] overflow-y-auto bg-sheet/95 backdrop-blur-md text-ink border border-rule-subtle rounded-lg shadow-overlay p-4 space-y-3 text-xs"
     >
       {/* Header with Layer Group, Title & Close Button */}
-      <div className="flex items-start justify-between gap-2 border-b border-rule pb-2.5">
+      <div className="flex items-start justify-between gap-2 border-b border-rule-subtle pb-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5 mb-1">
             <span className="text-xs font-semibold text-accent">
@@ -102,7 +102,7 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
           type="button"
           aria-label="Close feature inspector"
           onClick={onClose}
-          className="p-1.5 text-xs bg-paper border border-rule rounded-xs text-ink-2 hover:text-ink hover:bg-subtle transition-colors shrink-0"
+          className="p-1.5 text-xs bg-paper border border-rule-subtle rounded-sm text-ink-2 hover:text-ink hover:bg-subtle transition-colors shrink-0"
         >
           <X className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
@@ -136,7 +136,7 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
 
       {/* Infrastructure Symbology & Voltage Swatch (when inspecting Layer A / Layer F) */}
       {feature.infraSpec && (
-        <div className="px-3 py-2 bg-paper border border-rule-subtle rounded-xs flex items-center justify-between gap-2 text-xs">
+        <div className="px-3 py-2 bg-paper/80 border border-rule-subtle rounded-md flex items-center justify-between gap-2 text-xs">
           <span className="inline-flex items-center gap-2 font-semibold text-ink">
             {feature.infraSpec.geometryKind === 'LINE' ? (
               <span
@@ -175,7 +175,7 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
       )}
 
       {/* Structured Engineering & Demographic Attributes Table */}
-      <div className="grid grid-cols-2 gap-2.5 bg-paper p-3 rounded-xs border border-rule-subtle text-xs">
+      <div className="grid grid-cols-2 gap-2.5 bg-paper/80 p-3 rounded-md border border-rule-subtle text-xs">
         {feature.attributes.map((attr) => (
           <div key={attr.label} className="min-w-0">
             <div className="text-xs text-ink-3 font-medium truncate" title={attr.label}>
@@ -197,7 +197,7 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
       </div>
 
       {/* Plain-English Contextual Explanation */}
-      <div className="p-2.5 bg-subtle/60 border border-rule-subtle rounded-xs text-xs text-ink-2 leading-relaxed flex items-start gap-2">
+      <div className="p-3 bg-subtle/60 border border-rule-subtle rounded-md text-xs text-ink-2 leading-relaxed flex items-start gap-2">
         <Info className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" aria-hidden="true" />
         <div>
           <strong className="text-ink">What this means:</strong>{' '}
@@ -206,7 +206,7 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
       </div>
 
       {/* Mandatory Epistemic Caveat Callout */}
-      <div className="p-2.5 bg-warn-tint border border-warn/30 rounded-xs text-xs text-warn font-medium leading-relaxed flex items-start gap-2">
+      <div className="p-3 bg-warn-tint border border-warn/25 rounded-md text-xs text-warn font-medium leading-relaxed flex items-start gap-2">
         <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
         <div>
           <strong>Data Accuracy &amp; Provenance ({feature.provenanceBadge}):</strong>{' '}
@@ -216,7 +216,7 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
 
       {/* Quick Actions Footer */}
       {(feature.coordinates || feature.clusterId) && (
-        <div className="flex flex-wrap items-center justify-end gap-1.5 pt-1 border-t border-rule">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 pt-2 border-t border-rule-subtle">
           {feature.coordinates && onFlyToFeature && (
             <Button
               variant="secondary"

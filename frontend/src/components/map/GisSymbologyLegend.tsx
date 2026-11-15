@@ -78,15 +78,15 @@ export const GisSymbologyLegend: React.FC<GisSymbologyLegendProps> = ({
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   return (
-    <div className="border-t border-rule-strong bg-paper text-ink select-none">
+    <div className="border-t border-rule-subtle bg-sheet/95 backdrop-blur-sm text-ink select-none">
       {/* Expandable Full Cartographic & Epistemic Symbology Matrix */}
       {expanded && (
         <div
           role="region"
           aria-label="Expanded GIS Symbology and Epistemic Legend"
-          className="p-3.5 bg-sheet border-b border-rule space-y-3 text-xs"
+          className="p-4 bg-sheet border-b border-rule-subtle space-y-3.5 text-xs"
         >
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule pb-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule-subtle pb-3">
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-accent" aria-hidden="true" />
               <span className="text-sm font-semibold text-ink">
@@ -105,7 +105,7 @@ export const GisSymbologyLegend: React.FC<GisSymbologyLegendProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
             {/* Column 1: Existing Infrastructure */}
-            <div className="p-3 bg-paper border border-rule-subtle rounded-xs space-y-2">
+            <div className="p-3.5 bg-paper/75 border border-rule-subtle rounded-md space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-ink">
                   1. Existing Grid (Layer A)
@@ -145,7 +145,7 @@ export const GisSymbologyLegend: React.FC<GisSymbologyLegendProps> = ({
             </div>
 
             {/* Column 2: Proposed Preliminary Infrastructure */}
-            <div className="p-3 bg-paper border border-rule-subtle rounded-xs space-y-2">
+            <div className="p-3.5 bg-paper/75 border border-rule-subtle rounded-md space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-ink">
                   2. Proposed Network (Layer F)
@@ -181,7 +181,7 @@ export const GisSymbologyLegend: React.FC<GisSymbologyLegendProps> = ({
             </div>
 
             {/* Column 3: Settlement Electrification Proxy & Verification */}
-            <div className="p-3 bg-paper border border-rule-subtle rounded-xs space-y-2">
+            <div className="p-3.5 bg-paper/75 border border-rule-subtle rounded-md space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-ink">
                   3. Settlement Status (Layer C &amp; D)
@@ -221,7 +221,7 @@ export const GisSymbologyLegend: React.FC<GisSymbologyLegendProps> = ({
             </div>
 
             {/* Column 4: NASA VIIRS Nighttime Illumination & Rasters */}
-            <div className="p-3 bg-paper border border-rule-subtle rounded-xs space-y-2">
+            <div className="p-3.5 bg-paper/75 border border-rule-subtle rounded-md space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-ink">
                   4. VIIRS Radiance (Layer B)

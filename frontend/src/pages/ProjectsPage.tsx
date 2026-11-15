@@ -28,17 +28,14 @@ import {
 import { apiRequest } from '../lib/apiClient';
 import { useSessionStore } from '../stores/sessionStore';
 import { DEMO_PROJECT_ID } from '../components/layout/navigationConfig';
-import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { Input } from '../components/ui/Input';
-import { Panel } from '../components/ui/Panel';
 import { QualityTag } from '../components/ui/QualityTag';
 import { Select } from '../components/ui/Select';
 import { TableSkeleton } from '../components/ui/Skeleton';
-import { StatTile } from '../components/ui/StatTile';
 
 export interface ProjectAoiSummaryDto {
   boundary_source: string;
@@ -199,139 +196,71 @@ export const ProjectsPage: React.FC = () => {
 
   return (
     <div className="page-container">
-      {/* Header & Important Workflow Shortcuts */}
-      <div className="bg-sheet border border-rule rounded-sm shadow-xs p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="heading-overline">
-            Portfolio Register · Rural &amp; Tribal Electrification Projects
+      {/* Compact Portfolio Header with Inline Grounded Telemetry */}
+      <header className="bg-sheet border border-rule-subtle rounded-lg shadow-card p-6 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="heading-overline">
+              Portfolio Register · Rural &amp; Tribal Electrification Studies
+            </div>
+            <h1 className="heading-xl text-ink">Pre-Feasibility DPR Projects</h1>
+            <p className="text-body-sm text-ink-2 max-w-3xl">
+              Search and open active rural electrification workspaces, inspect AOI boundary
+              provenance, or jump directly into GIS mapping, village assessment, and DPR export.
+            </p>
           </div>
-          <h1 className="heading-xl">Pre-Feasibility DPR Projects</h1>
-          <p className="text-body-sm text-ink-2 max-w-3xl">
-            Manage rural electrification study areas across government schemes, inspect AOI boundary
-            provenance, and launch directly into any of the 6 engineering workflow stages.
-          </p>
+
+          <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+            <Link to={`/projects/${DEMO_PROJECT_ID}/workspace`}>
+              <Button variant="secondary" leftIcon={MapIcon}>
+                Koraput Demo Workspace
+              </Button>
+            </Link>
+            <Link to="/projects/new">
+              <Button variant="primary" leftIcon={Plus}>
+                New Project &amp; AOI Wizard
+              </Button>
+            </Link>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap shrink-0">
-          <Link to={`/projects/${DEMO_PROJECT_ID}/workspace`}>
-            <Button variant="secondary" leftIcon={MapIcon}>
-              Koraput Demo Workspace
-            </Button>
-          </Link>
-          <Link to="/projects/new">
-            <Button variant="primary" leftIcon={Plus}>
-              New Project &amp; AOI Wizard
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* Portfolio Summary Indicators (Grounded in Loaded Projects) */}
-      <div
-        aria-label="Portfolio Summary Indicators"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
-      >
-        <StatTile
-          label="Registered DPR Projects"
-          value={loading ? '…' : String(portfolioStats.totalProjects)}
-          unit="projects"
-          quality={portfolioStats.totalProjects > 0 ? 'VERIFIED' : 'UNSET'}
-          subtitle={
-            loading
-              ? 'Querying project database...'
-              : `${portfolioStats.withAoiCount} with validated AOI · ${portfolioStats.withoutAoiCount} pending AOI`
-          }
-        />
-        <StatTile
-          label="Cumulative Validated AOI"
-          value={
-            loading
-              ? '…'
-              : portfolioStats.totalAreaKm2 !== null
-                ? portfolioStats.totalAreaKm2.toFixed(2)
-                : 'Not available'
-          }
-          unit={portfolioStats.totalAreaKm2 !== null ? 'km²' : undefined}
-          quality={portfolioStats.totalAreaKm2 !== null ? 'ESTIMATED' : 'UNSET'}
-          subtitle={
-            portfolioStats.withAoiCount > 0
-              ? `Computed in local metric UTM projections across ${portfolioStats.withAoiCount} AOI(s)`
-              : 'No validated AOI geometries in portfolio'
-          }
-        />
-        <StatTile
-          label="Active Planning Schemes"
-          value={
-            loading
-              ? '…'
-              : portfolioStats.schemes.length > 0
-                ? String(portfolioStats.schemes.length)
-                : 'Not available'
-          }
-          unit={portfolioStats.schemes.length > 0 ? 'schemes' : undefined}
-          quality={portfolioStats.schemes.length > 0 ? 'VERIFIED' : 'UNSET'}
-          subtitle={
-            portfolioStats.schemes.length > 0
-              ? portfolioStats.schemes.join(' · ')
-              : 'Create a project to assign target scheme'
-          }
-        />
-        <StatTile
-          label="Administrative Coverage"
-          value={
-            loading
-              ? '…'
-              : portfolioStats.blocksCount > 0
-                ? `${portfolioStats.blocksCount} Blocks`
-                : 'Not available'
-          }
-          unit={
-            portfolioStats.districtsCount > 0
-              ? `in ${portfolioStats.districtsCount} District(s)`
-              : undefined
-          }
-          quality={portfolioStats.blocksCount > 0 ? 'VERIFIED' : 'UNSET'}
-          subtitle="LGD / Census 2011 linked study geographies"
-        />
-      </div>
-
-      {/* Scheme & Study Area Analytical Breakdown (Shown when projects exist) */}
-      {!loading && portfolioStats.schemeBreakdown.length > 0 && (
-        <Panel
-          overline="Portfolio Distribution"
-          title="Projects & Study Area by Electrification Scheme"
-          subtitle="Distribution of registered pre-feasibility studies and cumulative metric AOI area across funding programmes."
+        <div
+          aria-label="Portfolio Summary Telemetry"
+          className="pt-3.5 border-t border-rule-subtle flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-ink-2"
         >
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            {portfolioStats.schemeBreakdown.map((item) => {
-              const sharePct =
-                portfolioStats.totalProjects > 0
-                  ? (item.count / portfolioStats.totalProjects) * 100
-                  : 0;
-              return (
-                <div
-                  key={item.scheme}
-                  className="bg-subtle/50 border border-rule-subtle rounded-xs p-3.5 space-y-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-ink">{item.scheme}</span>
-                    <Badge variant="primary">{item.count} proj</Badge>
-                  </div>
-                  <div className="text-xs text-ink-2 tabular-nums">
-                    Cumulative AOI: <strong>{item.areaKm2.toFixed(2)} km²</strong>
-                  </div>
-                  <div className="h-1.5 w-full bg-subtle border border-rule-subtle rounded-xs overflow-hidden">
-                    <div
-                      style={{ width: `${Math.max(6, sharePct)}%` }}
-                      className="h-full bg-accent rounded-xs"
-                    />
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex items-center gap-2">
+            <span className="text-ink-3">Registered Studies</span>
+            <strong className="font-mono tabular-nums text-ink">
+              {loading ? '…' : portfolioStats.totalProjects}
+            </strong>
+            {!loading && (
+              <span className="text-ink-3">
+                ({portfolioStats.withAoiCount} with AOI · {portfolioStats.withoutAoiCount} pending)
+              </span>
+            )}
           </div>
-        </Panel>
-      )}
+          <div className="flex items-center gap-2">
+            <span className="text-ink-3">Validated Metric AOI</span>
+            <strong className="font-mono tabular-nums text-ink">
+              {loading
+                ? '…'
+                : portfolioStats.totalAreaKm2 !== null
+                  ? `${portfolioStats.totalAreaKm2.toFixed(2)} km²`
+                  : 'Not available'}
+            </strong>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-ink-3">Geographies</span>
+            <strong className="tabular-nums text-ink">
+              {loading
+                ? '…'
+                : portfolioStats.blocksCount > 0
+                  ? `${portfolioStats.blocksCount} Blocks / ${portfolioStats.districtsCount} District(s)`
+                  : 'Not available'}
+            </strong>
+          </div>
+        </div>
+      </header>
 
       {/* Error State with Retry */}
       {error && (
@@ -342,71 +271,103 @@ export const ProjectsPage: React.FC = () => {
         />
       )}
 
-      {/* Filter, Scheme & Sort Toolbar */}
-      <div className="bg-sheet border border-rule rounded-sm p-3.5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[260px]">
-          <Input
-            type="search"
-            size="md"
-            leftIcon={Search}
-            aria-label="Filter projects by name, block, or village"
-            placeholder="Filter by village, block, or name..."
-            value={searchFilter}
-            onChange={(e) => setSearchFilter(e.target.value)}
-            containerClassName="w-full sm:w-64"
-          />
-          <Select
-            aria-label="Filter projects by scheme"
-            value={schemeFilter}
-            onChange={(e) => setSchemeFilter(e.target.value)}
-            options={[
-              { value: 'ALL', label: `All Schemes (${projects.length})` },
-              ...portfolioStats.schemes.map((sch) => ({ value: sch, label: sch })),
-            ]}
-          />
-          <Select
-            aria-label="Sort projects by"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortKey)}
-            options={[
-              { value: 'updated_desc', label: 'Sort: Recently Updated' },
-              { value: 'area_desc', label: 'Sort: Largest AOI Area (km²)' },
-              { value: 'name_asc', label: 'Sort: Project Name (A–Z)' },
-            ]}
-          />
-          {(searchFilter || schemeFilter !== 'ALL') && (
+      {/* Search, Interactive Scheme Pills & Sort Command Bar */}
+      <div className="bg-sheet border border-rule-subtle rounded-lg shadow-card p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[260px]">
+            <Input
+              type="search"
+              size="md"
+              leftIcon={Search}
+              aria-label="Filter projects by name, block, or village"
+              placeholder="Filter by village, block, or project name..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              containerClassName="w-full sm:w-72"
+            />
+            <Select
+              aria-label="Sort projects by"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortKey)}
+              options={[
+                { value: 'updated_desc', label: 'Sort: Recently Updated' },
+                { value: 'area_desc', label: 'Sort: Largest AOI Area (km²)' },
+                { value: 'name_asc', label: 'Sort: Project Name (A–Z)' },
+              ]}
+            />
+            {(searchFilter || schemeFilter !== 'ALL') && (
+              <Button
+                size="sm"
+                variant="ghost"
+                leftIcon={X}
+                onClick={() => {
+                  setSearchFilter('');
+                  setSchemeFilter('ALL');
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2.5 text-xs text-ink-2 tabular-nums">
+            <span>
+              Showing <strong className="text-ink">{filteredAndSorted.length}</strong> of{' '}
+              <strong className="text-ink">{projects.length}</strong> project(s)
+            </span>
             <Button
               size="sm"
               variant="ghost"
-              leftIcon={X}
-              onClick={() => {
-                setSearchFilter('');
-                setSchemeFilter('ALL');
-              }}
+              leftIcon={RefreshCw}
+              onClick={() => void loadProjects()}
             >
-              Clear
+              Refresh
             </Button>
-          )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2.5 text-xs text-ink-2 tabular-nums">
-          <span>
-            Showing <strong className="text-ink">{filteredAndSorted.length}</strong> of{' '}
-            <strong className="text-ink">{projects.length}</strong> project(s)
-          </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            leftIcon={RefreshCw}
-            onClick={() => void loadProjects()}
+        {/* Interactive Scheme Filter Pills */}
+        {!loading && portfolioStats.schemeBreakdown.length > 0 && (
+          <div
+            role="group"
+            aria-label="Filter projects by scheme"
+            className="flex flex-wrap items-center gap-1.5 pt-2.5 border-t border-rule-subtle text-xs"
           >
-            Refresh
-          </Button>
-        </div>
+            <span className="text-ink-3 font-medium mr-1">Schemes:</span>
+            <button
+              type="button"
+              onClick={() => setSchemeFilter('ALL')}
+              className={`px-3 py-1 rounded-full font-medium border transition-colors ${
+                schemeFilter === 'ALL'
+                  ? 'bg-accent text-white border-accent shadow-xs'
+                  : 'bg-paper text-ink-2 border-rule-subtle hover:border-rule hover:text-ink'
+              }`}
+            >
+              All ({projects.length})
+            </button>
+            {portfolioStats.schemeBreakdown.map((item) => {
+              const active = schemeFilter === item.scheme;
+              return (
+                <button
+                  key={item.scheme}
+                  type="button"
+                  onClick={() => setSchemeFilter(active ? 'ALL' : item.scheme)}
+                  className={`px-3 py-1 rounded-full font-medium border transition-colors ${
+                    active
+                      ? 'bg-accent text-white border-accent shadow-xs'
+                      : 'bg-paper text-ink-2 border-rule-subtle hover:border-rule hover:text-ink'
+                  }`}
+                >
+                  {item.scheme} · {item.count} ({item.areaKm2.toFixed(1)} km²)
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Portfolio Table / Skeleton / Empty State */}
-      <div className="bg-sheet border border-rule rounded-xs overflow-hidden shadow-xs">
+      {/* Portfolio Table / Skeleton / Empty State (Foregrounded Above the Fold) */}
+      <div className="bg-sheet border border-rule-subtle rounded-lg overflow-hidden shadow-card">
         {loading ? (
           <div className="p-4 space-y-2">
             <div className="text-xs text-ink-2">Loading project portfolio...</div>
@@ -478,31 +439,31 @@ export const ProjectsPage: React.FC = () => {
                       <div className="flex flex-wrap items-center gap-1.5 mt-2 text-xs font-normal">
                         <Link
                           to={`/projects/${proj.id}/map`}
-                          className="px-2 py-0.5 rounded-xs bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
+                          className="px-2.5 py-0.5 rounded-full bg-accent-tint text-accent font-medium hover:bg-accent-soft border border-accent/20"
                         >
                           GIS Map
                         </Link>
                         <Link
                           to={`/projects/${proj.id}/settlements`}
-                          className="px-2 py-0.5 rounded-xs bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
+                          className="px-2.5 py-0.5 rounded-full bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
                         >
                           2. Villages
                         </Link>
                         <Link
                           to={`/projects/${proj.id}/network`}
-                          className="px-2 py-0.5 rounded-xs bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
+                          className="px-2.5 py-0.5 rounded-full bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
                         >
                           4. Network
                         </Link>
                         <Link
                           to={`/projects/${proj.id}/cost`}
-                          className="px-2 py-0.5 rounded-xs bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
+                          className="px-2.5 py-0.5 rounded-full bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
                         >
                           5. Cost
                         </Link>
                         <Link
                           to={`/projects/${proj.id}/reports`}
-                          className="px-2 py-0.5 rounded-xs bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
+                          className="px-2.5 py-0.5 rounded-full bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
                         >
                           6. DPR
                         </Link>

@@ -78,7 +78,6 @@ import { Input, Textarea } from '../components/ui/Input';
 import type { JobStatusDto } from '../components/ui/JobProgress';
 import { Select } from '../components/ui/Select';
 import { LoadingState } from '../components/ui/Skeleton';
-import { TitleBlock } from '../components/ui/TitleBlock';
 import { ProjectDto } from './ProjectsPage';
 
 interface ReferenceGeoJsonPayload {
@@ -440,6 +439,66 @@ export const WorkspacePage: React.FC = () => {
 
   const sectionBadge = getSectionReadinessBadge(activeSectionKey);
   const readyLayerCount = layers.filter((l) => l.status === 'READY').length;
+  const isOverviewHeroMapActive = isOverviewMode && !showAllStagesInOverview;
+
+  const sharedMapElement = (
+    <MapCanvas
+      variant={isOverviewHeroMapActive ? 'overview' : 'workbench'}
+      defaultLayerPanelOpen={isOverviewHeroMapActive ? false : true}
+      onOpenFullMap={() => navigateToSection('map')}
+      aoiGeometry={project.aoi?.geojson_geometry ?? null}
+      boundarySource={project.aoi?.boundary_source ?? 'HARMONISED'}
+      referenceBuildings={visibleVectorLayers.buildings ? buildingsGeoJson : null}
+      osmFeatures={visibleVectorLayers.osm_features ? osmGeoJson : null}
+      referenceRoutes={routesGeoJson}
+      settlementClusters={settlements?.geojson ?? null}
+      infrastructureAssets={infrastructure?.geojson ?? null}
+      gapCorridors={gapAnalysis?.corridors_geojson ?? null}
+      networkLayout={scenariosState?.active_scenario.network_geojson ?? null}
+      placeTieInModeActive={placeTieInModeActive}
+      onPlaceTieInPoint={(lon, lat) => {
+        void (async () => {
+          setPlaceTieInModeActive(false);
+          setMapActionError(null);
+          try {
+            await apiRequest(`/api/v1/projects/${project.id}/infrastructure`, {
+              method: 'POST',
+              body: JSON.stringify({
+                asset_type: 'TIE_IN',
+                name: `11 kV Tie-In (${lon.toFixed(4)}E, ${lat.toFixed(4)}N)`,
+                voltage_kv: 11.0,
+                provenance: 'USER_ASSUMED',
+                source_note: 'Interactive planner map click tie-in point.',
+                lon,
+                lat,
+              }),
+            });
+            await fetchSettlementsAndLedger(project.id);
+          } catch (err) {
+            setMapActionError(
+              err instanceof Error
+                ? err.message
+                : 'Unable to record USER_ASSUMED tie-in point.',
+            );
+          }
+        })();
+      }}
+      selectedClusterId={selectedClusterId}
+      onSelectCluster={(cid) => setSelectedClusterId(cid)}
+      rasterOverlayUrl={rasterOverlayUrl}
+      rasterOpacity={rasterOpacity}
+      activeRasterOverlay={activeRasterOverlay}
+      onChangeRasterOverlay={setActiveRasterOverlay}
+      onChangeRasterOpacity={setRasterOpacity}
+      heightClass={
+        isMapRoute
+          ? 'h-[calc(100vh-20.5rem)] min-h-[440px]'
+          : isOverviewHeroMapActive
+            ? 'h-[460px] lg:h-[520px]'
+            : 'h-[480px]'
+      }
+    />
+  );
 
   return (
     <div
@@ -451,7 +510,7 @@ export const WorkspacePage: React.FC = () => {
     >
       {/* Mode 1: Dedicated Full-Height GIS Workspace Header */}
       {isMapRoute && (
-        <header className="bg-sheet border border-rule rounded-sm px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+        <header className="bg-sheet/95 backdrop-blur-sm border border-rule-subtle rounded-lg px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-card">
           <div className="min-w-0 flex items-center flex-wrap gap-x-3 gap-y-1">
             <h1 className="heading-lg truncate">{project.name}</h1>
             <span className="text-xs text-ink-2">
@@ -459,7 +518,7 @@ export const WorkspacePage: React.FC = () => {
               <span className="font-mono">EPSG:{project.metric_epsg}</span> ·{' '}
               {readyLayerCount}/{Math.max(layers.length, 4)} layers ready
             </span>
-            <span className="px-2 py-0.5 text-2xs font-medium border border-dashed border-warn-border bg-warn-bg text-warn rounded-xs">
+            <span className="px-2.5 py-0.5 text-2xs font-medium border border-dashed border-warn-border bg-warn-bg text-warn rounded-full">
               Preliminary — Field Survey Required
             </span>
           </div>
@@ -496,56 +555,68 @@ export const WorkspacePage: React.FC = () => {
         </header>
       )}
 
-      {/* Mode 2: Overview Title Block & Quick Actions */}
+      {/* Mode 2: Editorial Overview Project Header */}
       {isOverviewMode && (
-        <div className="space-y-3">
-          <TitleBlock
-            sheetNumber={`Revision v${project.version}`}
-            projectTitle={project.name}
-            villageLabel={
-              project.village_names ??
-              (project.aoi?.lgd_code ? `LGD ${project.aoi.lgd_code}` : 'Custom AOI Polygon')
-            }
-            blockAndDistrict={`${project.target_block ?? 'Nandapur'}, ${
-              project.target_district ?? 'Koraput'
-            }, ${project.target_state ?? 'Odisha'}`}
-            crsLabel={`WGS 84 ↔ EPSG:${project.metric_epsg}`}
-            scenarioName={`${project.scheme} · ${project.horizon_years}-Year Horizon`}
-            dateIso={project.updated_at.slice(0, 10)}
-            isPreliminary={true}
-          />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-ink-2">
-              Use the left workflow navigation or stage cards below to move step-by-step from data
-              acquisition to DPR export.
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                leftIcon={Settings}
-                onClick={openSettingsDialog}
-              >
-                Project Settings
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="primary"
-                leftIcon={MapIcon}
-                onClick={() => navigateToSection('map')}
-              >
-                Open GIS Workspace
-              </Button>
+        <header className="bg-sheet border border-rule-subtle rounded-lg shadow-card px-5 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge variant="primary" size="sm">
+                {project.scheme} · {project.horizon_years}-Year Horizon
+              </Badge>
+              <span className="text-ink-2 font-medium">
+                Revision v{project.version} · Updated {project.updated_at.slice(0, 10)}
+              </span>
+              <span className="px-2.5 py-0.5 text-2xs font-medium border border-dashed border-warn-border bg-warn-bg text-warn rounded-full">
+                PRELIMINARY — NOT FIELD VERIFIED
+              </span>
+            </div>
+            <h1 className="heading-xl text-ink truncate">{project.name}</h1>
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-ink-2">
+              <span>
+                {project.village_names ??
+                  (project.aoi?.lgd_code
+                    ? `LGD ${project.aoi.lgd_code}`
+                    : 'Custom AOI Polygon')}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>
+                {project.target_block ?? 'Nandapur'},{' '}
+                {project.target_district ?? 'Koraput'},{' '}
+                {project.target_state ?? 'Odisha'}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span className="font-mono text-ink">
+                WGS 84 ↔ EPSG:{project.metric_epsg}
+              </span>
             </div>
           </div>
-        </div>
+
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              leftIcon={Settings}
+              onClick={openSettingsDialog}
+            >
+              Project Settings
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              leftIcon={MapIcon}
+              onClick={() => navigateToSection('map')}
+            >
+              Open GIS Workspace
+            </Button>
+          </div>
+        </header>
       )}
 
-      {/* Mode 3: Focused Stage Compact Header (No Redundant Horizontal Stepper or Top KPI Duplicate) */}
+      {/* Mode 3: Focused Stage Compact Header */}
       {!isOverviewMode && !isMapRoute && (
-        <header className="bg-sheet border border-rule rounded-sm px-5 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 shadow-xs">
+        <header className="bg-sheet border border-rule-subtle rounded-lg px-5 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 shadow-card">
           <div className="space-y-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap text-xs text-ink-2">
               <span>{project.name}</span>
@@ -631,7 +702,7 @@ export const WorkspacePage: React.FC = () => {
         Active workflow step: {activeSectionKey}
       </div>
 
-      {/* Project Overview Dashboard (Executive Indicators, Analytical Charts, Provenance & Audit Trail) */}
+      {/* Project Overview Dashboard (Hero GIS Split, Pipeline Rail, Dimensions & Analytical Charts) */}
       {isOverviewMode && (
         <ProjectOverviewDashboard
           project={project}
@@ -648,6 +719,8 @@ export const WorkspacePage: React.FC = () => {
           exportLogState={exportLogState}
           jobsState={jobsState}
           onNavigateSection={navigateToSection}
+          heroMapSlot={isOverviewHeroMapActive ? sharedMapElement : undefined}
+          onOpenFullMap={() => navigateToSection('map')}
         />
       )}
 
@@ -681,60 +754,14 @@ export const WorkspacePage: React.FC = () => {
                 {mapActionError}
               </Callout>
             )}
-            <MapCanvas
-              aoiGeometry={project.aoi?.geojson_geometry ?? null}
-              boundarySource={project.aoi?.boundary_source ?? 'HARMONISED'}
-              referenceBuildings={visibleVectorLayers.buildings ? buildingsGeoJson : null}
-              osmFeatures={visibleVectorLayers.osm_features ? osmGeoJson : null}
-              referenceRoutes={routesGeoJson}
-              settlementClusters={settlements?.geojson ?? null}
-              infrastructureAssets={infrastructure?.geojson ?? null}
-              gapCorridors={gapAnalysis?.corridors_geojson ?? null}
-              networkLayout={scenariosState?.active_scenario.network_geojson ?? null}
-              placeTieInModeActive={placeTieInModeActive}
-              onPlaceTieInPoint={(lon, lat) => {
-                void (async () => {
-                  setPlaceTieInModeActive(false);
-                  setMapActionError(null);
-                  try {
-                    await apiRequest(`/api/v1/projects/${project.id}/infrastructure`, {
-                      method: 'POST',
-                      body: JSON.stringify({
-                        asset_type: 'TIE_IN',
-                        name: `11 kV Tie-In (${lon.toFixed(4)}E, ${lat.toFixed(4)}N)`,
-                        voltage_kv: 11.0,
-                        provenance: 'USER_ASSUMED',
-                        source_note: 'Interactive planner map click tie-in point.',
-                        lon,
-                        lat,
-                      }),
-                    });
-                    await fetchSettlementsAndLedger(project.id);
-                  } catch (err) {
-                    setMapActionError(
-                      err instanceof Error
-                        ? err.message
-                        : 'Unable to record USER_ASSUMED tie-in point.',
-                    );
-                  }
-                })();
-              }}
-              selectedClusterId={selectedClusterId}
-              onSelectCluster={(cid) => setSelectedClusterId(cid)}
-              rasterOverlayUrl={rasterOverlayUrl}
-              rasterOpacity={rasterOpacity}
-              activeRasterOverlay={activeRasterOverlay}
-              onChangeRasterOverlay={setActiveRasterOverlay}
-              onChangeRasterOpacity={setRasterOpacity}
-              heightClass={isMapRoute ? 'h-[calc(100vh-14.5rem)] min-h-[580px]' : 'h-[480px]'}
-            />
+            {sharedMapElement}
           </div>
 
           {/* Right AOI & Provenance Inspector Panel (Shown in Stage previews or toggled in /map) */}
           {(!isMapRoute || showMapInspectorDrawer) && (
             <aside
               aria-label="AOI and Provenance Inspector"
-              className="lg:col-span-3 bg-sheet border border-rule rounded-sm p-4 space-y-3.5 text-xs shadow-xs"
+              className="lg:col-span-3 bg-sheet border border-rule-subtle rounded-lg p-4 space-y-3.5 text-xs shadow-card"
             >
               <div className="small-caps-heading border-b border-rule pb-2 flex items-center justify-between">
                 <span>AOI &amp; Provenance Inspector</span>
@@ -1066,14 +1093,14 @@ export const WorkspacePage: React.FC = () => {
 
       {/* Progressive Disclosure Footer on Overview for Single-Scroll Technical Audit */}
       {isOverviewMode && (
-        <div className="bg-sheet border border-rule rounded-sm p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+        <div className="bg-sheet border border-rule-subtle rounded-lg p-5 flex flex-wrap items-center justify-between gap-3 shadow-card">
           <div className="space-y-0.5">
             <h2 className="text-sm font-semibold text-ink">
               Complete Engineering Audit View (All 6 Workflow Modules &amp; Map)
             </h2>
             <p className="text-xs text-ink-2">
               {showAllStagesInOverview
-                ? 'Showing the inline map and all 6 detailed workflow panels below the executive dashboard.'
+                ? 'Showing the full workbench map and all 6 detailed workflow panels below the executive dashboard.'
                 : 'Detailed workflow tables and inline modules stay collapsed by default so the overview stays readable. Expand only if reviewing all stages on one scroll.'}
             </p>
           </div>
@@ -1095,7 +1122,7 @@ export const WorkspacePage: React.FC = () => {
       {!isOverviewMode && !isMapRoute && (
         <footer
           aria-label="Stage pagination"
-          className="bg-sheet border border-rule rounded-sm px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xs"
+          className="bg-sheet border border-rule-subtle rounded-lg px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-card"
         >
           <div>
             {prevSection ? (

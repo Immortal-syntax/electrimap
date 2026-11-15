@@ -57,7 +57,6 @@ import { EmptyState } from '../ui/EmptyState';
 import { Icon } from '../ui/Icon';
 import { Panel } from '../ui/Panel';
 import { QualityTag } from '../ui/QualityTag';
-import { StatTile } from '../ui/StatTile';
 
 export interface ProjectOverviewDashboardProps {
   project: ProjectDto;
@@ -74,6 +73,10 @@ export interface ProjectOverviewDashboardProps {
   exportLogState: ProjectExportListDto | null;
   jobsState?: JobStatusDto[];
   onNavigateSection: (section: WorkspaceSectionKey) => void;
+  /** Interactive MapCanvas centerpiece embedded when hosted in WorkspacePage overview */
+  heroMapSlot?: React.ReactNode;
+  /** Explicit navigation callback to launch the full /map workstation */
+  onOpenFullMap?: () => void;
 }
 
 const CANONICAL_LAYER_LABELS: Record<string, string> = {
@@ -107,6 +110,8 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
   exportLogState,
   jobsState = [],
   onNavigateSection,
+  heroMapSlot,
+  onOpenFullMap,
 }) => {
   // ── 1. Derived API-Grounded Metrics (Zero Fabricated Numbers) ──
   const readyLayers = layers.filter((l) => l.status === 'READY');
@@ -453,306 +458,383 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
     ...(demand?.category_totals.map((c) => c.connected_kw) ?? [1]),
   );
 
+  const workflowStagesOnly = stageCards.filter((card) => card.key !== 'map');
+  const launchFullMap = onOpenFullMap ?? (() => onNavigateSection('map'));
+
   return (
     <section
       aria-label="Project Engineering & Electrification Overview Dashboard"
-      className="space-y-6"
+      className="space-y-7"
     >
-      {/* 1. Recommended Next Action & Workflow Readiness Banner */}
-      <div
-        className={`rounded-sm border p-5 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 ${
-          recommendedNextAction.tone === 'ok'
-            ? 'bg-ok-bg/45 border-ok-border'
-            : recommendedNextAction.tone === 'warn'
-              ? 'bg-warn-bg/45 border-warn-border'
-              : 'bg-sheet border-rule'
-        }`}
-      >
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant={
-                recommendedNextAction.tone === 'ok'
-                  ? 'ok'
-                  : recommendedNextAction.tone === 'warn'
-                    ? 'warn'
-                    : 'primary'
+      {/* 1. Hero Geospatial Intelligence Centerpiece & Analytical Action Column */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch">
+        {/* Left/Main 7 Cols: Real Interactive GIS Canvas (when mounted) OR AOI Extent Panel */}
+        <div className="xl:col-span-7 flex flex-col gap-3">
+          {heroMapSlot ? (
+            <div className="flex-1 flex flex-col gap-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                <div className="flex items-center gap-2 text-xs text-ink-2">
+                  <Icon icon={Compass} size="sm" className="text-accent" />
+                  <span className="font-semibold text-ink">
+                    Spatial Study Area — {project.aoi ? `${project.aoi.area_km2.toFixed(2)} km²` : 'AOI Pending'}
+                  </span>
+                  <span className="font-mono text-2xs px-2 py-0.5 rounded-full bg-subtle text-ink-3">
+                    EPSG:{project.metric_epsg}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={launchFullMap}
+                  className="text-xs font-semibold text-accent hover:text-accent-hover transition-colors"
+                >
+                  Expand Full GIS Workstation →
+                </button>
+              </div>
+              <div className="flex-1 rounded-xl overflow-hidden shadow-overlay border border-rule/80 bg-sheet">
+                {heroMapSlot}
+              </div>
+              {!project.aoi && (
+                <EmptyState
+                  compact
+                  icon={Compass}
+                  title="Area of Interest (AOI) Not Configured"
+                  description="Define a village boundary or custom polygon in the AOI Setup Wizard to enable metric UTM calculations."
+                />
+              )}
+            </div>
+          ) : (
+            <Panel
+              overline="Geographic & Administrative Summary"
+              title="Area of Interest (AOI) & Spatial Reference"
+              subtitle="All metric distances (m), areas (km²), and clustering radii (ε) are computed in the project's dynamic local UTM projection."
+              actions={
+                <Badge variant="primary" mono>
+                  EPSG:{project.metric_epsg}
+                </Badge>
               }
             >
-              {recommendedNextAction.stepLabel}
-            </Badge>
-            <span className="text-xs font-medium text-ink-2">
-              Recommended next step
-            </span>
-          </div>
-          <h2 className="text-base font-semibold text-ink">{recommendedNextAction.title}</h2>
-          <p className="text-body-sm text-ink-2 max-w-3xl leading-relaxed">
-            {recommendedNextAction.detail}
-          </p>
+              {project.aoi ? (
+                <div className="space-y-4">
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="bg-subtle/60 rounded-sm p-3.5">
+                      <dt className="text-xs font-medium text-ink-3">
+                        State / District / Block
+                      </dt>
+                      <dd className="text-body-sm font-semibold text-ink mt-1">
+                        {project.target_state ?? 'Odisha'} · {project.target_district ?? 'Koraput'} ·{' '}
+                        {project.target_block ?? 'Nandapur'}
+                      </dd>
+                    </div>
+                    <div className="bg-subtle/60 rounded-sm p-3.5">
+                      <dt className="text-xs font-medium text-ink-3">
+                        Target Scheme &amp; Horizon
+                      </dt>
+                      <dd className="text-body-sm font-semibold text-ink mt-1">
+                        {project.scheme} ({project.horizon_years} yrs @{' '}
+                        {(project.discount_rate * 100).toFixed(1)}%)
+                      </dd>
+                    </div>
+                    <div className="bg-subtle/60 rounded-sm p-3.5">
+                      <dt className="text-xs font-medium text-ink-3">
+                        Validated Metric Area
+                      </dt>
+                      <dd className="text-body-sm font-mono font-semibold text-ink mt-1">
+                        {project.aoi.area_km2.toFixed(2)} km² ({project.aoi.boundary_source})
+                      </dd>
+                    </div>
+                    <div className="bg-subtle/60 rounded-sm p-3.5">
+                      <dt className="text-xs font-medium text-ink-3">
+                        LGD / Census 2011 Codes
+                      </dt>
+                      <dd className="text-body-sm font-mono font-semibold text-ink mt-1">
+                        LGD: {project.aoi.lgd_code ?? 'Unlinked'} · C2011:{' '}
+                        {project.aoi.census2011_code ??
+                          settlements?.census_reconciliation?.census2011_code ??
+                          'Unlinked'}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {buildingsLayer?.bbox && buildingsLayer.bbox.length === 4 && (
+                    <div className="bg-subtle/40 border border-rule-subtle rounded-sm px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-2">
+                      <span className="text-ink-3 font-medium">WGS 84 Bounding Box:</span>
+                      <span className="font-mono">
+                        [{buildingsLayer.bbox[0]?.toFixed(4)}°E, {buildingsLayer.bbox[1]?.toFixed(4)}
+                        °N] → [{buildingsLayer.bbox[2]?.toFixed(4)}°E,{' '}
+                        {buildingsLayer.bbox[3]?.toFixed(4)}°N]
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="bg-subtle/40 border border-rule-subtle rounded-sm p-3.5 flex items-center justify-between gap-3 text-xs">
+                    <div>
+                      <span className="font-semibold text-ink text-body-sm">
+                        Solar &amp; Nighttime Illumination Context
+                      </span>
+                      <p className="text-xs text-ink-2 mt-1">
+                        {worstMonthGhi !== null
+                          ? `Worst-month GHI: ${worstMonthGhi.toFixed(2)} kWh/m²/day · Annual mean: ${
+                              meanAnnualGhi?.toFixed(2) ?? '—'
+                            } kWh/m²/day · Tilt: ${optimalTiltDeg?.toFixed(0) ?? '19'}°`
+                          : 'Solar climatology layer not yet ingested.'}
+                      </p>
+                    </div>
+                    <QualityTag kind={worstMonthGhi !== null ? 'ESTIMATED' : 'UNSET'} />
+                  </div>
+                </div>
+              ) : (
+                <EmptyState
+                  icon={Compass}
+                  title="Area of Interest (AOI) Not Configured"
+                  description="Define a village boundary or custom polygon in the AOI Setup Wizard to enable metric UTM calculations."
+                />
+              )}
+            </Panel>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <Button
-            size="md"
-            variant="primary"
-            rightIcon={ArrowRight}
-            onClick={() => onNavigateSection(recommendedNextAction.targetSection)}
+
+        {/* Right 5 Cols: Priority Action + Editorial Metrics Sheet (Zero Heavy StatTile Boxes) */}
+        <div className="xl:col-span-5 flex flex-col gap-4">
+          {/* Priority Next Step Callout Card */}
+          <div
+            className={`rounded-lg border p-5 shadow-card space-y-3 ${
+              recommendedNextAction.tone === 'ok'
+                ? 'bg-ok-bg/45 border-ok-border'
+                : recommendedNextAction.tone === 'warn'
+                  ? 'bg-warn-bg/50 border-warn-border'
+                  : 'bg-sheet border-rule/80'
+            }`}
           >
-            {recommendedNextAction.buttonLabel}
-          </Button>
-          <Button
-            size="md"
-            variant="secondary"
-            leftIcon={MapIcon}
-            onClick={() => onNavigateSection('map')}
-          >
-            Open Full GIS Map
-          </Button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant={
+                    recommendedNextAction.tone === 'ok'
+                      ? 'ok'
+                      : recommendedNextAction.tone === 'warn'
+                        ? 'warn'
+                        : 'primary'
+                  }
+                >
+                  {recommendedNextAction.stepLabel}
+                </Badge>
+                <span className="text-xs font-medium text-ink-3">Recommended next step</span>
+              </div>
+              <Badge variant="navy" mono>
+                {project.scheme}
+              </Badge>
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-ink">{recommendedNextAction.title}</h2>
+              <p className="text-xs text-ink-2 mt-1 leading-relaxed">
+                {recommendedNextAction.detail}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="primary"
+                rightIcon={ArrowRight}
+                onClick={() => onNavigateSection(recommendedNextAction.targetSection)}
+              >
+                {recommendedNextAction.buttonLabel}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                leftIcon={MapIcon}
+                onClick={launchFullMap}
+              >
+                Open Full GIS Map
+              </Button>
+            </div>
+          </div>
+
+          {/* Open Editorial Key Indicators Matrix (No 6 Identical Box Borders) */}
+          <div className="bg-sheet border border-rule/80 rounded-lg shadow-card p-5 flex-1 flex flex-col justify-between gap-4">
+            <div className="grid grid-cols-2 gap-x-5 gap-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-medium text-ink-3">Detected Structures</span>
+                  <QualityTag kind={detectedStructuresCount !== null ? 'VERIFIED' : 'UNSET'} />
+                </div>
+                <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
+                  {detectedStructuresCount !== null
+                    ? detectedStructuresCount.toLocaleString()
+                    : 'Not available'}
+                </div>
+                <div className="text-2xs text-ink-3">
+                  {residentialStructuresCount !== null
+                    ? `${residentialStructuresCount.toLocaleString()} residential`
+                    : 'Run Step 1 acquisition'}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-medium text-ink-3">Habitation Clusters</span>
+                  <QualityTag kind={totalClustersCount > 0 ? 'ESTIMATED' : 'UNSET'} />
+                </div>
+                <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
+                  {totalClustersCount > 0 ? `${totalClustersCount} clusters` : 'Not available'}
+                </div>
+                <div className="text-2xs text-ink-3">
+                  {totalEstimatedHouseholds !== null
+                    ? `${totalEstimatedHouseholds.toLocaleString()} est. HH · ${verifiedClustersCount} verified`
+                    : 'Run Step 2 DBSCAN'}
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-3 border-t border-rule-subtle">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-medium text-ink-3">Peak Demand</span>
+                  <QualityTag kind={demand ? 'ESTIMATED' : 'UNSET'} />
+                </div>
+                <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
+                  {demand ? `${demand.peak_kva_horizon.toFixed(2)} kVA` : 'Not available'}
+                </div>
+                <div className="text-2xs text-ink-3">
+                  {demand
+                    ? `${demand.total_connected_kw.toFixed(1)} kW connected`
+                    : 'Requires clusters'}
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-3 border-t border-rule-subtle">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-medium text-ink-3">Terrain Feeder Gap</span>
+                  <QualityTag
+                    kind={
+                      gapAnalysis?.has_existing_infra
+                        ? gapAnalysis.assumed_assets_count > 0
+                          ? 'ASSUMED'
+                          : 'VERIFIED'
+                        : 'UNSET'
+                    }
+                  />
+                </div>
+                <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
+                  {gapAnalysis?.has_existing_infra && gapAnalysis.mean_d_terrain_m !== null
+                    ? `${(gapAnalysis.mean_d_terrain_m / 1000).toFixed(2)} km`
+                    : 'UNSET'}
+                </div>
+                <div className="text-2xs text-ink-3">
+                  {gapAnalysis?.has_existing_infra && gapAnalysis.max_d_terrain_m !== null
+                    ? `Max gap ${(gapAnalysis.max_d_terrain_m / 1000).toFixed(2)} km`
+                    : 'Grid tie-in required'}
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-3 border-t border-rule-subtle">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-medium text-ink-3">Scenario CAPEX</span>
+                  <QualityTag
+                    kind={
+                      activeScenarioComparison
+                        ? activeScenarioComparison.has_unset_rates
+                          ? 'UNSET'
+                          : 'ESTIMATED'
+                        : 'UNSET'
+                    }
+                  />
+                </div>
+                <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
+                  {activeScenarioComparison
+                    ? `₹${activeScenarioComparison.total_capex_lakhs.toFixed(2)} L`
+                    : 'Not available'}
+                </div>
+                <div className="text-2xs text-ink-3">
+                  {activeScenarioComparison
+                    ? `Utility net ₹${(activeScenarioComparison.net_utility_capex_inr / 100000).toFixed(2)} L`
+                    : 'Run Step 4 & Step 5'}
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-3 border-t border-rule-subtle">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-medium text-ink-3">Lifecycle NPC</span>
+                  <QualityTag kind={activeScenarioComparison ? 'ESTIMATED' : 'UNSET'} />
+                </div>
+                <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
+                  {activeScenarioComparison
+                    ? `₹${activeScenarioComparison.npc_lakhs.toFixed(2)} L`
+                    : 'Not available'}
+                </div>
+                <div className="text-2xs text-ink-3">
+                  {activeScenarioComparison
+                    ? `LCOE ₹${activeScenarioComparison.lcoe_inr_kwh.toFixed(2)}/kWh`
+                    : 'Requires cost synthesis'}
+                </div>
+              </div>
+            </div>
+
+            {project.aoi && (
+              <div className="pt-3 border-t border-rule-subtle flex flex-wrap items-center justify-between gap-2 text-2xs text-ink-3">
+                <span>
+                  LGD: {project.aoi.lgd_code ?? 'Unlinked'} · C2011:{' '}
+                  {project.aoi.census2011_code ??
+                    settlements?.census_reconciliation?.census2011_code ??
+                    'Unlinked'}
+                </span>
+                <span>
+                  {worstMonthGhi !== null
+                    ? `Solar low: ${worstMonthGhi.toFixed(2)} kWh/m²/d`
+                    : 'Solar climatology pending'}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* 2. Important Workflow Shortcuts Strip (Map Banner + Balanced 3x2 Stage Cards) */}
+      {/* 2. Connected 6-Stage Engineering Pipeline Rail */}
       <div
         aria-label="Engineering Workflow Stage Shortcuts"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5"
+        className="bg-sheet border border-rule/80 rounded-lg shadow-card overflow-hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-rule-subtle"
       >
-        {stageCards.map((card) => {
-          const isMapShortcut = card.key === 'map';
-          return (
-            <button
-              key={card.key}
-              type="button"
-              onClick={() => onNavigateSection(card.key)}
-              className={`text-left bg-sheet hover:bg-subtle/60 border border-rule hover:border-accent/60 rounded-sm p-4 shadow-xs transition-colors group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
-                isMapShortcut
-                  ? 'sm:col-span-2 lg:col-span-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'
-                  : 'flex flex-col justify-between gap-2.5'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-ink-3">{card.step}</span>
-                <Badge variant={card.statusTone}>{card.statusText}</Badge>
+        {workflowStagesOnly.map((card) => (
+          <button
+            key={card.key}
+            type="button"
+            onClick={() => onNavigateSection(card.key)}
+            className="text-left hover:bg-accent-tint/35 p-4 transition-colors group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus flex flex-col justify-between gap-2"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-2xs font-medium text-ink-3">{card.step}</span>
+              <Badge variant={card.statusTone}>{card.statusText}</Badge>
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5 text-body-sm font-semibold text-ink group-hover:text-accent transition-colors">
+                <Icon
+                  icon={card.icon}
+                  size="sm"
+                  className="text-ink-3 group-hover:text-accent shrink-0"
+                />
+                <span>{card.title}</span>
               </div>
-              <div className={isMapShortcut ? 'sm:flex sm:items-center sm:gap-4' : ''}>
-                <div className="flex items-center gap-2 text-body-sm font-semibold text-ink group-hover:text-accent transition-colors">
-                  <Icon
-                    icon={card.icon}
-                    size="sm"
-                    className="text-ink-3 group-hover:text-accent shrink-0"
-                  />
-                  <span>{card.title}</span>
-                </div>
-                <p className="text-xs text-ink-2 mt-1 sm:mt-0.5 leading-snug">
-                  {card.metricLabel}
-                </p>
-              </div>
-            </button>
-          );
-        })}
+              <p className="text-xs text-ink-2 mt-1 leading-snug">{card.metricLabel}</p>
+            </div>
+          </button>
+        ))}
       </div>
 
-      {/* 3. Extended Executive Summary Indicators (6 API-Grounded KPI Tiles in Balanced 3x2 Grid) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <StatTile
-          label="Detected Structures"
-          value={
-            detectedStructuresCount !== null ? detectedStructuresCount.toLocaleString() : 'Not available'
-          }
-          unit={detectedStructuresCount !== null ? 'buildings' : undefined}
-          quality={detectedStructuresCount !== null ? 'VERIFIED' : 'UNSET'}
-          subtitle={
-            residentialStructuresCount !== null
-              ? `${residentialStructuresCount.toLocaleString()} residential footprints`
-              : 'Run Step 1 Data Acquisition'
-          }
-        />
-        <StatTile
-          label="Habitation Clusters"
-          value={totalClustersCount > 0 ? String(totalClustersCount) : 'Not available'}
-          unit={totalClustersCount > 0 ? 'clusters' : undefined}
-          quality={totalClustersCount > 0 ? 'ESTIMATED' : 'UNSET'}
-          subtitle={
-            totalEstimatedHouseholds !== null
-              ? `${totalEstimatedHouseholds.toLocaleString()} estimated households`
-              : 'Run Step 2 DBSCAN Clustering'
-          }
-        />
-        <StatTile
-          label="Horizon Peak Demand"
-          value={demand ? demand.peak_kva_horizon.toFixed(2) : 'Not available'}
-          unit={demand ? 'kVA' : undefined}
-          quality={demand ? 'ESTIMATED' : 'UNSET'}
-          subtitle={
-            demand
-              ? `Base ${demand.peak_kva_base.toFixed(1)} kVA · ${demand.total_connected_kw.toFixed(1)} kW conn.`
-              : 'Requires habitation clusters'
-          }
-        />
-        <StatTile
-          label="Terrain Feeder Gap"
-          value={
-            gapAnalysis?.has_existing_infra && gapAnalysis.mean_d_terrain_m !== null
-              ? `${(gapAnalysis.mean_d_terrain_m / 1000).toFixed(2)}`
-              : 'UNSET'
-          }
-          unit={
-            gapAnalysis?.has_existing_infra && gapAnalysis.mean_d_terrain_m !== null
-              ? 'km mean'
-              : undefined
-          }
-          quality={
-            gapAnalysis?.has_existing_infra
-              ? gapAnalysis.assumed_assets_count > 0
-                ? 'ASSUMED'
-                : 'VERIFIED'
-              : 'UNSET'
-          }
-          subtitle={
-            gapAnalysis?.has_existing_infra && gapAnalysis.max_d_terrain_m !== null
-              ? `Max terrain gap: ${(gapAnalysis.max_d_terrain_m / 1000).toFixed(2)} km`
-              : 'No existing 11 kV / LT grid registered'
-          }
-        />
-        <StatTile
-          label="Pinned Scenario CAPEX"
-          value={
-            activeScenarioComparison
-              ? `₹${activeScenarioComparison.total_capex_lakhs.toFixed(2)}`
-              : 'Not available'
-          }
-          unit={activeScenarioComparison ? 'Lakhs' : undefined}
-          quality={
-            activeScenarioComparison
-              ? activeScenarioComparison.has_unset_rates
-                ? 'UNSET'
-                : 'ESTIMATED'
-              : 'UNSET'
-          }
-          subtitle={
-            activeScenarioComparison
-              ? `Net Utility: ₹${(activeScenarioComparison.net_utility_capex_inr / 100000).toFixed(2)} L (after subsidy)`
-              : 'Run Step 4 & Step 5'
-          }
-        />
-        <StatTile
-          label="Lifecycle NPC & LCOE"
-          value={
-            activeScenarioComparison
-              ? `₹${activeScenarioComparison.npc_lakhs.toFixed(2)}`
-              : 'Not available'
-          }
-          unit={activeScenarioComparison ? 'Lakhs NPC' : undefined}
-          quality={activeScenarioComparison ? 'ESTIMATED' : 'UNSET'}
-          subtitle={
-            activeScenarioComparison
-              ? `LCOE ₹${activeScenarioComparison.lcoe_inr_kwh.toFixed(2)}/kWh · ${activeScenarioComparison.avoided_co2_tonnes_yr.toFixed(1)} tCO₂/yr`
-              : 'Requires scenario cost synthesis'
-          }
-        />
-      </div>
-
-      {/* 4. Geographic Summary & Four-Dimension Electrification Analysis (2-Column Grid) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left: Geographic & Administrative Summary */}
-        <div className="lg:col-span-5">
-          <Panel
-            overline="Geographic & Administrative Summary"
-            title="Area of Interest (AOI) & Spatial Reference"
-            subtitle="All metric distances (m), areas (km²), and clustering radii (ε) are computed in the project's dynamic local UTM projection."
-            actions={
+      {/* 3. Four-Dimension Electrification Epistemic Matrix */}
+      <div>
+        <Panel
+          overline="Four-Dimension Electrification Assessment"
+          title="Strict Epistemic Separation of Rural Electrification Dimensions"
+          subtitle="Satellites cannot see electricity meters or daily supply hours. ElectriMap strictly separates household coverage, supply availability, voltage quality, and infrastructure adequacy."
+          actions={
+            project.aoi && !heroMapSlot ? (
               <Badge variant="primary" mono>
                 EPSG:{project.metric_epsg}
               </Badge>
-            }
-          >
-            {project.aoi ? (
-              <div className="space-y-4">
-                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="bg-subtle/50 rounded-xs p-3">
-                    <dt className="text-xs font-medium text-ink-3">
-                      State / District / Block
-                    </dt>
-                    <dd className="text-body-sm font-semibold text-ink mt-1">
-                      {project.target_state ?? 'Odisha'} · {project.target_district ?? 'Koraput'} ·{' '}
-                      {project.target_block ?? 'Nandapur'}
-                    </dd>
-                  </div>
-                  <div className="bg-subtle/50 rounded-xs p-3">
-                    <dt className="text-xs font-medium text-ink-3">
-                      Target Scheme &amp; Horizon
-                    </dt>
-                    <dd className="text-body-sm font-semibold text-ink mt-1">
-                      {project.scheme} ({project.horizon_years} yrs @{' '}
-                      {(project.discount_rate * 100).toFixed(1)}%)
-                    </dd>
-                  </div>
-                  <div className="bg-subtle/50 rounded-xs p-3">
-                    <dt className="text-xs font-medium text-ink-3">
-                      Validated Metric Area
-                    </dt>
-                    <dd className="text-body-sm font-mono font-semibold text-ink mt-1">
-                      {project.aoi.area_km2.toFixed(2)} km² ({project.aoi.boundary_source})
-                    </dd>
-                  </div>
-                  <div className="bg-subtle/50 rounded-xs p-3">
-                    <dt className="text-xs font-medium text-ink-3">
-                      LGD / Census 2011 Codes
-                    </dt>
-                    <dd className="text-body-sm font-mono font-semibold text-ink mt-1">
-                      LGD: {project.aoi.lgd_code ?? 'Unlinked'} · C2011:{' '}
-                      {project.aoi.census2011_code ??
-                        settlements?.census_reconciliation?.census2011_code ??
-                        'Unlinked'}
-                    </dd>
-                  </div>
-                </dl>
-
-                {buildingsLayer?.bbox && buildingsLayer.bbox.length === 4 && (
-                  <div className="bg-subtle/40 border border-rule-subtle rounded-xs px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-2">
-                    <span className="text-ink-3 font-medium">WGS 84 Bounding Box:</span>
-                    <span className="font-mono">
-                      [{buildingsLayer.bbox[0]?.toFixed(4)}°E, {buildingsLayer.bbox[1]?.toFixed(4)}
-                      °N] → [{buildingsLayer.bbox[2]?.toFixed(4)}°E,{' '}
-                      {buildingsLayer.bbox[3]?.toFixed(4)}°N]
-                    </span>
-                  </div>
-                )}
-
-                <div className="bg-subtle/35 border border-rule-subtle rounded-xs p-3 flex items-center justify-between gap-3 text-xs">
-                  <div>
-                    <span className="font-semibold text-ink text-body-sm">
-                      Solar &amp; Nighttime Illumination Context
-                    </span>
-                    <p className="text-xs text-ink-2 mt-1">
-                      {worstMonthGhi !== null
-                        ? `Worst-month GHI: ${worstMonthGhi.toFixed(2)} kWh/m²/day · Annual mean: ${
-                            meanAnnualGhi?.toFixed(2) ?? '—'
-                          } kWh/m²/day · Tilt: ${optimalTiltDeg?.toFixed(0) ?? '19'}°`
-                        : 'Solar climatology layer not yet ingested.'}
-                    </p>
-                  </div>
-                  <QualityTag kind={worstMonthGhi !== null ? 'ESTIMATED' : 'UNSET'} />
-                </div>
-              </div>
-            ) : (
-              <EmptyState
-                icon={Compass}
-                title="Area of Interest (AOI) Not Configured"
-                description="Define a village boundary or custom polygon in the AOI Setup Wizard to enable metric UTM calculations."
-              />
-            )}
-          </Panel>
-        </div>
-
-        {/* Right: Four-Dimension Electrification Analysis Summary */}
-        <div className="lg:col-span-7">
-          <Panel
-            overline="Four-Dimension Electrification Assessment"
-            title="Strict Epistemic Separation of Rural Electrification Dimensions"
-            subtitle="Satellites cannot see electricity meters or daily supply hours. ElectriMap strictly separates household coverage, supply availability, voltage quality, and infrastructure adequacy."
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            ) : undefined
+          }
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Dimension A */}
-              <div className="border border-rule-subtle rounded-xs p-3.5 bg-subtle/25 space-y-2">
+              <div className="border border-rule-subtle rounded-sm p-4 bg-subtle/40 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-ink-2">
                     Dimension A · Connection Coverage
@@ -780,7 +862,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
               </div>
 
               {/* Dimension B */}
-              <div className="border border-rule-subtle rounded-xs p-3.5 bg-subtle/25 space-y-2">
+              <div className="border border-rule-subtle rounded-sm p-4 bg-subtle/40 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-ink-2">
                     Dimension B · Supply Availability (Hrs/Day)
@@ -798,7 +880,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
               </div>
 
               {/* Dimension C */}
-              <div className="border border-rule-subtle rounded-xs p-3.5 bg-subtle/25 space-y-2">
+              <div className="border border-rule-subtle rounded-sm p-4 bg-subtle/40 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-ink-2">
                     Dimension C · Voltage Regulation &amp; Quality
@@ -820,7 +902,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
               </div>
 
               {/* Dimension D */}
-              <div className="border border-rule-subtle rounded-xs p-3.5 bg-subtle/25 space-y-2">
+              <div className="border border-rule-subtle rounded-sm p-4 bg-subtle/40 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-ink-2">
                     Dimension D · Infrastructure Adequacy
@@ -851,7 +933,6 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             </div>
           </Panel>
         </div>
-      </div>
 
       {/* 5. Analytical Charts Grid (2x2 Pure SVG / CSS Analytical Visualisations) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -887,7 +968,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                   <div
                     role="img"
                     aria-label="Proportional bar chart of households by electrification classification"
-                    className="h-4 w-full rounded-xs overflow-hidden bg-subtle border border-rule flex"
+                    className="h-4 w-full rounded-full overflow-hidden bg-subtle border border-rule-subtle flex"
                   >
                     {(
                       [
@@ -962,7 +1043,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                       return (
                         <div
                           key={row.key}
-                          className="flex flex-col gap-1.5 bg-subtle/50 border border-rule-subtle rounded-xs px-3 py-2 text-xs"
+                          className="flex flex-col gap-1.5 bg-subtle/50 border border-rule-subtle rounded-sm px-3.5 py-2.5 text-xs"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="inline-flex items-center gap-1.5 text-ink font-semibold tabular-nums">
@@ -1003,19 +1084,19 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                       </Badge>
                     </div>
                     <div className="grid grid-cols-3 gap-2.5 text-xs">
-                      <div className="bg-subtle/50 rounded-xs p-2.5">
+                      <div className="bg-subtle/50 rounded-sm p-3">
                         <div className="text-xs text-ink-3">Census 2011 base</div>
                         <div className="text-sm font-mono font-semibold text-ink mt-0.5">
                           {settlements.census_reconciliation.census_2011_households} HH
                         </div>
                       </div>
-                      <div className="bg-subtle/50 rounded-xs p-2.5">
+                      <div className="bg-subtle/50 rounded-sm p-3">
                         <div className="text-xs text-ink-3">Projected baseline</div>
                         <div className="text-sm font-mono font-semibold text-ink mt-0.5">
                           {settlements.census_reconciliation.projected_base_year_households} HH
                         </div>
                       </div>
-                      <div className="bg-subtle/50 rounded-xs p-2.5">
+                      <div className="bg-subtle/50 rounded-sm p-3">
                         <div className="text-xs text-ink-3">Satellite estimate</div>
                         <div className="text-sm font-mono font-semibold text-accent mt-0.5">
                           {settlements.census_reconciliation.satellite_estimated_households} HH
@@ -1082,10 +1163,10 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                   return (
                     <div
                       key={scen.scenario_id}
-                      className={`rounded-xs border p-2.5 space-y-1.5 ${
+                      className={`rounded-md border p-3 space-y-2 ${
                         scen.is_active_baseline
-                          ? 'bg-accent-soft/25 border-accent'
-                          : 'bg-subtle/40 border-rule'
+                          ? 'bg-accent-soft/25 border-accent/40'
+                          : 'bg-subtle/40 border-rule-subtle'
                       }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -1109,10 +1190,10 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                       {/* CAPEX Bar */}
                       <div className="grid grid-cols-12 items-center gap-2 text-[11px] font-mono">
                         <span className="col-span-2 text-ink-3">CAPEX</span>
-                        <div className="col-span-7 h-2.5 bg-subtle rounded-xs overflow-hidden border border-rule">
+                        <div className="col-span-7 h-2.5 bg-subtle rounded-full overflow-hidden border border-rule-subtle">
                           <div
                             style={{ width: `${capexPct}%` }}
-                            className="h-full bg-accent"
+                            className="h-full bg-accent rounded-full"
                           />
                         </div>
                         <span className="col-span-3 text-right font-semibold text-ink">
@@ -1123,10 +1204,10 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                       {/* Lifecycle NPC Bar */}
                       <div className="grid grid-cols-12 items-center gap-2 text-[11px] font-mono">
                         <span className="col-span-2 text-ink-3">20Y NPC</span>
-                        <div className="col-span-7 h-2.5 bg-subtle rounded-xs overflow-hidden border border-rule">
+                        <div className="col-span-7 h-2.5 bg-subtle rounded-full overflow-hidden border border-rule-subtle">
                           <div
                             style={{ width: `${npcPct}%` }}
-                            className="h-full bg-navy-800"
+                            className="h-full bg-navy-800 rounded-full"
                           />
                         </div>
                         <span className="col-span-3 text-right font-bold text-ink">
@@ -1180,7 +1261,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             {demand && demand.category_totals.length > 0 ? (
               <div className="space-y-3">
                 {/* Base vs Horizon Peak kVA growth bar */}
-                <div className="bg-subtle/60 border border-rule rounded-xs p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                <div className="bg-subtle/60 border border-rule-subtle rounded-sm p-3 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
                   <div>
                     <span className="text-ink-3">BASE PEAK:</span>{' '}
                     <strong className="text-ink">{demand.peak_kva_base.toFixed(2)} kVA</strong> (
@@ -1217,10 +1298,10 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                             {cat.energy_kwh_day.toFixed(1)} kWh/d)
                           </span>
                         </div>
-                        <div className="h-2 w-full bg-subtle border border-rule rounded-xs overflow-hidden">
+                        <div className="h-2 w-full bg-subtle border border-rule-subtle rounded-full overflow-hidden">
                           <div
                             style={{ width: `${widthPct}%` }}
-                            className="h-full bg-[#0284C7]"
+                            className="h-full bg-[#0284C7] rounded-full"
                           />
                         </div>
                       </div>
@@ -1267,7 +1348,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             {gapAnalysis && gapAnalysis.has_existing_infra ? (
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-2.5 text-xs">
-                  <div className="bg-subtle/50 rounded-xs p-2.5">
+                  <div className="bg-subtle/50 rounded-sm p-3">
                     <div className="text-xs text-ink-3">Mean straight dist</div>
                     <div className="text-sm font-mono font-semibold text-ink mt-0.5">
                       {gapAnalysis.mean_d_straight_m !== null
@@ -1275,7 +1356,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                         : '—'}
                     </div>
                   </div>
-                  <div className="bg-subtle/50 rounded-xs p-2.5">
+                  <div className="bg-subtle/50 rounded-sm p-3">
                     <div className="text-xs text-ink-3">Mean terrain dist</div>
                     <div className="text-sm font-mono font-semibold text-accent mt-0.5">
                       {gapAnalysis.mean_d_terrain_m !== null
@@ -1283,7 +1364,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                         : '—'}
                     </div>
                   </div>
-                  <div className="bg-subtle/50 rounded-xs p-2.5">
+                  <div className="bg-subtle/50 rounded-sm p-3">
                     <div className="text-xs text-ink-3">Max terrain gap</div>
                     <div className="text-sm font-mono font-semibold text-warn mt-0.5">
                       {gapAnalysis.max_d_terrain_m !== null
@@ -1295,28 +1376,28 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
 
                 {/* Modality Candidate Counts */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-                  <div className="border border-rule-subtle rounded-xs p-2.5 bg-subtle/30">
+                  <div className="border border-rule-subtle rounded-sm p-3 bg-subtle/30">
                     <div className="text-xs text-ink-3">Grid Extension</div>
                     <div className="text-base font-mono font-semibold text-ink mt-0.5">
                       {gapAnalysis.grid_extension_candidates}
                     </div>
                     <div className="text-xs text-ink-2">clusters</div>
                   </div>
-                  <div className="border border-rule-subtle rounded-xs p-2.5 bg-subtle/30">
+                  <div className="border border-rule-subtle rounded-sm p-3 bg-subtle/30">
                     <div className="text-xs text-ink-3">Augmentation</div>
                     <div className="text-base font-mono font-semibold text-ink mt-0.5">
                       {gapAnalysis.augmentation_candidates}
                     </div>
                     <div className="text-xs text-ink-2">clusters</div>
                   </div>
-                  <div className="border border-rule-subtle rounded-xs p-2.5 bg-subtle/30">
+                  <div className="border border-rule-subtle rounded-sm p-3 bg-subtle/30">
                     <div className="text-xs text-ink-3">Solar Mini-Grid</div>
                     <div className="text-base font-mono font-semibold text-accent mt-0.5">
                       {gapAnalysis.minigrid_candidates}
                     </div>
                     <div className="text-xs text-ink-2">clusters</div>
                   </div>
-                  <div className="border border-rule-subtle rounded-xs p-2.5 bg-subtle/30">
+                  <div className="border border-rule-subtle rounded-sm p-3 bg-subtle/30">
                     <div className="text-xs text-ink-3">Standalone SHS</div>
                     <div className="text-base font-mono font-semibold text-ink mt-0.5">
                       {gapAnalysis.shs_candidates}
@@ -1327,14 +1408,14 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
 
                 {/* Cluster-level gap preview */}
                 {gapAnalysis.clusters.length > 0 && (
-                  <div className="border-t border-rule pt-2.5 space-y-2">
+                  <div className="border-t border-rule-subtle pt-3 space-y-2">
                     <div className="text-xs font-medium text-ink-2">
                       Habitation Modality Screening Register
                     </div>
                     {gapAnalysis.clusters.slice(0, 4).map((cl) => (
                       <div
                         key={cl.cluster_id}
-                        className="flex flex-wrap items-center justify-between gap-2 text-xs bg-subtle/40 border border-rule rounded-xs px-2.5 py-1.5"
+                        className="flex flex-wrap items-center justify-between gap-2 text-xs bg-subtle/40 border border-rule-subtle rounded-sm px-3 py-2"
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="font-mono font-bold text-ink">{cl.cluster_label}</span>
@@ -1399,7 +1480,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             }
           >
             {layers.length > 0 ? (
-              <div className="divide-y divide-rule border border-rule rounded-xs overflow-hidden">
+              <div className="divide-y divide-rule-subtle border border-rule-subtle rounded-md overflow-hidden">
                 {layers.map((lyr) => {
                   const sourceType = inferLayerSourceType(lyr);
                   const displayTitle =
@@ -1483,7 +1564,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             }
           >
             {activityFeed.length > 0 ? (
-              <div className="divide-y divide-rule border border-rule rounded-xs overflow-hidden">
+              <div className="divide-y divide-rule-subtle border border-rule-subtle rounded-md overflow-hidden">
                 {activityFeed.map((item) => (
                   <div
                     key={item.id}

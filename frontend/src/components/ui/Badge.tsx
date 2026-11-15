@@ -55,8 +55,8 @@ const BADGE_DOT_CLASSES: Record<BadgeVariant, string> = {
 }
 
 const BADGE_SIZE_CLASSES: Record<BadgeSize, string> = {
-  sm: 'px-1.5 py-0.5 text-2xs gap-1',
-  md: 'px-2 py-0.5 text-xs gap-1.5',
+  sm: 'px-2 py-0.5 text-2xs gap-1',
+  md: 'px-2.5 py-1 text-xs gap-1.5',
 }
 
 export function Badge({
@@ -71,7 +71,7 @@ export function Badge({
 }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center whitespace-nowrap shrink-0 rounded-xs border font-medium leading-none select-none ${
+      className={`inline-flex items-center whitespace-nowrap shrink-0 rounded-full border font-medium leading-none select-none ${
         dashed ? 'border-dashed' : 'border-solid'
       } ${BADGE_VARIANT_CLASSES[variant]} ${BADGE_SIZE_CLASSES[size]} ${
         mono ? 'font-mono tracking-tight' : 'font-sans'
@@ -178,7 +178,7 @@ export const ClassificationBadge: React.FC<ClassificationBadgeProps> = ({
     <span
       data-proxy-class={proxyClass}
       data-verification-state={verificationState}
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-xs bg-sheet text-ink ${
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-medium rounded-full bg-sheet text-ink ${
         isVerified ? 'border-2 border-solid' : 'border border-dashed'
       }`}
       style={{ borderColor: meta.colorVar }}

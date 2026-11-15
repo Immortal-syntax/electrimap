@@ -40,11 +40,11 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <div
-      className={`bg-sheet border border-dashed border-rule-strong rounded-sm flex flex-col items-center justify-center text-center ${
-        compact ? 'p-5 gap-2' : 'p-8 gap-3'
+      className={`bg-sheet border border-dashed border-rule-strong rounded-lg flex flex-col items-center justify-center text-center shadow-xs ${
+        compact ? 'p-6 gap-2.5' : 'p-10 gap-3.5'
       } ${className}`.trim()}
     >
-      <div className="h-9 w-9 rounded-sm bg-subtle border border-rule flex items-center justify-center text-ink-3">
+      <div className="h-10 w-10 rounded-full bg-subtle border border-rule-subtle flex items-center justify-center text-ink-3">
         <Icon icon={icon} size="md" />
       </div>
 

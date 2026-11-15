@@ -120,3 +120,10 @@
 - [x] **M8-5:** Docker container configuration and offline evaluation readiness
 - [x] **M8-6:** Comprehensive technical documentation and user manual finalization
 
+---
+
+## UI / UX Redesign & Vision Reset
+- [x] **VISION-RESET-1:** Softened cartographic design system tokens, elevation, shell navigation, and shared UI primitives *(Completed 2026-11-15)*
+- [x] **VISION-RESET-2:** Live interactive MapLibre hero composition on `/`, foregrounded portfolio register on `/projects`, and integrated GIS overview workspace on `/projects/:id/workspace` *(Completed 2026-11-15)*
+- [x] **VISION-RESET-3:** Specialised GIS workstation HUD/legend/inspector polish, desktop Cost BOQ column alignment, mobile `390x844` responsive verification, and zero-regression test suite pass *(Completed 2026-11-15)*
+

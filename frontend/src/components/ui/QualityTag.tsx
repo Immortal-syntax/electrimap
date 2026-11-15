@@ -80,7 +80,7 @@ export const QualityTag: React.FC<QualityTagProps> = ({
     <span
       title={meta.title}
       data-quality-kind={kind}
-      className={`inline-flex items-center px-1.5 py-0.5 text-2xs leading-tight tracking-wide font-mono rounded-xs select-none ${meta.styleClass} ${className}`.trim()}
+      className={`inline-flex items-center px-2 py-0.5 text-2xs leading-tight tracking-wide font-mono rounded-full select-none ${meta.styleClass} ${className}`.trim()}
     >
       <span aria-hidden="true" className="mr-0.5">
         {meta.prefixGlyph}

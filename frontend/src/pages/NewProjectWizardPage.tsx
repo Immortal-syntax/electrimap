@@ -551,7 +551,7 @@ export const NewProjectWizardPage: React.FC = () => {
                   )}
 
                   {resolvedBoundary && !loadingBoundary && (
-                    <div className="p-3.5 bg-paper border border-rule-subtle rounded-xs space-y-2 text-xs">
+                    <div className="p-4 bg-paper/75 border border-rule-subtle rounded-md space-y-2 text-xs">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="font-semibold text-ink">
                           {resolvedBoundary.name} (LGD {resolvedBoundary.lgd_code})
@@ -597,7 +597,7 @@ export const NewProjectWizardPage: React.FC = () => {
               )}
 
               {methodTab === 'USER_DRAWN' && (
-                <div className="p-3.5 bg-paper border border-rule-subtle rounded-xs text-xs space-y-2">
+                <div className="p-4 bg-paper/75 border border-rule-subtle rounded-md text-xs space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold text-ink">
                       Interactive Map Polygon Drawing Active
@@ -626,7 +626,7 @@ export const NewProjectWizardPage: React.FC = () => {
               )}
 
               {methodTab === 'FILE_UPLOAD' && (
-                <div className="p-3.5 bg-paper border border-rule-subtle rounded-xs text-xs space-y-2">
+                <div className="p-4 bg-paper/75 border border-rule-subtle rounded-md text-xs space-y-2">
                   <label
                     htmlFor="aoi-file-input"
                     className="field-label"
@@ -638,7 +638,7 @@ export const NewProjectWizardPage: React.FC = () => {
                     type="file"
                     accept=".geojson,.json,.kml,.zip"
                     onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-                    className="block w-full text-xs text-ink-2 file:mr-3 file:py-1.5 file:px-3 file:rounded-xs file:border file:border-rule-strong file:text-xs file:font-medium file:bg-sheet file:text-ink hover:file:bg-subtle file:cursor-pointer"
+                    className="block w-full text-xs text-ink-2 file:mr-3 file:py-1.5 file:px-3 file:rounded-sm file:border file:border-rule file:text-xs file:font-medium file:bg-sheet file:text-ink hover:file:bg-subtle file:cursor-pointer"
                   />
                   {selectedFile && (
                     <div className="text-xs font-medium text-ok">

@@ -66,7 +66,7 @@ export function DataTable<T>({
   maxHeightClassName = '',
   className = '',
 }: DataTableProps<T>) {
-  const cellPad = compact ? 'px-2.5 py-1.5' : 'px-3 py-2'
+  const cellPad = compact ? 'px-3 py-2' : 'px-4 py-3'
 
   return (
     <div
@@ -75,7 +75,7 @@ export function DataTable<T>({
       <table className="w-full text-xs border-collapse">
         {caption && <caption className="sr-only">{caption}</caption>}
         <thead
-          className={`bg-subtle border-b border-rule text-ink-2 ${stickyHeader ? 'sticky top-0 z-10' : ''}`}
+          className={`bg-subtle/75 border-b border-rule text-ink-2 ${stickyHeader ? 'sticky top-0 z-10' : ''}`}
         >
           <tr>
             {columns.map((col) => {
@@ -84,7 +84,7 @@ export function DataTable<T>({
                 <th
                   key={col.key}
                   scope="col"
-                  className={`${cellPad} font-semibold uppercase tracking-wider text-2xs select-none ${ALIGN_CLASSES[align]} ${col.widthClassName ?? ''}`.trim()}
+                  className={`${cellPad} font-semibold text-xs select-none ${ALIGN_CLASSES[align]} ${col.widthClassName ?? ''}`.trim()}
                 >
                   {col.header}
                 </th>
@@ -270,7 +270,7 @@ export function TableHeaderCell({
   return (
     <th
       scope="col"
-      className={`${compact ? 'px-2.5 py-1.5' : 'px-3 py-2'} font-semibold uppercase tracking-wider text-2xs text-ink-2 ${ALIGN_CLASSES[align]} ${className}`.trim()}
+      className={`${compact ? 'px-3 py-2' : 'px-4 py-3'} font-semibold text-xs text-ink-2 ${ALIGN_CLASSES[align]} ${className}`.trim()}
       {...rest}
     >
       {children}

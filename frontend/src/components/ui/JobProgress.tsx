@@ -55,7 +55,7 @@ export const JobProgress: React.FC<JobProgressProps> = ({ job, onCancel }) => {
     <div
       role="status"
       aria-live="polite"
-      className="p-3 bg-sheet border border-rule-strong rounded-sm shadow-xs space-y-1.5 text-xs"
+      className="p-4 bg-sheet border border-rule rounded-md shadow-card space-y-2 text-xs"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -63,7 +63,7 @@ export const JobProgress: React.FC<JobProgressProps> = ({ job, onCancel }) => {
             {job.job_type}
           </span>
           <span
-            className={`font-mono text-[10px] px-1.5 py-0.5 rounded-xs border ${
+            className={`font-mono text-[10px] px-2 py-0.5 rounded-full border ${
               isSucceeded
                 ? 'border-ok-border text-ok bg-ok-bg'
                 : isFailed

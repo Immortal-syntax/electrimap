@@ -38,15 +38,15 @@ export const TitleBlock: React.FC<TitleBlockProps> = ({
   return (
     <header
       aria-label="Engineering Survey Drawing Title Block"
-      className="bg-sheet border border-rule rounded-sm shadow-xs grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-rule text-body-sm overflow-hidden"
+      className="bg-sheet border border-rule/80 rounded-lg shadow-card grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-rule-subtle text-body-sm overflow-hidden"
     >
-      <div className="lg:col-span-5 p-4 flex flex-col justify-between">
+      <div className="lg:col-span-5 p-5 flex flex-col justify-between">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className="text-xs text-ink-3 font-medium">
             {sheetNumber} · ElectriMap DPR Workbench
           </span>
           {isPreliminary && (
-            <span className="px-2 py-0.5 text-xs font-medium border border-dashed border-warn-border bg-warn-bg text-warn rounded-xs">
+            <span className="px-2.5 py-0.5 text-xs font-medium border border-dashed border-warn-border bg-warn-bg text-warn rounded-full">
               PRELIMINARY — NOT FIELD VERIFIED
             </span>
           )}

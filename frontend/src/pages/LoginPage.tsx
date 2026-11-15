@@ -45,9 +45,9 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex items-center justify-center p-4 sm:p-6 survey-grid-bg">
-      <div className="w-full max-w-[420px] bg-sheet border border-rule-strong rounded-sm shadow-sm overflow-hidden">
-        <div className="bg-subtle border-b border-rule px-6 py-4 space-y-1.5">
+    <div className="flex-1 flex items-center justify-center p-4 sm:p-8 survey-grid-bg">
+      <div className="w-full max-w-[440px] bg-sheet border border-rule rounded-lg shadow-overlay overflow-hidden">
+        <div className="bg-subtle/70 border-b border-rule-subtle px-7 py-5 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-2">
               <Icon icon={ShieldCheck} size="xs" className="text-accent" />
@@ -63,7 +63,7 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-7 space-y-4">
           {error && (
             <Callout tone="error" title="Authentication Failed">
               {error}

@@ -34,11 +34,11 @@ export interface StatTileProps {
 }
 
 const TONE_TOP_BORDER: Record<StatTileTone, string> = {
-  default: 'border-t-2 border-t-navy-800',
-  accent: 'border-t-2 border-t-accent',
-  ok: 'border-t-2 border-t-ok',
-  warn: 'border-t-2 border-t-warn',
-  error: 'border-t-2 border-t-error',
+  default: 'border-rule/80',
+  accent: 'border-accent-border/80 bg-gradient-to-b from-accent-tint/25 to-sheet',
+  ok: 'border-ok-border/80 bg-gradient-to-b from-ok-bg/35 to-sheet',
+  warn: 'border-warn-border/80 bg-gradient-to-b from-warn-bg/40 to-sheet',
+  error: 'border-error-border/80 bg-gradient-to-b from-error-bg/35 to-sheet',
 }
 
 export const StatTile: React.FC<StatTileProps> = ({
@@ -54,26 +54,26 @@ export const StatTile: React.FC<StatTileProps> = ({
 }) => {
   return (
     <div
-      className={`bg-sheet border border-rule ${TONE_TOP_BORDER[tone]} rounded-sm p-4 flex flex-col justify-between gap-2 shadow-xs ${className}`.trim()}
+      className={`bg-sheet border ${TONE_TOP_BORDER[tone]} rounded-md p-5 flex flex-col justify-between gap-2.5 shadow-card ${className}`.trim()}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          {icon && <Icon icon={icon} size="sm" className="text-ink-3 shrink-0" />}
-          <span className="small-caps-heading">{label}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          {icon && <Icon icon={icon} size="sm" className="text-accent shrink-0" />}
+          <span className="text-xs font-semibold text-ink-2">{label}</span>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {source && <LayerSourceBadge source={source} />}
           <QualityTag kind={quality} />
         </div>
       </div>
       <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
-        <span className="text-xl font-semibold font-mono tabular-nums text-ink whitespace-nowrap">
+        <span className="text-2xl font-bold tracking-tight tabular-nums text-ink whitespace-nowrap">
           {value}
         </span>
-        {unit && <span className="text-xs font-sans text-ink-2 whitespace-nowrap">{unit}</span>}
+        {unit && <span className="text-xs font-sans font-medium text-ink-3 whitespace-nowrap">{unit}</span>}
       </div>
       {subtitle && (
-        <div className="text-xs text-ink-3 leading-snug">{subtitle}</div>
+        <div className="text-xs text-ink-3 leading-relaxed">{subtitle}</div>
       )}
     </div>
   )

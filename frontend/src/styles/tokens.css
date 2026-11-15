@@ -14,72 +14,118 @@
  * limitations under the License.
  */
 
-/* ElectriMap DPR — Geospatial & Electricity Infrastructure Design System Tokens (docs/DESIGN_SYSTEM.md) */
-
+/* ElectriMap DPR — Modern Geospatial Intelligence Visual Tokens (Light-first, soft depth) */
 :root {
-  /* 1. Brand & Deep Navy Structural Hierarchy */
+  /* Navigation & Brand Navy */
   --navy-950: #0B132B;
-  --navy-900: #0F172A;
-  --navy-800: #1E293B;
-  --navy-700: #334155;
+  --navy-950-rgb: 11 19 43;
+  --navy-900: #101B3B;
+  --navy-900-rgb: 16 27 59;
+  --navy-800: #1D2D5E;
+  --navy-800-rgb: 29 45 94;
+  --navy-700: #2E4380;
+  --navy-700-rgb: 46 67 128;
 
-  /* 2. Clean Neutral Backgrounds & Surfaces */
-  --paper: #F4F6F9;
-  --canvas: #F4F6F9;
+  /* Atmospheric Neutral Canvas & Floating Surfaces */
+  --paper: #F4F7FA;
+  --paper-rgb: 244 247 250;
+  --canvas: #F4F7FA;
+  --canvas-rgb: 244 247 250;
   --sheet: #FFFFFF;
+  --sheet-rgb: 255 255 255;
   --surface: #FFFFFF;
-  --subtle: #EEF2F6;
-  --surface-hover: #F1F5F9;
+  --surface-rgb: 255 255 255;
+  --subtle: #EDF2F7;
+  --subtle-rgb: 237 242 247;
+  --surface-hover: #F8FAFC;
+  --surface-hover-rgb: 248 250 252;
   --surface-elevated: #FFFFFF;
+  --surface-elevated-rgb: 255 255 255;
 
-  /* 3. Text Hierarchy (WCAG 2.1 AA >= 4.5:1 on both --sheet and --paper) */
+  /* Ink & Hierarchy */
   --ink: #0F172A;
+  --ink-rgb: 15 23 42;
   --ink-2: #334155;
-  --ink-3: #475569;
-  --muted: #475569;
+  --ink-2-rgb: 51 65 85;
+  --ink-3: #526277;
+  --ink-3-rgb: 82 98 119;
+  --muted: #526277;
+  --muted-rgb: 82 98 119;
   --ink-inverse: #F8FAFC;
+  --ink-inverse-rgb: 248 250 252;
 
-  /* 4. Borders & Structural Separators */
-  --rule: #CBD5E1;
-  --rule-subtle: #E2E8F0;
-  --rule-strong: #94A3B8;
-  --border: #CBD5E1;
-  --border-subtle: #E2E8F0;
-  --border-strong: #94A3B8;
+  /* Soft Structural Borders */
+  --rule: #DCE4EE;
+  --rule-rgb: 220 228 238;
+  --rule-subtle: #E9EFF5;
+  --rule-subtle-rgb: 233 239 245;
+  --rule-strong: #C2CEE0;
+  --rule-strong-rgb: 194 206 224;
+  --border: #DCE4EE;
+  --border-rgb: 220 228 238;
+  --border-subtle: #E9EFF5;
+  --border-subtle-rgb: 233 239 245;
+  --border-strong: #C2CEE0;
+  --border-strong-rgb: 194 206 224;
 
-  /* 5. Electric-Blue Primary Accent & Interactive States */
-  --accent: #0B5CAD;
-  --accent-hover: #084788;
-  --accent-active: #063566;
-  --accent-tint: #E6F0FA;
-  --accent-border: #93C5FD;
-  --primary: #0B5CAD;
-  --primary-hover: #084788;
-  --primary-tint: #E6F0FA;
+  /* Interactive Primary Electric Blue */
+  --accent: #0B63CE;
+  --accent-rgb: 11 99 206;
+  --accent-hover: #094FA6;
+  --accent-hover-rgb: 9 79 166;
+  --accent-active: #073D82;
+  --accent-active-rgb: 7 61 130;
+  --accent-tint: #EBF3FE;
+  --accent-tint-rgb: 235 243 254;
+  --accent-border: #B8D4FA;
+  --accent-border-rgb: 184 212 250;
+  --primary: #0B63CE;
+  --primary-rgb: 11 99 206;
+  --primary-hover: #094FA6;
+  --primary-hover-rgb: 9 79 166;
+  --primary-tint: #EBF3FE;
+  --primary-tint-rgb: 235 243 254;
   --focus: #0F62FE;
+  --focus-rgb: 15 98 254;
 
-  /* 6. Semantic Feedback Colours (Success / Warning / Error / Info) */
-  --ok: #15803D;
-  --ok-bg: #ECFDF3;
-  --ok-tint: #ECFDF3;
+  /* Semantic Status & Epistemic Tokens */
+  --ok: #0F766E;
+  --ok-rgb: 15 118 110;
+  --ok-bg: #ECFDF5;
+  --ok-bg-rgb: 236 253 245;
+  --ok-tint: #ECFDF5;
+  --ok-tint-rgb: 236 253 245;
   --ok-border: #86EFAC;
+  --ok-border-rgb: 134 239 172;
 
   --warn: #B45309;
-  --warn-bg: #FFFBEB;
-  --warn-tint: #FFFBEB;
-  --warn-border: #FCD34D;
+  --warn-rgb: 180 83 9;
+  --warn-bg: #FEF8EC;
+  --warn-bg-rgb: 254 248 236;
+  --warn-tint: #FEF8EC;
+  --warn-tint-rgb: 254 248 236;
+  --warn-border: #F5D08A;
+  --warn-border-rgb: 245 208 138;
 
   --error: #B91C1C;
+  --error-rgb: 185 28 28;
   --error-bg: #FEF2F2;
+  --error-bg-rgb: 254 242 242;
   --error-tint: #FEF2F2;
+  --error-tint-rgb: 254 242 242;
   --error-border: #FCA5A5;
+  --error-border-rgb: 252 165 165;
 
   --info: #0369A1;
+  --info-rgb: 3 105 161;
   --info-bg: #F0F9FF;
+  --info-bg-rgb: 240 249 255;
   --info-tint: #F0F9FF;
-  --info-border: #7DD3FC;
+  --info-tint-rgb: 240 249 255;
+  --info-border: #93C5FD;
+  --info-border-rgb: 147 197 253;
 
-  /* 7. Distinct GIS Layer & Electrical Symbology Palette (Okabe-Ito color-blind safe) */
+  /* Colorblind-Safe Okabe-Ito GIS Semantics (Unchanged domain meaning) */
   --gis-likely-electrified: #0072B2;
   --gis-potentially-underserved: #E69F00;
   --gis-potentially-unserved: #D55E00;
@@ -100,10 +146,8 @@
   --gis-road: #64748B;
   --gis-water: #0284C7;
 
-  /* 8. Spacing Scale (4 px base) */
-  --s-0_5: 2px;
+  /* 4px-Base Spacing Scale */
   --s-1: 4px;
-  --s-1_5: 6px;
   --s-2: 8px;
   --s-3: 12px;
   --s-4: 16px;
@@ -114,15 +158,22 @@
   --s-12: 48px;
   --s-16: 64px;
 
-  /* 9. Layout Dimensions, Radii & Elevation */
-  --header-height: 48px;
-  --toolbar-height: 40px;
-  --statusbar-height: 28px;
-  --container-max: 1440px;
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow-control: 0 1px 3px rgba(15, 23, 42, 0.12), 0 1px 2px rgba(15, 23, 42, 0.08);
-  --shadow-overlay: 0 10px 25px -5px rgba(15, 23, 42, 0.18), 0 4px 10px -2px rgba(15, 23, 42, 0.10);
+  /* Layout Dimensions & Modern Rounded Hierarchy */
+  --header-height: 56px;
+  --toolbar-height: 44px;
+  --statusbar-height: 32px;
+  --container-max: 1480px;
+
+  --radius-xs: 0.375rem; /* 6px — badges & inline tags */
+  --radius-sm: 0.75rem;  /* 12px — controls, buttons, inputs */
+  --radius-md: 1rem;     /* 16px — cards, panels, HUD drawers */
+  --radius-lg: 1.25rem;  /* 20px — hero surfaces & primary sections */
+  --radius-xl: 1.5rem;   /* 24px — centerpiece map frame */
+
+  /* Layered Elevation Shadows */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 2px 8px -2px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.04), 0 10px 28px -8px rgba(15, 23, 42, 0.07);
+  --shadow-control: 0 4px 16px -4px rgba(11, 19, 43, 0.14), 0 1px 3px rgba(11, 19, 43, 0.06);
+  --shadow-overlay: 0 16px 40px -10px rgba(11, 19, 43, 0.22), 0 4px 12px -2px rgba(11, 19, 43, 0.08);
 }

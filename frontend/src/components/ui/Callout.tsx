@@ -29,22 +29,22 @@ const TONE_CONFIG: Record<
   { container: string; titleColor: string; icon: LucideIcon }
 > = {
   info: {
-    container: 'border-l-4 border-l-info bg-info-bg border border-info-border text-ink',
+    container: 'bg-info-bg/85 border border-info-border text-ink shadow-xs',
     titleColor: 'text-info',
     icon: Info,
   },
   warn: {
-    container: 'border-l-4 border-l-warn bg-warn-bg border border-warn-border text-ink',
+    container: 'bg-warn-bg/90 border border-warn-border text-ink shadow-xs',
     titleColor: 'text-warn',
     icon: AlertTriangle,
   },
   error: {
-    container: 'border-l-4 border-l-error bg-error-bg border border-error-border text-ink',
+    container: 'bg-error-bg/90 border border-error-border text-ink shadow-xs',
     titleColor: 'text-error',
     icon: AlertCircle,
   },
   ok: {
-    container: 'border-l-4 border-l-ok bg-ok-bg border border-ok-border text-ink',
+    container: 'bg-ok-bg/90 border border-ok-border text-ink shadow-xs',
     titleColor: 'text-ok',
     icon: CheckCircle2,
   },
@@ -74,20 +74,20 @@ export function Callout({
     <div
       role={tone === 'error' ? 'alert' : 'region'}
       aria-label={title}
-      className={`p-3 rounded-sm text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${cfg.container} ${className}`.trim()}
+      className={`p-4 rounded-md text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 ${cfg.container} ${className}`.trim()}
     >
-      <div className="flex items-start gap-2.5 min-w-0">
-        <Icon icon={cfg.icon} size="sm" className={`${cfg.titleColor} mt-0.5 shrink-0`} />
+      <div className="flex items-start gap-3 min-w-0">
+        <span className="mt-0.5 shrink-0 p-1.5 rounded-full bg-sheet/80 border border-rule-subtle shadow-xs">
+          <Icon icon={cfg.icon} size="sm" className={cfg.titleColor} />
+        </span>
         <div className="space-y-1 min-w-0">
-          <div
-            className={`text-xs font-semibold uppercase tracking-wider ${cfg.titleColor}`}
-          >
+          <div className={`text-xs font-semibold tracking-tight ${cfg.titleColor}`}>
             {title}
           </div>
-          <div className="text-xs text-ink leading-relaxed">{children}</div>
+          <div className="text-xs text-ink-2 leading-relaxed">{children}</div>
         </div>
       </div>
-      {resolvedActions && <div className="shrink-0 flex items-center gap-1.5">{resolvedActions}</div>}
+      {resolvedActions && <div className="shrink-0 flex items-center gap-2">{resolvedActions}</div>}
     </div>
   )
 }

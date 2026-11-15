@@ -33,15 +33,15 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const CARD_VARIANT_CLASSES: Record<CardVariant, string> = {
-  default: 'bg-sheet border-rule text-ink shadow-xs',
-  subtle: 'bg-subtle border-rule text-ink',
-  navy: 'bg-navy-900 border-navy-950 text-ink-inverse shadow-sm',
+  default: 'bg-sheet border-rule/80 text-ink shadow-card',
+  subtle: 'bg-subtle/80 border-rule-subtle text-ink',
+  navy: 'bg-navy-900 border-navy-800 text-ink-inverse shadow-control',
   interactive:
-    'bg-sheet border-rule text-ink shadow-xs hover:border-accent-border hover:bg-surface-hover transition-colors duration-100 cursor-pointer',
-  selected: 'bg-accent-tint/50 border-accent text-ink ring-1 ring-accent shadow-xs',
-  ok: 'bg-ok-bg border-ok-border text-ink',
-  warn: 'bg-warn-bg border-warn-border text-ink',
-  error: 'bg-error-bg border-error-border text-ink',
+    'bg-sheet border-rule/80 text-ink shadow-card hover:border-accent-border hover:bg-surface-hover transition-all duration-150 cursor-pointer',
+  selected: 'bg-accent-tint/60 border-accent text-ink ring-1 ring-accent shadow-card',
+  ok: 'bg-ok-bg border-ok-border text-ink shadow-xs',
+  warn: 'bg-warn-bg border-warn-border text-ink shadow-xs',
+  error: 'bg-error-bg border-error-border text-ink shadow-xs',
 }
 
 const CARD_PADDING_CLASSES: Record<CardPadding, string> = {
@@ -61,7 +61,7 @@ export function Card({
 }: CardProps) {
   return (
     <Component
-      className={`border rounded-sm ${CARD_VARIANT_CLASSES[variant]} ${CARD_PADDING_CLASSES[padding]} ${className}`.trim()}
+      className={`border rounded-md ${CARD_VARIANT_CLASSES[variant]} ${CARD_PADDING_CLASSES[padding]} ${className}`.trim()}
       {...rest}
     >
       {children}

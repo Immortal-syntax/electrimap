@@ -85,8 +85,8 @@ export function TabsList({
   const { variant } = useTabsContext()
   const containerClass =
     variant === 'segmented'
-      ? 'inline-flex items-center gap-1 p-1 bg-subtle border border-rule rounded-sm'
-      : 'flex items-center gap-1 border-b border-rule bg-subtle/40 px-2 overflow-x-auto'
+      ? 'inline-flex items-center gap-1 p-1 bg-subtle border border-rule-subtle rounded-sm'
+      : 'flex items-center gap-1 border-b border-rule-subtle bg-subtle/40 px-3 overflow-x-auto'
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
@@ -159,8 +159,8 @@ export function TabsTrigger({
       tabIndex={isSelected ? 0 : -1}
       disabled={disabled}
       onClick={() => onValueChange(value)}
-      className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs select-none whitespace-nowrap transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50 disabled:pointer-events-none ${
-        variant === 'segmented' ? 'rounded-xs py-1 px-2.5' : ''
+      className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs select-none whitespace-nowrap transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50 disabled:pointer-events-none ${
+        variant === 'segmented' ? 'rounded-xs py-1.5 px-3' : 'rounded-t-xs'
       } ${variantClasses} ${className}`.trim()}
       {...rest}
     >

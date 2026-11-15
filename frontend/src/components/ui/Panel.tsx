@@ -55,7 +55,7 @@ export function Panel({
 
   return (
     <Component
-      className={`bg-sheet border border-rule rounded-sm shadow-xs overflow-hidden flex flex-col ${className}`.trim()}
+      className={`bg-sheet border border-rule/80 rounded-md shadow-card overflow-hidden flex flex-col ${className}`.trim()}
       {...rest}
     >
       {hasHeader && (
@@ -129,17 +129,17 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <div
-      className={`flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-rule ${className}`.trim()}
+      className={`flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-5 border-b border-rule-subtle ${className}`.trim()}
     >
-      <div className="space-y-1 min-w-0">
+      <div className="space-y-1.5 min-w-0">
         {overline && <div className="heading-overline">{overline}</div>}
         <div className="flex items-center gap-2.5 flex-wrap">
           <h1 className="heading-xl">{title}</h1>
           {meta}
         </div>
-        {subtitle && <p className="text-body-sm text-ink-2 max-w-3xl">{subtitle}</p>}
+        {subtitle && <p className="text-sm text-ink-2 max-w-3xl leading-relaxed">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0 flex-wrap">{actions}</div>}
+      {actions && <div className="flex items-center gap-2.5 shrink-0 flex-wrap">{actions}</div>}
     </div>
   )
 }

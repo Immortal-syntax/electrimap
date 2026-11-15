@@ -54,7 +54,7 @@ export const ProvenanceChip: React.FC<ProvenanceChipProps> = ({
     : 'REFERENCE_PACK'
 
   return (
-    <div className="text-2xs border border-rule rounded-xs bg-subtle/70 px-2.5 py-1.5 space-y-1">
+    <div className="text-2xs border border-rule/80 rounded-sm bg-subtle/75 px-3 py-2 space-y-1.5">
       <div className="flex flex-wrap items-center justify-between gap-1.5">
         <div className="flex flex-wrap items-center gap-1.5 font-mono text-ink-2">
           <span className="font-semibold text-ink">{dataset.provider}</span>

@@ -78,7 +78,7 @@ export function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-[1px]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/55 backdrop-blur-sm"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) {
           onClose()
@@ -92,9 +92,9 @@ export function Dialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className={`w-full ${DIALOG_SIZE_CLASSES[size]} bg-sheet border border-rule-strong rounded-sm shadow-lg overflow-hidden focus:outline-none`}
+        className={`w-full ${DIALOG_SIZE_CLASSES[size]} bg-sheet border border-rule rounded-lg shadow-overlay overflow-hidden focus:outline-none`}
       >
-        <header className="px-4 py-3 bg-subtle border-b border-rule flex items-start justify-between gap-3">
+        <header className="px-5 py-4 bg-subtle/60 border-b border-rule-subtle flex items-start justify-between gap-3">
           <div className="min-w-0">
             {overline && <div className="heading-overline mb-0.5">{overline}</div>}
             <h2 id={titleId} className="text-sm font-semibold text-ink tracking-tight">

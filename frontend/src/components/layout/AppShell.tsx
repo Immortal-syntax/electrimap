@@ -324,7 +324,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* Contextual Breadcrumb & Plain-English Guidance Bar */}
       {!isLoginRoute && (
-        <div className="bg-sheet border-b border-rule px-4 sm:px-5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+        <div className="bg-sheet/95 backdrop-blur-sm border-b border-rule-subtle px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
           <nav aria-label="Breadcrumb" className="min-w-0">
             <ol className="flex items-center flex-wrap gap-1.5 text-xs">
               {routeContext.breadcrumbs.map((crumb, index) => {
@@ -341,7 +341,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                     {crumb.to && !isLast ? (
                       <Link
                         to={crumb.to}
-                        className="text-ink-2 hover:text-accent hover:underline font-medium"
+                        className="text-ink-2 hover:text-accent hover:underline font-medium transition-colors"
                       >
                         {crumb.label}
                       </Link>
@@ -364,11 +364,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           </nav>
 
           <div className="flex items-center gap-3 text-xs text-ink-2">
-            <span className="hidden lg:inline">{routeContext.contextHint}</span>
+            <span className="hidden xl:inline text-ink-3">{routeContext.contextHint}</span>
             {!isInsideProject && (
               <Link
                 to={`/projects/${DEMO_PROJECT_ID}/workspace`}
-                className="inline-flex items-center gap-1 font-semibold text-accent hover:underline"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent-tint/70 text-accent hover:bg-accent-tint font-semibold transition-colors"
               >
                 <Icon icon={Compass} size="xs" />
                 <span>Koraput Demo Workbench →</span>
@@ -384,8 +384,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         {!isLoginRoute && (
           <aside
             aria-label="Application workflow navigation"
-            className={`hidden lg:flex flex-col shrink-0 bg-sheet border-r border-rule transition-all duration-150 ${
-              sidebarCollapsed ? 'w-14' : 'w-60'
+            className={`hidden lg:flex flex-col shrink-0 bg-sheet border-r border-rule-subtle transition-all duration-150 ${
+              sidebarCollapsed ? 'w-14' : 'w-64'
             }`}
           >
             {renderSidebarContent(sidebarCollapsed)}
@@ -401,11 +401,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             aria-label="Mobile navigation drawer"
           >
             <div
-              className="fixed inset-0 bg-navy-950/60 backdrop-blur-[1px]"
+              className="fixed inset-0 bg-navy-950/55 backdrop-blur-sm"
               onClick={() => setMobileNavOpen(false)}
             />
-            <div className="relative z-50 w-72 max-w-[85vw] bg-sheet border-r border-rule-strong h-full flex flex-col shadow-lg">
-              <div className="p-3 bg-navy-900 text-white flex items-center justify-between border-b border-navy-800">
+            <div className="relative z-50 w-72 max-w-[85vw] bg-sheet border-r border-rule h-full flex flex-col shadow-overlay rounded-r-md overflow-hidden">
+              <div className="p-3.5 bg-navy-900 text-white flex items-center justify-between border-b border-navy-800">
                 <span className="text-sm font-semibold tracking-tight">
                   ElectriMap Navigation
                 </span>
@@ -413,7 +413,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   type="button"
                   aria-label="Close mobile navigation"
                   onClick={() => setMobileNavOpen(false)}
-                  className="p-1 rounded-xs text-slate-300 hover:text-white"
+                  className="p-1.5 rounded-sm text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
                 >
                   <Icon icon={X} size="sm" />
                 </button>
