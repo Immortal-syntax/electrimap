@@ -14,54 +14,115 @@
  * limitations under the License.
  */
 
-/* ElectriMap DPR — "Survey Sheet" Design System Tokens (docs/DESIGN_SYSTEM.md) */
+/* ElectriMap DPR — Geospatial & Electricity Infrastructure Design System Tokens (docs/DESIGN_SYSTEM.md) */
 
 :root {
-  /* 3.1 UI Neutrals and Brand */
-  --paper: #F7F5F0;
+  /* 1. Brand & Deep Navy Structural Hierarchy */
+  --navy-950: #0B132B;
+  --navy-900: #0F172A;
+  --navy-800: #1E293B;
+  --navy-700: #334155;
+
+  /* 2. Clean Neutral Backgrounds & Surfaces */
+  --paper: #F4F6F9;
+  --canvas: #F4F6F9;
   --sheet: #FFFFFF;
-  --rule: #D9D4C7;
-  --rule-strong: #B8B09C;
-  --ink: #1F2328;
-  --ink-2: #4A4F57;
-  --ink-3: #6E737B;
-  --accent: #0B5D57;
-  --accent-hover: #084842;
-  --accent-tint: #E3EFED;
-  --focus: #1A73E8;
+  --surface: #FFFFFF;
+  --subtle: #EEF2F6;
+  --surface-hover: #F1F5F9;
+  --surface-elevated: #FFFFFF;
 
-  /* 3.2 Feedback */
-  --ok: #1E7B34;
-  --ok-bg: #E6F4EA;
-  --warn: #9A6100;
-  --warn-bg: #FFF4D6;
-  --error: #B42318;
-  --error-bg: #FDECEA;
-  --info: #1F5FAD;
-  --info-bg: #E8F0FB;
+  /* 3. Text Hierarchy (WCAG 2.1 AA >= 4.5:1 on both --sheet and --paper) */
+  --ink: #0F172A;
+  --ink-2: #334155;
+  --ink-3: #475569;
+  --muted: #475569;
+  --ink-inverse: #F8FAFC;
 
-  /* 3.3 GIS Semantic Palette (Okabe-Ito color-blind safe) */
+  /* 4. Borders & Structural Separators */
+  --rule: #CBD5E1;
+  --rule-subtle: #E2E8F0;
+  --rule-strong: #94A3B8;
+  --border: #CBD5E1;
+  --border-subtle: #E2E8F0;
+  --border-strong: #94A3B8;
+
+  /* 5. Electric-Blue Primary Accent & Interactive States */
+  --accent: #0B5CAD;
+  --accent-hover: #084788;
+  --accent-active: #063566;
+  --accent-tint: #E6F0FA;
+  --accent-border: #93C5FD;
+  --primary: #0B5CAD;
+  --primary-hover: #084788;
+  --primary-tint: #E6F0FA;
+  --focus: #0F62FE;
+
+  /* 6. Semantic Feedback Colours (Success / Warning / Error / Info) */
+  --ok: #15803D;
+  --ok-bg: #ECFDF3;
+  --ok-tint: #ECFDF3;
+  --ok-border: #86EFAC;
+
+  --warn: #B45309;
+  --warn-bg: #FFFBEB;
+  --warn-tint: #FFFBEB;
+  --warn-border: #FCD34D;
+
+  --error: #B91C1C;
+  --error-bg: #FEF2F2;
+  --error-tint: #FEF2F2;
+  --error-border: #FCA5A5;
+
+  --info: #0369A1;
+  --info-bg: #F0F9FF;
+  --info-tint: #F0F9FF;
+  --info-border: #7DD3FC;
+
+  /* 7. Distinct GIS Layer & Electrical Symbology Palette (Okabe-Ito color-blind safe) */
   --gis-likely-electrified: #0072B2;
   --gis-potentially-underserved: #E69F00;
   --gis-potentially-unserved: #D55E00;
-  --gis-unknown: #8C8C8C;
-  --gis-aoi-boundary: #1F2328;
+  --gis-unknown: #64748B;
+  --gis-aoi-boundary: #0F172A;
+  --gis-existing-33kv: #6D28D9;
   --gis-existing-ht: #7A1F5C;
+  --gis-existing-substation: #4C1D95;
+  --gis-existing-dt: #9B2C2C;
+  --gis-assumed-tie-in: #D97706;
   --gis-proposed-ht: #CC79A7;
   --gis-proposed-lt: #009E73;
-  --gis-minigrid-zone: #56B4E9;
-  --gis-shs: #F0E442;
-  --gis-building: #5B5F66;
+  --gis-proposed-dt: #0F172A;
+  --gis-minigrid-zone: #0284C7;
+  --gis-shs: #EAB308;
+  --gis-gap-corridor: #DC2626;
+  --gis-building: #475569;
+  --gis-road: #64748B;
+  --gis-water: #0284C7;
 
-  /* 5. Spacing Scale (4 px base) */
+  /* 8. Spacing Scale (4 px base) */
   --s-0_5: 2px;
   --s-1: 4px;
+  --s-1_5: 6px;
   --s-2: 8px;
   --s-3: 12px;
   --s-4: 16px;
+  --s-5: 20px;
   --s-6: 24px;
   --s-8: 32px;
+  --s-10: 40px;
   --s-12: 48px;
   --s-16: 64px;
-}
 
+  /* 9. Layout Dimensions, Radii & Elevation */
+  --header-height: 48px;
+  --toolbar-height: 40px;
+  --statusbar-height: 28px;
+  --container-max: 1440px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-control: 0 1px 3px rgba(15, 23, 42, 0.12), 0 1px 2px rgba(15, 23, 42, 0.08);
+  --shadow-overlay: 0 10px 25px -5px rgba(15, 23, 42, 0.18), 0 4px 10px -2px rgba(15, 23, 42, 0.10);
+}

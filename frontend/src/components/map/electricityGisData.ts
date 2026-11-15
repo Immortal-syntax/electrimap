@@ -145,26 +145,66 @@ export const VIIRS_PERIOD_OPTIONS: Array<{
   id: ViirsObservationPeriod;
   label: string;
   compositeNote: string;
+  radianceField:
+    | 'viirs_radiance_2024_nw'
+    | 'viirs_radiance_2023_nw'
+    | 'viirs_radiance_2022_nw'
+    | 'viirs_radiance_2020_nw';
+  observationWindow: string;
+  sensorResolution: string;
+  provenanceLabel: string;
 }> = [
   {
     id: '2024_ANNUAL',
-    label: '2024 Annual Composite (VNL v2.2)',
-    compositeNote: 'Latest annual cloud-free VIIRS Day/Night Band radiance composite',
+    label: '2024 Reference Scenario (1.00× Scale)',
+    compositeNote:
+      'Illustrative AOI radiance surface (1.00× baseline scale; SYNTHETIC_PLACEHOLDER) paired with Koraput 2024 reference cluster values',
+    radianceField: 'viirs_radiance_2024_nw',
+    observationWindow:
+      'Illustrative Pre-Feasibility Scenario (1.00× · SYNTHETIC_PLACEHOLDER)',
+    sensorResolution:
+      '~500 m VIIRS DNB Scale · Local AOI Proxy PNG (not live satellite feed)',
+    provenanceLabel:
+      'Koraput REFERENCE_DEMO Points + SYNTHETIC_PLACEHOLDER AOI Surface',
   },
   {
     id: '2023_POST_MONSOON',
-    label: '2023 Post-Monsoon Clear-Sky (Nov 2023)',
-    compositeNote: 'Post-monsoon low-humidity observation window over Eastern Ghats',
+    label: '2023 High-Contrast Scenario (1.08× Scale)',
+    compositeNote:
+      'Illustrative AOI radiance surface (1.08× synthetic scaling; SYNTHETIC_PLACEHOLDER) paired with Koraput 2023 reference cluster values',
+    radianceField: 'viirs_radiance_2023_nw',
+    observationWindow:
+      'Illustrative Pre-Feasibility Scenario (1.08× · SYNTHETIC_PLACEHOLDER)',
+    sensorResolution:
+      '~500 m VIIRS DNB Scale · Local AOI Proxy PNG (not live satellite feed)',
+    provenanceLabel:
+      'Koraput REFERENCE_DEMO Points + SYNTHETIC_PLACEHOLDER AOI Surface',
   },
   {
     id: '2022_ANNUAL',
-    label: '2022 Annual Baseline (VNL v2.2)',
-    compositeNote: 'Mid-RDSS baseline annual composite for multi-year trend comparison',
+    label: '2022 Mid-Trend Scenario (0.88× Scale)',
+    compositeNote:
+      'Illustrative AOI radiance surface (0.88× synthetic scaling; SYNTHETIC_PLACEHOLDER) paired with Koraput 2022 reference cluster values',
+    radianceField: 'viirs_radiance_2022_nw',
+    observationWindow:
+      'Illustrative Pre-Feasibility Scenario (0.88× · SYNTHETIC_PLACEHOLDER)',
+    sensorResolution:
+      '~500 m VIIRS DNB Scale · Local AOI Proxy PNG (not live satellite feed)',
+    provenanceLabel:
+      'Koraput REFERENCE_DEMO Points + SYNTHETIC_PLACEHOLDER AOI Surface',
   },
   {
     id: '2020_BASELINE',
-    label: '2020 Pre-RDSS Baseline',
-    compositeNote: 'Historical baseline prior to recent feeder augmentation works',
+    label: '2020 Lower-Radiance Scenario (0.72× Scale)',
+    compositeNote:
+      'Illustrative AOI radiance surface (0.72× synthetic scaling; SYNTHETIC_PLACEHOLDER) paired with Koraput 2020 reference cluster values',
+    radianceField: 'viirs_radiance_2020_nw',
+    observationWindow:
+      'Illustrative Pre-Feasibility Scenario (0.72× · SYNTHETIC_PLACEHOLDER)',
+    sensorResolution:
+      '~500 m VIIRS DNB Scale · Local AOI Proxy PNG (not live satellite feed)',
+    provenanceLabel:
+      'Koraput REFERENCE_DEMO Points + SYNTHETIC_PLACEHOLDER AOI Surface',
   },
 ];
 

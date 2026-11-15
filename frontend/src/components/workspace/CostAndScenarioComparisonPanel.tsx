@@ -14,9 +14,26 @@
  * limitations under the License.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import {
+  FileSpreadsheet,
+  IndianRupee,
+  RotateCcw,
+  Scale,
+  Search,
+  Upload,
+  X,
+} from 'lucide-react';
+import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
 import { Callout } from '../ui/Callout';
+import { ConfirmDialog } from '../ui/Dialog';
+import { EmptyState } from '../ui/EmptyState';
+import { Icon } from '../ui/Icon';
+import { Input, Textarea } from '../ui/Input';
+import { Panel } from '../ui/Panel';
 import { QualityTag } from '../ui/QualityTag';
+import { Select } from '../ui/Select';
 import { StatTile } from '../ui/StatTile';
 
 export interface ProjectRateItemDto {
@@ -260,20 +277,71 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
   );
   const [csvErrors, setCsvErrors] = useState<CsvImportErrorDto[]>([]);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
+  const [boqSearch, setBoqSearch] = useState<string>('');
+  const [boqUnsetOnly, setBoqUnsetOnly] = useState<boolean>(false);
+  const [sorSearch, setSorSearch] = useState<string>('');
+  const [sorCategoryFilter, setSorCategoryFilter] = useState<string>('ALL');
+  const [sorUnsetOnly, setSorUnsetOnly] = useState<boolean>(false);
+  const [pendingUnsetItemCode, setPendingUnsetItemCode] = useState<string | null>(null);
+  const [confirmResetSor, setConfirmResetSor] = useState<boolean>(false);
 
-  if (!comparison || !rates) {
-    return null;
+  const boq = comparison?.active_scenario_boq ?? null;
+  const activeClusterBreakdown = useMemo(() => {
+    if (!boq || selectedClusterFilter === 'ALL') return null;
+    return boq.cluster_breakdowns.find((cb) => cb.cluster_id === selectedClusterFilter) ?? null;
+  }, [boq, selectedClusterFilter]);
+
+  const rawDisplayedLines = useMemo(
+    () => (activeClusterBreakdown ? activeClusterBreakdown.lines : boq?.aggregated_lines ?? []),
+    [activeClusterBreakdown, boq?.aggregated_lines],
+  );
+
+  const displayedLines = useMemo(() => {
+    const q = boqSearch.trim().toLowerCase();
+    return rawDisplayedLines.filter((ln) => {
+      if (boqUnsetOnly && !ln.is_unset) return false;
+      if (q && !`${ln.item_code} ${ln.description} ${ln.category}`.toLowerCase().includes(q)) {
+        return false;
+      }
+      return true;
+    });
+  }, [rawDisplayedLines, boqSearch, boqUnsetOnly]);
+
+  const sorCategories = useMemo(() => {
+    const cats = new Set((rates?.items ?? []).map((i) => i.category));
+    return Array.from(cats).sort();
+  }, [rates?.items]);
+
+  const filteredRateItems = useMemo(() => {
+    const q = sorSearch.trim().toLowerCase();
+    return (rates?.items ?? []).filter((item) => {
+      if (sorUnsetOnly && item.rate_inr !== null) return false;
+      if (sorCategoryFilter !== 'ALL' && item.category !== sorCategoryFilter) return false;
+      if (q && !`${item.item_code} ${item.description} ${item.citation}`.toLowerCase().includes(q)) {
+        return false;
+      }
+      return true;
+    });
+  }, [rates?.items, sorSearch, sorCategoryFilter, sorUnsetOnly]);
+
+  if (!comparison || !rates || !boq) {
+    return (
+      <Panel
+        aria-label="Cost Estimation BOQ and Scenario Comparison"
+        overline="Step 5 · Economic Feasibility & Costs"
+        title="Traceable Cost Estimation, BOQ & Scenario Comparison"
+        subtitle="Itemized Bill of Quantities, Odisha Reference Schedule of Rates (SoR), and 4-scenario NPC / LCOE comparison."
+        icon={IndianRupee}
+      >
+        <EmptyState
+          icon={IndianRupee}
+          title="Cost Estimation & Schedule of Rates Not Available Yet"
+          description="Generate an engineering planning scenario in Step 4 to compute the itemized Bill of Quantities (BOQ), 4-scenario NPC/LCOE comparison, and unit rate ledger."
+          epistemicNote="Missing unit costs remain UNSET and explicitly block DPR export rather than fabricating figures."
+        />
+      </Panel>
+    );
   }
-
-  const boq = comparison.active_scenario_boq;
-  const activeClusterBreakdown =
-    selectedClusterFilter === 'ALL'
-      ? null
-      : boq.cluster_breakdowns.find((cb) => cb.cluster_id === selectedClusterFilter) ?? null;
-
-  const displayedLines = activeClusterBreakdown
-    ? activeClusterBreakdown.lines
-    : boq.aggregated_lines;
 
   const handleSaveRate = async (itemCode: string, currentRate: number | null) => {
     const raw = editingRates[itemCode];
@@ -360,96 +428,92 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
   };
 
   return (
-    <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden">
-      {/* Header Bar */}
-      <div className="px-4 py-3 border-b border-border bg-subtle flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-ink uppercase tracking-wider">
-              Milestone M6 — Traceable Cost Estimation, BOQ & Scenario Comparison
-            </h2>
-            <QualityTag
-              kind={comparison.has_unset_rates ? 'ASSUMED' : 'ESTIMATED'}
-            />
-          </div>
-          <p className="text-xs text-muted mt-0.5">
-            Active Schedule of Rates: <span className="font-medium text-ink">{rates.template_name}</span>{' '}
-            · Pinned DPR Baseline:{' '}
-            <span className="font-mono font-semibold text-primary">
-              {comparison.active_scenario_key}
-            </span>
-          </p>
-        </div>
-
-        {/* Sub-Tab Selector */}
-        <div className="flex items-center gap-1.5 bg-canvas p-1 rounded border border-border">
-          <button
-            type="button"
+    <Panel
+      aria-label="Cost Estimation BOQ and Scenario Comparison"
+      overline="Step 5 · Economic Feasibility & Costs"
+      title="Traceable Cost Estimation, BOQ & Scenario Comparison"
+      subtitle={
+        <>
+          Active Schedule of Rates:{' '}
+          <span className="font-medium text-ink">{rates.template_name}</span> · Pinned DPR
+          Baseline:{' '}
+          <span className="font-mono font-semibold text-accent">
+            {comparison.active_scenario_key}
+          </span>
+        </>
+      }
+      icon={IndianRupee}
+      badge={
+        <QualityTag
+          kind={comparison.has_unset_rates ? 'ASSUMED' : 'ESTIMATED'}
+          label={comparison.has_unset_rates ? `${rates.unset_count} UNSET RATE(S)` : 'RATES READY'}
+        />
+      }
+      actions={
+        <div
+          role="group"
+          aria-label="Cost & Scenario Views"
+          className="flex flex-wrap items-center gap-1 bg-paper p-1 rounded-xs border border-rule"
+        >
+          <Button
+            size="sm"
+            variant={activeTab === 'boq' ? 'primary' : 'ghost'}
             onClick={() => setActiveTab('boq')}
-            className={`px-3 py-1 text-xs font-semibold rounded transition-colors ${
-              activeTab === 'boq'
-                ? 'bg-primary text-white'
-                : 'text-muted hover:text-ink'
-            }`}
           >
             1. Itemized Cost BOQ ({boq.aggregated_lines.length})
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="sm"
+            variant={activeTab === 'compare' ? 'primary' : 'ghost'}
             onClick={() => setActiveTab('compare')}
-            className={`px-3 py-1 text-xs font-semibold rounded transition-colors ${
-              activeTab === 'compare'
-                ? 'bg-primary text-white'
-                : 'text-muted hover:text-ink'
-            }`}
           >
-            2. Compare 4 Scenarios (NPC & LCOE)
-          </button>
-          <button
-            type="button"
+            2. Compare 4 Scenarios (NPC &amp; LCOE)
+          </Button>
+          <Button
+            size="sm"
+            variant={activeTab === 'sor' ? 'primary' : 'ghost'}
             onClick={() => setActiveTab('sor')}
-            className={`px-3 py-1 text-xs font-semibold rounded transition-colors ${
-              activeTab === 'sor'
-                ? 'bg-primary text-white'
-                : 'text-muted hover:text-ink'
-            }`}
           >
-            3. Schedule of Rates & CSV ({rates.total_items})
-          </button>
+            3. Schedule of Rates &amp; CSV ({rates.total_items})
+          </Button>
         </div>
-      </div>
-
-      <div className="p-4 space-y-4">
+      }
+    >
+      <div className="space-y-5">
         {/* Core Principle #4 Export-Blocking Alert when any rate is UNSET */}
         {comparison.has_unset_rates && (
-          <Callout tone="error" title="DPR Export Blocked — UNSET Unit Rates Detected (Core Principle #4)">
+          <Callout
+            tone="error"
+            title="DPR Export Blocked — UNSET Unit Rates Detected (Core Principle #4)"
+          >
             {comparison.export_blocked_reason} Missing unit costs are never invented. Open the{' '}
             <button
               type="button"
               onClick={() => setActiveTab('sor')}
-              className="underline font-semibold"
+              className="underline font-semibold text-error hover:text-ink"
             >
-              Schedule of Rates & CSV tab
+              Schedule of Rates &amp; CSV tab
             </button>{' '}
             to enter verified unit prices or click <strong>Reset to Reference SoR</strong>.
           </Callout>
         )}
 
         {statusBanner && (
-          <div className="px-3 py-2 rounded bg-emerald-50 border border-emerald-300 text-xs text-emerald-900 flex items-center justify-between">
-            <span>{statusBanner}</span>
-            <button
-              type="button"
-              onClick={() => setStatusBanner(null)}
-              className="text-emerald-700 font-semibold hover:underline ml-4"
-            >
-              Dismiss
-            </button>
-          </div>
+          <Callout
+            tone="ok"
+            title="Schedule of Rates & BOQ Update"
+            action={
+              <Button size="xs" variant="ghost" onClick={() => setStatusBanner(null)}>
+                Dismiss
+              </Button>
+            }
+          >
+            {statusBanner}
+          </Callout>
         )}
 
         {/* 6-Tile Financial & Life-Cycle Economic KPI Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <StatTile
             label="Total Capital Outlay"
             value={`₹${boq.total_capex_lakhs.toFixed(2)} L`}
@@ -486,6 +550,7 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                 : `${rates.unset_count} UNSET`
             }
             quality={rates.unset_count === 0 ? 'VERIFIED' : 'ASSUMED'}
+            tone={rates.unset_count === 0 ? 'ok' : 'warn'}
             subtitle={
               rates.unset_count === 0
                 ? `${rates.user_edited_count} user-edited · Export Ready`
@@ -503,28 +568,61 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
 
         {/* TAB 1: ITEMIZED BILL OF QUANTITIES (BOQ) SPREADSHEET */}
         {activeTab === 'boq' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-subtle px-3 py-2 rounded border border-border">
-              <div className="flex items-center gap-2 text-xs">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-paper px-3 py-2.5 rounded-xs border border-rule">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-semibold text-ink">Filter BOQ Scope:</span>
-                <select
+                <Select
                   aria-label="Filter BOQ Scope"
+                  size="sm"
+                  mono
                   value={selectedClusterFilter}
                   onChange={(e) => setSelectedClusterFilter(e.target.value)}
-                  className="px-2.5 py-1 text-xs bg-surface border border-border rounded font-mono text-ink"
+                  options={[
+                    {
+                      value: 'ALL',
+                      label: `ALL HABITATIONS — Project Aggregate (${boq.aggregated_lines.length} items)`,
+                    },
+                    ...boq.cluster_breakdowns.map((cb) => ({
+                      value: cb.cluster_id,
+                      label: `${cb.cluster_label}: ${cb.cluster_name} (${cb.modality} · ₹${cb.total_capex_lakhs.toFixed(2)} L)`,
+                    })),
+                  ]}
+                />
+                <Input
+                  type="search"
+                  size="sm"
+                  leftIcon={Search}
+                  aria-label="Search BOQ line items"
+                  placeholder="Search code or item..."
+                  value={boqSearch}
+                  onChange={(e) => setBoqSearch(e.target.value)}
+                  containerClassName="w-48"
+                />
+                <Button
+                  size="xs"
+                  variant={boqUnsetOnly ? 'danger-outline' : 'secondary'}
+                  onClick={() => setBoqUnsetOnly((prev) => !prev)}
                 >
-                  <option value="ALL">
-                    ALL HABITATIONS — Project Aggregate ({boq.aggregated_lines.length} items)
-                  </option>
-                  {boq.cluster_breakdowns.map((cb) => (
-                    <option key={cb.cluster_id} value={cb.cluster_id}>
-                      {cb.cluster_label}: {cb.cluster_name} ({cb.modality} · ₹{cb.total_capex_lakhs.toFixed(2)} L)
-                    </option>
-                  ))}
-                </select>
+                  {boqUnsetOnly ? 'Showing UNSET Only' : 'UNSET Only'}
+                </Button>
+                {(boqSearch || boqUnsetOnly || selectedClusterFilter !== 'ALL') && (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    leftIcon={X}
+                    onClick={() => {
+                      setBoqSearch('');
+                      setBoqUnsetOnly(false);
+                      setSelectedClusterFilter('ALL');
+                    }}
+                  >
+                    Reset
+                  </Button>
+                )}
               </div>
               {activeClusterBreakdown && (
-                <div className="text-xs text-muted">
+                <div className="text-xs text-ink-2">
                   Terrain Factor:{' '}
                   <span className="font-mono font-semibold text-ink">
                     {activeClusterBreakdown.terrain_multiplier.toFixed(2)}x
@@ -534,297 +632,335 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
               )}
             </div>
 
-            <div className="overflow-x-auto border border-border rounded">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-subtle border-b border-border text-[11px] uppercase text-muted">
-                    <th className="py-2 px-2.5 font-semibold">Item Code</th>
-                    <th className="py-2 px-2.5 font-semibold">Description & Specification</th>
-                    <th className="py-2 px-2.5 font-semibold">Category</th>
-                    <th className="py-2 px-2.5 font-semibold">Quantity Basis</th>
-                    <th className="py-2 px-2.5 font-semibold text-right">Qty</th>
-                    <th className="py-2 px-2.5 font-semibold">Unit</th>
-                    <th className="py-2 px-2.5 font-semibold text-right">Unit Rate (₹)</th>
-                    <th className="py-2 px-2.5 font-semibold">Rate Provenance</th>
-                    <th className="py-2 px-2.5 font-semibold text-right">Line Amount (₹)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {displayedLines.map((ln) => (
-                    <tr
-                      key={`${ln.cluster_label ?? 'ALL'}-${ln.item_code}`}
-                      className={ln.is_unset ? 'bg-red-50/70' : 'hover:bg-subtle/60'}
-                    >
-                      <td className="py-2 px-2.5 font-mono font-semibold text-ink whitespace-nowrap">
-                        {ln.item_code}
+            {displayedLines.length === 0 ? (
+              <EmptyState
+                compact
+                icon={FileSpreadsheet}
+                title="No Matching BOQ Line Items"
+                description="Clear the BOQ search or scope filter to view all cost items."
+                action={
+                  <Button
+                    size="xs"
+                    variant="secondary"
+                    onClick={() => {
+                      setBoqSearch('');
+                      setBoqUnsetOnly(false);
+                      setSelectedClusterFilter('ALL');
+                    }}
+                  >
+                    Reset BOQ Filters
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="table-scroll-container">
+                <table className="w-full text-left border-collapse text-body-sm">
+                  <thead>
+                    <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
+                      <th className="py-2.5 px-3">Item Code</th>
+                      <th className="py-2.5 px-3">Description &amp; Specification</th>
+                      <th className="py-2.5 px-3">Category</th>
+                      <th className="py-2.5 px-3">Quantity Basis</th>
+                      <th className="py-2.5 px-3 text-right">Qty</th>
+                      <th className="py-2.5 px-3">Unit</th>
+                      <th className="py-2.5 px-3 text-right">Unit Rate (₹)</th>
+                      <th className="py-2.5 px-3">Rate Provenance</th>
+                      <th className="py-2.5 px-3 text-right">Line Amount (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rule-subtle">
+                    {displayedLines.map((ln) => (
+                      <tr
+                        key={`${ln.cluster_label ?? 'ALL'}-${ln.item_code}`}
+                        className={ln.is_unset ? 'bg-error-bg/70' : 'hover:bg-surface-hover'}
+                      >
+                        <td className="py-2.5 px-3 font-mono font-semibold text-ink whitespace-nowrap text-xs">
+                          {ln.item_code}
+                        </td>
+                        <td className="py-2.5 px-3 text-ink max-w-xs">
+                          <div className="font-medium text-xs">{ln.description}</div>
+                          <div className="text-xs text-ink-2 truncate" title={ln.citation}>
+                            Ref: {ln.citation}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-xs text-ink-2 whitespace-nowrap">
+                          {ln.category}
+                        </td>
+                        <td className="py-2.5 px-3 text-ink-2 text-xs">
+                          {ln.quantity_basis}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono tabular-nums text-right font-semibold text-ink whitespace-nowrap text-xs">
+                          {ln.quantity.toFixed(2)}
+                        </td>
+                        <td className="py-2.5 px-3 text-xs text-ink-2 whitespace-nowrap">{ln.unit}</td>
+                        <td className="py-2.5 px-3 font-mono tabular-nums text-right whitespace-nowrap text-xs">
+                          {ln.rate_inr !== null ? (
+                            formatInr(ln.rate_inr)
+                          ) : (
+                            <Badge variant="error" size="sm">
+                              UNSET
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="py-2 px-2.5 whitespace-nowrap">
+                          <Badge
+                            variant={
+                              ln.is_unset
+                                ? 'error'
+                                : ln.rate_source_type === 'REFERENCE_PUBLIC_DOCUMENT'
+                                  ? 'info'
+                                  : 'warn'
+                            }
+                            size="sm"
+                          >
+                            {ln.rate_source_type}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-2.5 font-mono text-right font-semibold text-ink whitespace-nowrap">
+                          {ln.is_unset ? 'BLOCKED (UNSET)' : formatInr(ln.amount_inr)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-subtle border-t-2 border-rule text-xs">
+                    <tr>
+                      <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-ink-2">
+                        A. Direct Equipment, Conductor &amp; Support Supply Subtotal:
                       </td>
-                      <td className="py-2 px-2.5 text-ink max-w-xs">
-                        <div className="font-medium">{ln.description}</div>
-                        <div className="text-[11px] text-muted truncate" title={ln.citation}>
-                          Ref: {ln.citation}
-                        </div>
-                      </td>
-                      <td className="py-2 px-2.5 font-mono text-[11px] text-muted whitespace-nowrap">
-                        {ln.category}
-                      </td>
-                      <td className="py-2 px-2.5 text-muted text-[11px]">
-                        {ln.quantity_basis}
-                      </td>
-                      <td className="py-2 px-2.5 font-mono text-right font-semibold text-ink whitespace-nowrap">
-                        {ln.quantity.toFixed(2)}
-                      </td>
-                      <td className="py-2 px-2.5 text-muted whitespace-nowrap">{ln.unit}</td>
-                      <td className="py-2 px-2.5 font-mono text-right whitespace-nowrap">
-                        {ln.rate_inr !== null ? (
-                          formatInr(ln.rate_inr)
-                        ) : (
-                          <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 font-bold text-[11px]">
-                            UNSET
-                          </span>
+                      <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
+                        {formatInr(
+                          activeClusterBreakdown
+                            ? activeClusterBreakdown.base_equipment_inr
+                            : boq.base_equipment_inr,
                         )}
                       </td>
-                      <td className="py-2 px-2.5 whitespace-nowrap">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
-                            ln.is_unset
-                              ? 'bg-red-100 text-red-800 border border-red-300'
-                              : ln.rate_source_type === 'REFERENCE_PUBLIC_DOCUMENT'
-                                ? 'bg-blue-50 text-blue-800 border border-blue-200'
-                                : 'bg-amber-50 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          {ln.rate_source_type}
-                        </span>
+                    </tr>
+                    <tr>
+                      <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-ink-2">
+                        B. Difficult Hilly / Forest Terrain Erection Multiplier Premium:
                       </td>
-                      <td className="py-2 px-2.5 font-mono text-right font-semibold text-ink whitespace-nowrap">
-                        {ln.is_unset ? 'BLOCKED (UNSET)' : formatInr(ln.amount_inr)}
+                      <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
+                        {formatInr(
+                          activeClusterBreakdown
+                            ? activeClusterBreakdown.terrain_premium_inr
+                            : boq.terrain_premium_inr,
+                        )}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-subtle/90 border-t-2 border-border text-xs">
-                  <tr>
-                    <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-muted">
-                      A. Direct Equipment, Conductor & Support Supply Subtotal:
-                    </td>
-                    <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
-                      {formatInr(
-                        activeClusterBreakdown
-                          ? activeClusterBreakdown.base_equipment_inr
-                          : boq.base_equipment_inr,
-                      )}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-muted">
-                      B. Difficult Hilly / Forest Terrain Erection Multiplier Premium:
-                    </td>
-                    <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
-                      {formatInr(
-                        activeClusterBreakdown
-                          ? activeClusterBreakdown.terrain_premium_inr
-                          : boq.terrain_premium_inr,
-                      )}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-muted">
-                      C. Goods & Services Tax (GST @ {boq.gst_pct.toFixed(1)}%):
-                    </td>
-                    <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
-                      {formatInr(
-                        activeClusterBreakdown
-                          ? activeClusterBreakdown.gst_amount_inr
-                          : boq.gst_amount_inr,
-                      )}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-muted">
-                      D. Physical Contingency ({boq.contingency_pct.toFixed(1)}%) + PMC & Dept. Overheads ({boq.pmc_overhead_pct.toFixed(1)}%):
-                    </td>
-                    <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
-                      {formatInr(
-                        activeClusterBreakdown
-                          ? activeClusterBreakdown.contingency_amount_inr +
-                              activeClusterBreakdown.pmc_overhead_amount_inr
-                          : boq.contingency_amount_inr + boq.pmc_overhead_amount_inr,
-                      )}
-                    </td>
-                  </tr>
-                  <tr className="bg-slate-200/80 border-t border-border">
-                    <td colSpan={8} className="py-2 px-2.5 text-right font-bold text-ink">
-                      GRAND TOTAL CAPITAL OUTLAY (CAPEX):
-                    </td>
-                    <td className="py-2 px-2.5 text-right font-mono font-bold text-primary text-sm">
-                      {formatInr(
-                        activeClusterBreakdown
-                          ? activeClusterBreakdown.total_capex_inr
-                          : boq.total_capex_inr,
-                      )}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                    <tr>
+                      <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-ink-2">
+                        C. Goods &amp; Services Tax (GST @ {boq.gst_pct.toFixed(1)}%):
+                      </td>
+                      <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
+                        {formatInr(
+                          activeClusterBreakdown
+                            ? activeClusterBreakdown.gst_amount_inr
+                            : boq.gst_amount_inr,
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colSpan={8} className="py-1.5 px-2.5 text-right font-medium text-ink-2">
+                        D. Physical Contingency ({boq.contingency_pct.toFixed(1)}%) + PMC &amp; Dept.
+                        Overheads ({boq.pmc_overhead_pct.toFixed(1)}%):
+                      </td>
+                      <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-ink">
+                        {formatInr(
+                          activeClusterBreakdown
+                            ? activeClusterBreakdown.contingency_amount_inr +
+                                activeClusterBreakdown.pmc_overhead_amount_inr
+                            : boq.contingency_amount_inr + boq.pmc_overhead_amount_inr,
+                        )}
+                      </td>
+                    </tr>
+                    <tr className="bg-subtle border-t border-rule-strong">
+                      <td colSpan={8} className="py-2 px-2.5 text-right font-bold text-ink">
+                        GRAND TOTAL CAPITAL OUTLAY (CAPEX):
+                      </td>
+                      <td className="py-2 px-2.5 text-right font-mono font-bold text-accent text-sm">
+                        {formatInr(
+                          activeClusterBreakdown
+                            ? activeClusterBreakdown.total_capex_inr
+                            : boq.total_capex_inr,
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
         {/* TAB 2: SIDE-BY-SIDE 4-SCENARIO COMPARISON & PER-HABITATION MATRIX */}
         {activeTab === 'compare' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-              {comparison.scenarios.map((sc) => (
-                <div
-                  key={sc.scenario_id}
-                  className={`p-3.5 rounded border flex flex-col justify-between ${
-                    sc.is_active_baseline
-                      ? 'border-primary bg-blue-50/30 ring-1 ring-primary'
-                      : 'border-border bg-surface'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="font-mono text-xs font-bold text-ink">
-                        {sc.scenario_key}
-                      </span>
-                      {sc.is_active_baseline ? (
-                        <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-primary text-white">
-                          Pinned DPR Baseline
+            {comparison.scenarios.length === 0 ? (
+              <EmptyState
+                compact
+                icon={Scale}
+                title="No Comparison Scenarios Generated"
+                description="Generate planning scenarios in Step 4 to evaluate least-cost CAPEX, Net Present Cost (NPC), and LCOE across modalities."
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                {comparison.scenarios.map((sc) => (
+                  <div
+                    key={sc.scenario_id}
+                    className={`p-3.5 rounded-sm border flex flex-col justify-between ${
+                      sc.is_active_baseline
+                        ? 'border-accent bg-accent-tint/35 ring-1 ring-accent'
+                        : 'border-rule bg-sheet'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-mono text-xs font-bold text-ink">
+                          {sc.scenario_key}
                         </span>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={busyAction}
-                          onClick={() => handlePinScenarioClick(sc.scenario_id)}
-                          className="px-2 py-0.5 text-[11px] font-semibold rounded border border-primary text-primary hover:bg-primary hover:text-white transition-colors"
-                        >
-                          Pin as Baseline
-                        </button>
-                      )}
+                        {sc.is_active_baseline ? (
+                          <Badge variant="primary" size="sm">
+                            Pinned DPR Baseline
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="xs"
+                            variant="secondary"
+                            disabled={busyAction}
+                            onClick={() => void handlePinScenarioClick(sc.scenario_id)}
+                          >
+                            Pin as Baseline
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-xs text-ink-2 mb-3">{sc.scenario_name}</p>
+
+                      <dl className="space-y-1.5 text-xs border-t border-rule-subtle pt-2.5">
+                        <div className="flex justify-between">
+                          <dt className="text-ink-2">Total CAPEX:</dt>
+                          <dd className="font-mono font-bold text-ink">
+                            ₹{sc.total_capex_lakhs.toFixed(2)} Lakhs (
+                            {formatInrCompact(sc.total_capex_inr)})
+                          </dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-ink-2">Net Utility Outlay:</dt>
+                          <dd className="font-mono font-semibold text-ink">
+                            {formatInrCompact(sc.net_utility_capex_inr)}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-ink-2">{comparison.horizon_years}-Yr NPC:</dt>
+                          <dd className="font-mono font-bold text-accent">
+                            ₹{sc.npc_lakhs.toFixed(2)} Lakhs ({formatInrCompact(sc.npc_inr)})
+                          </dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-ink-2">Levelized LCOE:</dt>
+                          <dd className="font-mono font-semibold text-ink">
+                            ₹{sc.lcoe_inr_kwh.toFixed(2)} / kWh
+                          </dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-ink-2">CAPEX / Household:</dt>
+                          <dd className="font-mono text-ink">
+                            {formatInrCompact(sc.cost_per_household_inr)} / HH
+                          </dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-ink-2">Annual O&amp;M + Energy:</dt>
+                          <dd className="font-mono text-ink">
+                            {formatInrCompact(sc.annual_om_inr + sc.annual_energy_purchase_inr)} /
+                            yr
+                          </dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-ink-2">Avoided Emissions:</dt>
+                          <dd className="font-mono text-ok font-semibold">
+                            {sc.avoided_co2_tonnes_yr.toFixed(2)} tCO2/yr
+                          </dd>
+                        </div>
+                      </dl>
                     </div>
-                    <p className="text-xs text-muted mb-3">{sc.scenario_name}</p>
 
-                    <dl className="space-y-1.5 text-xs border-t border-border pt-2.5">
-                      <div className="flex justify-between">
-                        <dt className="text-muted">Total CAPEX:</dt>
-                        <dd className="font-mono font-bold text-ink">
-                          ₹{sc.total_capex_lakhs.toFixed(2)} Lakhs ({formatInrCompact(sc.total_capex_inr)})
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-muted">Net Utility Outlay:</dt>
-                        <dd className="font-mono font-semibold text-ink">
-                          {formatInrCompact(sc.net_utility_capex_inr)}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-muted">{comparison.horizon_years}-Yr NPC:</dt>
-                        <dd className="font-mono font-bold text-primary">
-                          ₹{sc.npc_lakhs.toFixed(2)} Lakhs ({formatInrCompact(sc.npc_inr)})
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-muted">Levelized LCOE:</dt>
-                        <dd className="font-mono font-semibold text-ink">
-                          ₹{sc.lcoe_inr_kwh.toFixed(2)} / kWh
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-muted">CAPEX / Household:</dt>
-                        <dd className="font-mono text-ink">
-                          {formatInrCompact(sc.cost_per_household_inr)} / HH
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-muted">Annual O&M + Energy:</dt>
-                        <dd className="font-mono text-ink">
-                          {formatInrCompact(sc.annual_om_inr + sc.annual_energy_purchase_inr)} / yr
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-muted">Avoided Emissions:</dt>
-                        <dd className="font-mono text-emerald-700 font-semibold">
-                          {sc.avoided_co2_tonnes_yr.toFixed(2)} tCO2/yr
-                        </dd>
-                      </div>
-                    </dl>
+                    <div className="mt-3 pt-2.5 border-t border-rule-subtle flex items-center justify-between text-xs">
+                      <span className="text-ink-2">
+                        HH Served: <strong className="text-ink">{sc.total_households_served}</strong>
+                      </span>
+                      <Badge
+                        variant={sc.requires_tie_in_warning ? 'warn' : 'ok'}
+                        size="sm"
+                        dot
+                      >
+                        {sc.requires_tie_in_warning ? '11kV Tie-In Needed' : 'CEA VDrop OK'}
+                      </Badge>
+                    </div>
                   </div>
-
-                  <div className="mt-3 pt-2 border-t border-border flex items-center justify-between text-[11px]">
-                    <span className="text-muted">
-                      HH Served: <strong>{sc.total_households_served}</strong>
-                    </span>
-                    <span
-                      className={`font-mono font-semibold ${
-                        sc.requires_tie_in_warning ? 'text-amber-700' : 'text-emerald-700'
-                      }`}
-                    >
-                      {sc.requires_tie_in_warning ? '11kV Tie-In Needed' : 'CEA VDrop OK'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Per-Habitation Option Comparison Table (AC-10.1) */}
-            <div className="border border-border rounded overflow-x-auto">
-              <div className="px-3 py-2 bg-subtle border-b border-border flex items-center justify-between">
-                <h3 className="text-xs font-semibold text-ink uppercase tracking-wider">
+            <div className="table-scroll-container">
+              <div className="px-3.5 py-2.5 bg-subtle border-b border-rule flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xs font-semibold text-ink">
                   Per-Habitation Option Comparison (Same Demand Inputs Across All Modalities — AC-10.1)
                 </h3>
-                <span className="text-[11px] text-muted">
-                  Compares 10-Yr Net Present Cost (NPC) & LCOE per Cluster
+                <span className="text-xs text-ink-2">
+                  Compares 10-Yr Net Present Cost (NPC) &amp; LCOE per Cluster
                 </span>
               </div>
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full text-left border-collapse text-body-sm">
                 <thead>
-                  <tr className="bg-subtle/60 border-b border-border text-[11px] uppercase text-muted">
-                    <th className="py-2 px-2.5 font-semibold">Cluster</th>
-                    <th className="py-2 px-2.5 font-semibold">HH & Energy</th>
-                    <th className="py-2 px-2.5 font-semibold">Pinned Modality</th>
-                    <th className="py-2 px-2.5 font-semibold text-right">Grid Ext / Aug (NPC)</th>
-                    <th className="py-2 px-2.5 font-semibold text-right">Solar Mini-Grid (NPC)</th>
-                    <th className="py-2 px-2.5 font-semibold text-right">Standalone SHS (NPC)</th>
-                    <th className="py-2 px-2.5 font-semibold">Least-Cost NPC Option</th>
-                    <th className="py-2 px-2.5 font-semibold">Economic & Terrain Rationale</th>
+                  <tr className="bg-paper border-b border-rule text-xs font-semibold text-ink-2">
+                    <th className="py-2.5 px-3">Cluster</th>
+                    <th className="py-2.5 px-3">HH &amp; Energy</th>
+                    <th className="py-2.5 px-3">Pinned Modality</th>
+                    <th className="py-2.5 px-3 text-right">Grid Ext / Aug (NPC)</th>
+                    <th className="py-2.5 px-3 text-right">Solar Mini-Grid (NPC)</th>
+                    <th className="py-2.5 px-3 text-right">Standalone SHS (NPC)</th>
+                    <th className="py-2.5 px-3">Least-Cost NPC Option</th>
+                    <th className="py-2.5 px-3">Economic &amp; Terrain Rationale</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody className="divide-y divide-rule-subtle">
                   {comparison.habitation_comparisons.map((row) => (
-                    <tr key={row.cluster_id} className="hover:bg-subtle/50">
-                      <td className="py-2 px-2.5 font-mono font-semibold text-ink whitespace-nowrap">
+                    <tr key={row.cluster_id} className="hover:bg-surface-hover">
+                      <td className="py-2.5 px-3 font-mono font-semibold text-ink whitespace-nowrap text-xs">
                         {row.cluster_label}: {row.cluster_name}
                       </td>
-                      <td className="py-2 px-2.5 font-mono text-muted whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-mono tabular-nums text-ink-2 whitespace-nowrap text-xs">
                         {row.est_households} HH · {row.annual_energy_mwh_horizon.toFixed(2)} MWh/yr
                       </td>
-                      <td className="py-2 px-2.5 font-mono font-semibold text-primary whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-mono font-semibold text-accent whitespace-nowrap text-xs">
                         {row.active_modality}
                       </td>
-                      <td className="py-2 px-2.5 font-mono text-right whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-mono tabular-nums text-right whitespace-nowrap text-xs">
                         <div>{formatInrCompact(row.grid_npc_inr)}</div>
-                        <div className="text-[10px] text-muted">
-                          CAPEX {formatInrCompact(row.grid_capex_inr)} · ₹{row.grid_lcoe_inr_kwh.toFixed(2)}/kWh
+                        <div className="text-xs text-ink-2 font-sans">
+                          CAPEX {formatInrCompact(row.grid_capex_inr)} · ₹
+                          {row.grid_lcoe_inr_kwh.toFixed(2)}/kWh
                           {row.grid_requires_tie_in ? ' (No Tie-In)' : ''}
                         </div>
                       </td>
-                      <td className="py-2 px-2.5 font-mono text-right whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-mono tabular-nums text-right whitespace-nowrap text-xs">
                         <div>{formatInrCompact(row.minigrid_npc_inr)}</div>
-                        <div className="text-[10px] text-muted">
-                          CAPEX {formatInrCompact(row.minigrid_capex_inr)} · ₹{row.minigrid_lcoe_inr_kwh.toFixed(2)}/kWh
+                        <div className="text-xs text-ink-2 font-sans">
+                          CAPEX {formatInrCompact(row.minigrid_capex_inr)} · ₹
+                          {row.minigrid_lcoe_inr_kwh.toFixed(2)}/kWh
                         </div>
                       </td>
-                      <td className="py-2 px-2.5 font-mono text-right whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-mono tabular-nums text-right whitespace-nowrap text-xs">
                         <div>{formatInrCompact(row.shs_npc_inr)}</div>
-                        <div className="text-[10px] text-muted">
-                          CAPEX {formatInrCompact(row.shs_capex_inr)} · ₹{row.shs_lcoe_inr_kwh.toFixed(2)}/kWh
+                        <div className="text-xs text-ink-2 font-sans">
+                          CAPEX {formatInrCompact(row.shs_capex_inr)} · ₹
+                          {row.shs_lcoe_inr_kwh.toFixed(2)}/kWh
                         </div>
                       </td>
-                      <td className="py-2 px-2.5 font-mono font-semibold text-emerald-800 whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-mono font-semibold text-ok whitespace-nowrap text-xs">
                         {row.least_cost_npc_modality}
                       </td>
-                      <td className="py-2 px-2.5 text-muted text-[11px] max-w-xs">
+                      <td className="py-2.5 px-3 text-ink-2 text-xs max-w-xs">
                         {row.rationale}
                       </td>
                     </tr>
@@ -838,83 +974,92 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
         {/* TAB 3: SCHEDULE OF RATES (SOR) MANAGEMENT & CSV IMPORT/EXPORT */}
         {activeTab === 'sor' && (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-subtle px-3 py-2.5 rounded border border-border">
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-paper px-3 py-2.5 rounded-xs border border-rule">
               <div className="text-xs">
                 <span className="font-semibold text-ink">Schedule of Rates Catalog:</span>{' '}
-                <span className="text-muted">
-                  Edit any unit rate inline or mark an item <code>UNSET</code> to test export-blocking validation.
+                <span className="text-ink-2">
+                  Edit any unit rate inline or mark an item <code className="code-pill">UNSET</code>{' '}
+                  to enforce export-blocking validation.
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <a
                   href={`/api/v1/projects/${projectId}/rates/export-csv`}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-2.5 py-1 text-xs font-semibold rounded border border-border bg-surface text-ink hover:bg-subtle"
+                  className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-xs border border-rule-strong bg-sheet text-ink hover:bg-subtle transition-colors"
                 >
-                  Export SoR CSV
+                  <Icon icon={FileSpreadsheet} size="xs" />
+                  <span>Export SoR CSV</span>
                 </a>
-                <button
-                  type="button"
+                <Button
+                  size="sm"
+                  variant="danger-outline"
+                  leftIcon={RotateCcw}
                   disabled={busyAction}
-                  onClick={handleResetAllRates}
-                  className="px-2.5 py-1 text-xs font-semibold rounded border border-border bg-surface text-ink hover:bg-subtle"
+                  onClick={() => setConfirmResetSor(true)}
                 >
                   Reset to Reference SoR
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Custom CSV Upload / Paste Form */}
             <form
-              onSubmit={handleCsvSubmit}
-              className="p-3 bg-subtle/60 border border-border rounded space-y-2.5"
+              onSubmit={(e) => void handleCsvSubmit(e)}
+              className="p-3.5 bg-paper border border-rule rounded-xs space-y-2.5"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs font-semibold text-ink">
-                  Import Custom State Schedule of Rates (CSV Schema Validation — AC-09.2)
+                <div className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                  <Icon icon={Upload} size="xs" className="text-accent" />
+                  <span>Import Custom State Schedule of Rates (CSV Schema Validation — AC-09.2)</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleLoadSampleCsv}
-                    className="text-xs text-primary font-semibold hover:underline"
-                  >
-                    Load Sample Valid CSV
-                  </button>
-                </div>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  onClick={handleLoadSampleCsv}
+                >
+                  Load Sample Valid CSV
+                </Button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <input
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-start">
+                <Input
                   type="text"
+                  size="sm"
+                  aria-label="Rate Schedule Name"
                   value={csvTemplateName}
                   onChange={(e) => setCsvTemplateName(e.target.value)}
                   placeholder="Rate Schedule Name"
-                  className="px-2.5 py-1.5 text-xs bg-surface border border-border rounded text-ink"
                 />
-                <div className="md:col-span-2 flex items-center gap-2">
-                  <textarea
+                <div className="md:col-span-2 flex flex-col sm:flex-row items-stretch sm:items-start gap-2">
+                  <Textarea
                     rows={2}
+                    aria-label="Schedule of Rates CSV Content"
                     value={csvText}
                     onChange={(e) => setCsvText(e.target.value)}
                     placeholder="item_code,description,category,unit,rate_inr,source_type,citation,source_year"
-                    className="w-full px-2.5 py-1 text-xs font-mono bg-surface border border-border rounded text-ink"
+                    containerClassName="flex-1"
+                    className="font-mono text-xs"
                   />
-                  <button
+                  <Button
                     type="submit"
-                    disabled={busyAction || !csvText.trim()}
-                    className="px-3 py-2 text-xs font-semibold rounded bg-primary text-white hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
+                    size="sm"
+                    variant="primary"
+                    isLoading={busyAction}
+                    disabled={!csvText.trim()}
+                    className="whitespace-nowrap"
                   >
-                    Validate & Import CSV
-                  </button>
+                    Validate &amp; Import CSV
+                  </Button>
                 </div>
               </div>
 
               {csvErrors.length > 0 && (
-                <div className="p-2.5 rounded bg-red-50 border border-red-300 text-xs text-red-900 space-y-1">
-                  <div className="font-semibold">
-                    CSV Validation Failed ({csvErrors.length} row error(s)):
-                  </div>
+                <Callout
+                  tone="error"
+                  title={`CSV Validation Failed (${csvErrors.length} row error(s))`}
+                >
                   <ul className="list-disc list-inside font-mono text-[11px]">
                     {csvErrors.map((err, idx) => (
                       <li key={`${err.row_number}-${idx}`}>
@@ -922,106 +1067,236 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                       </li>
                     ))}
                   </ul>
-                </div>
+                </Callout>
               )}
             </form>
 
-            {/* Interactive Schedule of Rates Table */}
-            <div className="overflow-x-auto border border-border rounded">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-subtle border-b border-border text-[11px] uppercase text-muted">
-                    <th className="py-2 px-2.5 font-semibold">Item Code</th>
-                    <th className="py-2 px-2.5 font-semibold">Description & Citation</th>
-                    <th className="py-2 px-2.5 font-semibold">Category</th>
-                    <th className="py-2 px-2.5 font-semibold">Unit</th>
-                    <th className="py-2 px-2.5 font-semibold">Provenance Source</th>
-                    <th className="py-2 px-2.5 font-semibold text-right">Unit Rate (₹)</th>
-                    <th className="py-2 px-2.5 font-semibold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {rates.items.map((item) => {
-                    const draftVal =
-                      editingRates[item.item_code] !== undefined
-                        ? editingRates[item.item_code]
-                        : item.rate_inr !== null
-                          ? String(item.rate_inr)
-                          : '';
-                    return (
-                      <tr
-                        key={item.id}
-                        className={item.rate_inr === null ? 'bg-red-50/70' : 'hover:bg-subtle/50'}
-                      >
-                        <td className="py-2 px-2.5 font-mono font-semibold text-ink whitespace-nowrap">
-                          {item.item_code}
-                        </td>
-                        <td className="py-2 px-2.5 max-w-md">
-                          <div className="font-medium text-ink">{item.description}</div>
-                          <div className="text-[11px] text-muted">
-                            Citation ({item.source_year}): {item.citation}
-                          </div>
-                        </td>
-                        <td className="py-2 px-2.5 font-mono text-[11px] text-muted whitespace-nowrap">
-                          {item.category}
-                        </td>
-                        <td className="py-2 px-2.5 text-muted whitespace-nowrap">{item.unit}</td>
-                        <td className="py-2 px-2.5 whitespace-nowrap">
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
-                              item.rate_inr === null
-                                ? 'bg-red-100 text-red-800 border border-red-300'
-                                : item.source_type === 'REFERENCE_PUBLIC_DOCUMENT'
-                                  ? 'bg-blue-50 text-blue-800 border border-blue-200'
-                                  : 'bg-amber-50 text-amber-800 border border-amber-200'
-                            }`}
-                          >
-                            {item.source_type}
-                          </span>
-                        </td>
-                        <td className="py-2 px-2.5 text-right whitespace-nowrap">
-                          <input
-                            type="number"
-                            step="0.01"
-                            aria-label={`Rate for ${item.item_code}`}
-                            value={draftVal}
-                            placeholder="UNSET"
-                            onChange={(e) =>
-                              setEditingRates((prev) => ({
-                                ...prev,
-                                [item.item_code]: e.target.value,
-                              }))
-                            }
-                            className="w-28 px-2 py-1 text-right font-mono text-xs bg-surface border border-border rounded text-ink"
-                          />
-                        </td>
-                        <td className="py-2 px-2.5 text-right whitespace-nowrap space-x-1.5">
-                          <button
-                            type="button"
-                            disabled={busyAction}
-                            onClick={() => handleSaveRate(item.item_code, item.rate_inr)}
-                            className="px-2 py-1 text-[11px] font-semibold rounded bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
-                          >
-                            Save Rate
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busyAction || item.rate_inr === null}
-                            onClick={() => handleMarkUnset(item.item_code)}
-                            className="px-2 py-1 text-[11px] font-semibold rounded border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-40"
-                          >
-                            Mark UNSET
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            {/* Filter Toolbar for SoR Table */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="search"
+                  size="sm"
+                  leftIcon={Search}
+                  aria-label="Search Schedule of Rates"
+                  placeholder="Search item code, description, or citation..."
+                  value={sorSearch}
+                  onChange={(e) => setSorSearch(e.target.value)}
+                  containerClassName="w-64"
+                />
+                <Select
+                  size="sm"
+                  mono
+                  aria-label="Filter Schedule of Rates by category"
+                  value={sorCategoryFilter}
+                  onChange={(e) => setSorCategoryFilter(e.target.value)}
+                  options={[
+                    { value: 'ALL', label: `All Categories (${rates.items.length})` },
+                    ...sorCategories.map((cat) => ({ value: cat, label: cat })),
+                  ]}
+                />
+                <Button
+                  size="xs"
+                  variant={sorUnsetOnly ? 'danger-outline' : 'secondary'}
+                  onClick={() => setSorUnsetOnly((prev) => !prev)}
+                >
+                  {sorUnsetOnly ? 'Showing UNSET Only' : 'Filter UNSET'}
+                </Button>
+                {(sorSearch || sorCategoryFilter !== 'ALL' || sorUnsetOnly) && (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    leftIcon={X}
+                    onClick={() => {
+                      setSorSearch('');
+                      setSorCategoryFilter('ALL');
+                      setSorUnsetOnly(false);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <span className="font-mono text-[11px] text-ink-2">
+                Showing {filteredRateItems.length} of {rates.items.length} rates
+              </span>
             </div>
+
+            {/* Interactive Schedule of Rates Table */}
+            {filteredRateItems.length === 0 ? (
+              <EmptyState
+                compact
+                icon={Search}
+                title="No Schedule of Rates Items Match Filter"
+                description="Clear search or category filters to view all reference rates."
+                action={
+                  <Button
+                    size="xs"
+                    variant="secondary"
+                    onClick={() => {
+                      setSorSearch('');
+                      setSorCategoryFilter('ALL');
+                      setSorUnsetOnly(false);
+                    }}
+                  >
+                    Show All Rates
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="table-scroll-container">
+                <table className="w-full text-left border-collapse text-body-sm">
+                  <thead>
+                    <tr className="bg-subtle border-b border-rule text-xs text-ink-2">
+                      <th className="py-2.5 px-3 font-semibold">Item Code</th>
+                      <th className="py-2.5 px-3 font-semibold">Description &amp; Citation</th>
+                      <th className="py-2.5 px-3 font-semibold">Category</th>
+                      <th className="py-2.5 px-3 font-semibold">Unit</th>
+                      <th className="py-2.5 px-3 font-semibold">Provenance Source</th>
+                      <th className="py-2.5 px-3 font-semibold text-right">Unit Rate (₹)</th>
+                      <th className="py-2.5 px-3 font-semibold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rule-subtle">
+                    {filteredRateItems.map((item) => {
+                      const draftVal =
+                        editingRates[item.item_code] !== undefined
+                          ? editingRates[item.item_code]
+                          : item.rate_inr !== null
+                            ? String(item.rate_inr)
+                            : '';
+                      return (
+                        <tr
+                          key={item.id}
+                          className={
+                            item.rate_inr === null ? 'bg-error-bg/70' : 'hover:bg-surface-hover'
+                          }
+                        >
+                          <td className="py-2.5 px-3 font-mono font-semibold text-ink whitespace-nowrap text-xs">
+                            {item.item_code}
+                          </td>
+                          <td className="py-2.5 px-3 max-w-md">
+                            <div className="font-medium text-ink">{item.description}</div>
+                            <div className="text-xs text-ink-2 mt-0.5">
+                              Citation ({item.source_year}): {item.citation}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 text-xs text-ink-2 whitespace-nowrap">
+                            {item.category}
+                          </td>
+                          <td className="py-2.5 px-3 text-ink-2 whitespace-nowrap">{item.unit}</td>
+                          <td className="py-2 px-2.5 whitespace-nowrap">
+                            <Badge
+                              variant={
+                                item.rate_inr === null
+                                  ? 'error'
+                                  : item.source_type === 'REFERENCE_PUBLIC_DOCUMENT'
+                                    ? 'info'
+                                    : 'warn'
+                              }
+                              size="sm"
+                            >
+                              {item.source_type}
+                            </Badge>
+                          </td>
+                          <td className="py-2 px-2.5 text-right whitespace-nowrap">
+                            <Input
+                              type="number"
+                              size="sm"
+                              step="0.01"
+                              mono
+                              aria-label={`Rate for ${item.item_code}`}
+                              value={draftVal}
+                              placeholder="UNSET"
+                              onChange={(e) =>
+                                setEditingRates((prev) => ({
+                                  ...prev,
+                                  [item.item_code]: e.target.value,
+                                }))
+                              }
+                              containerClassName="w-32 ml-auto"
+                              className="text-right"
+                            />
+                          </td>
+                          <td className="py-2 px-2.5 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1.5">
+                              <Button
+                                size="xs"
+                                variant="primary"
+                                disabled={busyAction}
+                                onClick={() => void handleSaveRate(item.item_code, item.rate_inr)}
+                              >
+                                Save Rate
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant="danger-outline"
+                                disabled={busyAction || item.rate_inr === null}
+                                onClick={() => setPendingUnsetItemCode(item.item_code)}
+                              >
+                                Mark UNSET
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
-    </div>
+
+      {/* Confirmation Dialog: Mark Unit Rate UNSET (Blocks Export) */}
+      <ConfirmDialog
+        open={pendingUnsetItemCode !== null}
+        onClose={() => setPendingUnsetItemCode(null)}
+        onConfirm={() => {
+          if (!pendingUnsetItemCode) return;
+          const code = pendingUnsetItemCode;
+          setPendingUnsetItemCode(null);
+          void handleMarkUnset(code);
+        }}
+        title="Mark Unit Rate UNSET & Block DPR Export?"
+        description={
+          pendingUnsetItemCode ? (
+            <div className="space-y-1">
+              <p>
+                Clear the unit price for{' '}
+                <strong className="font-mono">{pendingUnsetItemCode}</strong> and mark it{' '}
+                <Badge variant="error" size="sm">
+                  UNSET
+                </Badge>
+                ?
+              </p>
+              <p className="text-2xs text-ink-3 font-mono">
+                Per Core Principle #4, 24-section PDF DPR and Formula BOQ Excel exports will remain
+                blocked until a verified rate is entered or restored.
+              </p>
+            </div>
+          ) : null
+        }
+        confirmLabel="Mark UNSET"
+        variant="danger"
+        isLoading={busyAction}
+      />
+
+      {/* Confirmation Dialog: Reset All Rates to Reference SoR */}
+      <ConfirmDialog
+        open={confirmResetSor}
+        onClose={() => setConfirmResetSor(false)}
+        onConfirm={() => {
+          setConfirmResetSor(false);
+          void handleResetAllRates();
+        }}
+        title="Reset All Rates to Reference Schedule of Rates?"
+        description="This overwrites any inline edits or custom imported CSV unit rates and restores the verified Odisha OPTCL / TPSODL & MNRE reference rates."
+        confirmLabel="Reset to Reference SoR"
+        variant="danger"
+        isLoading={busyAction}
+      />
+    </Panel>
   );
 };

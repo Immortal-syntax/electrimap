@@ -14,13 +14,31 @@
  * limitations under the License.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import {
+  Compass,
+  FolderKanban,
+  Map as MapIcon,
+  Plus,
+  RefreshCw,
+  Search,
+  X,
+} from 'lucide-react';
 import { apiRequest } from '../lib/apiClient';
 import { useSessionStore } from '../stores/sessionStore';
+import { DEMO_PROJECT_ID } from '../components/layout/navigationConfig';
+import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { Callout } from '../components/ui/Callout';
+import { ConfirmDialog } from '../components/ui/Dialog';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorState } from '../components/ui/ErrorState';
+import { Input } from '../components/ui/Input';
+import { Panel } from '../components/ui/Panel';
 import { QualityTag } from '../components/ui/QualityTag';
+import { Select } from '../components/ui/Select';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { StatTile } from '../components/ui/StatTile';
 
 export interface ProjectAoiSummaryDto {
   boundary_source: string;
@@ -55,6 +73,8 @@ export interface ProjectDto {
   aoi: ProjectAoiSummaryDto | null;
 }
 
+type SortKey = 'updated_desc' | 'area_desc' | 'name_asc';
+
 export const ProjectsPage: React.FC = () => {
   const { user, login } = useSessionStore();
   const navigate = useNavigate();
@@ -63,6 +83,10 @@ export const ProjectsPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState<string>('');
+  const [schemeFilter, setSchemeFilter] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<SortKey>('updated_desc');
+  const [archiveTarget, setArchiveTarget] = useState<ProjectDto | null>(null);
+  const [archiving, setArchiving] = useState<boolean>(false);
 
   const loadProjects = async () => {
     setLoading(true);
@@ -96,114 +120,406 @@ export const ProjectsPage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (projectId: string) => {
+  const handleConfirmArchive = async () => {
+    if (!archiveTarget) return;
+    setArchiving(true);
     try {
-      await apiRequest<void>(`/api/v1/projects/${projectId}`, {
+      await apiRequest<void>(`/api/v1/projects/${archiveTarget.id}`, {
         method: 'DELETE',
       });
+      setArchiveTarget(null);
       await loadProjects();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed.');
+      setError(err instanceof Error ? err.message : 'Archive failed.');
+      setArchiveTarget(null);
+    } finally {
+      setArchiving(false);
     }
   };
 
-  const filtered = projects.filter((p) => {
-    const q = searchFilter.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      p.name.toLowerCase().includes(q) ||
-      (p.target_district ?? '').toLowerCase().includes(q) ||
-      (p.target_block ?? '').toLowerCase().includes(q) ||
-      (p.village_names ?? '').toLowerCase().includes(q)
+  // Portfolio Summary Metrics (Derived strictly from API data)
+  const portfolioStats = useMemo(() => {
+    const withAoi = projects.filter((p) => p.aoi !== null);
+    const totalAreaKm2 =
+      withAoi.length > 0
+        ? withAoi.reduce((acc, p) => acc + (p.aoi?.area_km2 ?? 0), 0)
+        : null;
+    const schemes = Array.from(new Set(projects.map((p) => p.scheme).filter(Boolean)));
+    const districts = Array.from(
+      new Set(projects.map((p) => p.target_district).filter((d): d is string => Boolean(d))),
     );
-  });
+    const blocks = Array.from(
+      new Set(projects.map((p) => p.target_block).filter((b): b is string => Boolean(b))),
+    );
+
+    const schemeBreakdown = schemes.map((sch) => {
+      const matching = projects.filter((p) => p.scheme === sch);
+      const area = matching.reduce((acc, p) => acc + (p.aoi?.area_km2 ?? 0), 0);
+      return { scheme: sch, count: matching.length, areaKm2: area };
+    });
+
+    return {
+      totalProjects: projects.length,
+      withAoiCount: withAoi.length,
+      withoutAoiCount: projects.length - withAoi.length,
+      totalAreaKm2,
+      schemes,
+      districtsCount: districts.length,
+      blocksCount: blocks.length,
+      schemeBreakdown,
+    };
+  }, [projects]);
+
+  const filteredAndSorted = useMemo(() => {
+    const q = searchFilter.trim().toLowerCase();
+    const list = projects.filter((p) => {
+      if (schemeFilter !== 'ALL' && p.scheme !== schemeFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.target_district ?? '').toLowerCase().includes(q) ||
+        (p.target_block ?? '').toLowerCase().includes(q) ||
+        (p.village_names ?? '').toLowerCase().includes(q) ||
+        p.scheme.toLowerCase().includes(q)
+      );
+    });
+
+    return [...list].sort((a, b) => {
+      if (sortBy === 'area_desc') {
+        return (b.aoi?.area_km2 ?? -1) - (a.aoi?.area_km2 ?? -1);
+      }
+      if (sortBy === 'name_asc') {
+        return a.name.localeCompare(b.name);
+      }
+      return b.updated_at.localeCompare(a.updated_at);
+    });
+  }, [projects, searchFilter, schemeFilter, sortBy]);
 
   return (
-    <div className="max-w-[1360px] w-full mx-auto p-4 space-y-4">
-      <div className="bg-sheet border border-rule-strong rounded-xs p-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="font-mono text-[11px] uppercase tracking-wider text-ink-2">
-            PORTFOLIO REGISTER · RURAL &amp; TRIBAL ELECTRIFICATION PROJECTS
+    <div className="page-container">
+      {/* Header & Important Workflow Shortcuts */}
+      <div className="bg-sheet border border-rule rounded-sm shadow-xs p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="space-y-1.5">
+          <div className="heading-overline">
+            Portfolio Register · Rural &amp; Tribal Electrification Projects
           </div>
-          <h1 className="text-lg font-semibold text-ink mt-0.5">
-            Pre-Feasibility DPR Projects
-          </h1>
+          <h1 className="heading-xl">Pre-Feasibility DPR Projects</h1>
+          <p className="text-body-sm text-ink-2 max-w-3xl">
+            Manage rural electrification study areas across government schemes, inspect AOI boundary
+            provenance, and launch directly into any of the 6 engineering workflow stages.
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="search"
-            aria-label="Filter projects by name, block, or village"
-            placeholder="Filter by village, block, or name..."
-            value={searchFilter}
-            onChange={(e) => setSearchFilter(e.target.value)}
-            className="h-8 px-2.5 text-xs bg-paper border border-rule-strong rounded-xs w-64"
-          />
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
+          <Link to={`/projects/${DEMO_PROJECT_ID}/workspace`}>
+            <Button variant="secondary" leftIcon={MapIcon}>
+              Koraput Demo Workspace
+            </Button>
+          </Link>
           <Link to="/projects/new">
-            <Button variant="primary">+ New Project &amp; AOI Wizard</Button>
+            <Button variant="primary" leftIcon={Plus}>
+              New Project &amp; AOI Wizard
+            </Button>
           </Link>
         </div>
       </div>
 
-      {error && (
-        <Callout tone="error" title="Portfolio Operation Error">
-          {error}
-        </Callout>
+      {/* Portfolio Summary Indicators (Grounded in Loaded Projects) */}
+      <div
+        aria-label="Portfolio Summary Indicators"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+      >
+        <StatTile
+          label="Registered DPR Projects"
+          value={loading ? '…' : String(portfolioStats.totalProjects)}
+          unit="projects"
+          quality={portfolioStats.totalProjects > 0 ? 'VERIFIED' : 'UNSET'}
+          subtitle={
+            loading
+              ? 'Querying project database...'
+              : `${portfolioStats.withAoiCount} with validated AOI · ${portfolioStats.withoutAoiCount} pending AOI`
+          }
+        />
+        <StatTile
+          label="Cumulative Validated AOI"
+          value={
+            loading
+              ? '…'
+              : portfolioStats.totalAreaKm2 !== null
+                ? portfolioStats.totalAreaKm2.toFixed(2)
+                : 'Not available'
+          }
+          unit={portfolioStats.totalAreaKm2 !== null ? 'km²' : undefined}
+          quality={portfolioStats.totalAreaKm2 !== null ? 'ESTIMATED' : 'UNSET'}
+          subtitle={
+            portfolioStats.withAoiCount > 0
+              ? `Computed in local metric UTM projections across ${portfolioStats.withAoiCount} AOI(s)`
+              : 'No validated AOI geometries in portfolio'
+          }
+        />
+        <StatTile
+          label="Active Planning Schemes"
+          value={
+            loading
+              ? '…'
+              : portfolioStats.schemes.length > 0
+                ? String(portfolioStats.schemes.length)
+                : 'Not available'
+          }
+          unit={portfolioStats.schemes.length > 0 ? 'schemes' : undefined}
+          quality={portfolioStats.schemes.length > 0 ? 'VERIFIED' : 'UNSET'}
+          subtitle={
+            portfolioStats.schemes.length > 0
+              ? portfolioStats.schemes.join(' · ')
+              : 'Create a project to assign target scheme'
+          }
+        />
+        <StatTile
+          label="Administrative Coverage"
+          value={
+            loading
+              ? '…'
+              : portfolioStats.blocksCount > 0
+                ? `${portfolioStats.blocksCount} Blocks`
+                : 'Not available'
+          }
+          unit={
+            portfolioStats.districtsCount > 0
+              ? `in ${portfolioStats.districtsCount} District(s)`
+              : undefined
+          }
+          quality={portfolioStats.blocksCount > 0 ? 'VERIFIED' : 'UNSET'}
+          subtitle="LGD / Census 2011 linked study geographies"
+        />
+      </div>
+
+      {/* Scheme & Study Area Analytical Breakdown (Shown when projects exist) */}
+      {!loading && portfolioStats.schemeBreakdown.length > 0 && (
+        <Panel
+          overline="Portfolio Distribution"
+          title="Projects & Study Area by Electrification Scheme"
+          subtitle="Distribution of registered pre-feasibility studies and cumulative metric AOI area across funding programmes."
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {portfolioStats.schemeBreakdown.map((item) => {
+              const sharePct =
+                portfolioStats.totalProjects > 0
+                  ? (item.count / portfolioStats.totalProjects) * 100
+                  : 0;
+              return (
+                <div
+                  key={item.scheme}
+                  className="bg-subtle/50 border border-rule-subtle rounded-xs p-3.5 space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-ink">{item.scheme}</span>
+                    <Badge variant="primary">{item.count} proj</Badge>
+                  </div>
+                  <div className="text-xs text-ink-2 tabular-nums">
+                    Cumulative AOI: <strong>{item.areaKm2.toFixed(2)} km²</strong>
+                  </div>
+                  <div className="h-1.5 w-full bg-subtle border border-rule-subtle rounded-xs overflow-hidden">
+                    <div
+                      style={{ width: `${Math.max(6, sharePct)}%` }}
+                      className="h-full bg-accent rounded-xs"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
       )}
 
-      <div className="bg-sheet border border-rule-strong rounded-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-rule-strong bg-paper text-ink-2 font-mono text-[11px] uppercase">
-                <th className="py-2.5 px-3">Project Name</th>
-                <th className="py-2.5 px-3">Target Block / District</th>
-                <th className="py-2.5 px-3">Scheme</th>
-                <th className="py-2.5 px-3 text-right">AOI Area (km²)</th>
-                <th className="py-2.5 px-3">Boundary Provenance</th>
-                <th className="py-2.5 px-3 text-right">Horizon / Tier</th>
-                <th className="py-2.5 px-3">Status</th>
-                <th className="py-2.5 px-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-rule">
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-ink-2 font-mono">
-                    Loading project portfolio...
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-ink-2">
-                    No matching projects found. Click{' '}
-                    <Link to="/projects/new" className="text-accent underline">
+      {/* Error State with Retry */}
+      {error && (
+        <ErrorState
+          title="Portfolio Operation Error"
+          message={error}
+          onRetry={() => void loadProjects()}
+        />
+      )}
+
+      {/* Filter, Scheme & Sort Toolbar */}
+      <div className="bg-sheet border border-rule rounded-sm p-3.5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[260px]">
+          <Input
+            type="search"
+            size="md"
+            leftIcon={Search}
+            aria-label="Filter projects by name, block, or village"
+            placeholder="Filter by village, block, or name..."
+            value={searchFilter}
+            onChange={(e) => setSearchFilter(e.target.value)}
+            containerClassName="w-full sm:w-64"
+          />
+          <Select
+            aria-label="Filter projects by scheme"
+            value={schemeFilter}
+            onChange={(e) => setSchemeFilter(e.target.value)}
+            options={[
+              { value: 'ALL', label: `All Schemes (${projects.length})` },
+              ...portfolioStats.schemes.map((sch) => ({ value: sch, label: sch })),
+            ]}
+          />
+          <Select
+            aria-label="Sort projects by"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortKey)}
+            options={[
+              { value: 'updated_desc', label: 'Sort: Recently Updated' },
+              { value: 'area_desc', label: 'Sort: Largest AOI Area (km²)' },
+              { value: 'name_asc', label: 'Sort: Project Name (A–Z)' },
+            ]}
+          />
+          {(searchFilter || schemeFilter !== 'ALL') && (
+            <Button
+              size="sm"
+              variant="ghost"
+              leftIcon={X}
+              onClick={() => {
+                setSearchFilter('');
+                setSchemeFilter('ALL');
+              }}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2.5 text-xs text-ink-2 tabular-nums">
+          <span>
+            Showing <strong className="text-ink">{filteredAndSorted.length}</strong> of{' '}
+            <strong className="text-ink">{projects.length}</strong> project(s)
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            leftIcon={RefreshCw}
+            onClick={() => void loadProjects()}
+          >
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* Portfolio Table / Skeleton / Empty State */}
+      <div className="bg-sheet border border-rule rounded-xs overflow-hidden shadow-xs">
+        {loading ? (
+          <div className="p-4 space-y-2">
+            <div className="text-xs text-ink-2">Loading project portfolio...</div>
+            <TableSkeleton rows={4} columns={7} />
+          </div>
+        ) : filteredAndSorted.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={projects.length === 0 ? Compass : FolderKanban}
+              title={
+                projects.length === 0
+                  ? 'No DPR Projects Registered Yet'
+                  : 'No Matching Projects Found'
+              }
+              description={
+                projects.length === 0
+                  ? 'Create your first rural electrification study area using the AOI Setup Wizard, or explore the pre-loaded Koraput reference study.'
+                  : 'No projects match your current search or scheme filter. Clear the filter or create a new project.'
+              }
+              action={
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  {(searchFilter || schemeFilter !== 'ALL') && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setSearchFilter('');
+                        setSchemeFilter('ALL');
+                      }}
+                    >
+                      Clear Filters
+                    </Button>
+                  )}
+                  <Link to="/projects/new" className="text-accent underline">
+                    <Button size="sm" variant="primary">
                       + New Project &amp; AOI Wizard
-                    </Link>{' '}
-                    to create one.
-                  </td>
+                    </Button>
+                  </Link>
+                </div>
+              }
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-body-sm">
+              <thead>
+                <tr className="border-b border-rule bg-paper text-ink-2 text-xs font-semibold">
+                  <th className="py-2.5 px-3.5">Project Name &amp; Stage Shortcuts</th>
+                  <th className="py-2.5 px-3.5">Target Block / District</th>
+                  <th className="py-2.5 px-3.5">Scheme</th>
+                  <th className="py-2.5 px-3.5 text-right">AOI Area (km²)</th>
+                  <th className="py-2.5 px-3.5">Boundary Provenance</th>
+                  <th className="py-2.5 px-3.5 text-right">Horizon / Tier</th>
+                  <th className="py-2.5 px-3.5">Status</th>
+                  <th className="py-2.5 px-3.5 text-right">Actions</th>
                 </tr>
-              ) : (
-                filtered.map((proj) => (
+              </thead>
+              <tbody className="divide-y divide-rule-subtle">
+                {filteredAndSorted.map((proj) => (
                   <tr key={proj.id} className="hover:bg-accent-tint/25">
-                    <th scope="row" className="py-3 px-3 font-semibold text-ink">
+                    <th scope="row" className="py-3.5 px-3.5 font-semibold text-ink">
                       <div>{proj.name}</div>
                       {proj.village_names && (
-                        <div className="text-[11px] font-normal text-ink-2 mt-0.5">
+                        <div className="text-xs font-normal text-ink-2 mt-0.5">
                           Habitations: {proj.village_names}
                         </div>
                       )}
+                      {/* Quick Workflow Stage Deep-Link Pills */}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2 text-xs font-normal">
+                        <Link
+                          to={`/projects/${proj.id}/map`}
+                          className="px-2 py-0.5 rounded-xs bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
+                        >
+                          GIS Map
+                        </Link>
+                        <Link
+                          to={`/projects/${proj.id}/settlements`}
+                          className="px-2 py-0.5 rounded-xs bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
+                        >
+                          2. Villages
+                        </Link>
+                        <Link
+                          to={`/projects/${proj.id}/network`}
+                          className="px-2 py-0.5 rounded-xs bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
+                        >
+                          4. Network
+                        </Link>
+                        <Link
+                          to={`/projects/${proj.id}/cost`}
+                          className="px-2 py-0.5 rounded-xs bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
+                        >
+                          5. Cost
+                        </Link>
+                        <Link
+                          to={`/projects/${proj.id}/reports`}
+                          className="px-2 py-0.5 rounded-xs bg-subtle hover:bg-accent-soft text-ink-2 hover:text-accent border border-rule-subtle"
+                        >
+                          6. DPR
+                        </Link>
+                      </div>
                     </th>
-                    <td className="py-3 px-3 text-ink-2">
+                    <td className="py-3.5 px-3.5 text-ink-2 text-xs">
                       {[proj.target_block, proj.target_district, proj.target_state]
                         .filter(Boolean)
-                        .join(', ')}
+                        .join(', ') || 'Not specified'}
                     </td>
-                    <td className="py-3 px-3 font-mono text-[11px]">{proj.scheme}</td>
-                    <td className="py-3 px-3 text-right font-mono tabular-mono">
+                    <td className="py-3.5 px-3.5 text-xs font-medium text-ink">
+                      {proj.scheme}
+                    </td>
+                    <td className="py-3.5 px-3.5 text-right font-mono tabular-nums">
                       {proj.aoi ? proj.aoi.area_km2.toFixed(2) : '—'}
                     </td>
-                    <td className="py-3 px-3">
+                    <td className="py-3.5 px-3.5">
                       {proj.aoi ? (
                         <QualityTag
                           kind={
@@ -214,20 +530,21 @@ export const ProjectsPage: React.FC = () => {
                           label={proj.aoi.boundary_source}
                         />
                       ) : (
-                        <QualityTag kind="ASSUMED" label="NO AOI SET" />
+                        <QualityTag kind="UNSET" label="NO AOI SET" />
                       )}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono tabular-mono">
+                    <td className="py-3.5 px-3.5 text-right font-mono tabular-nums text-xs">
                       {proj.horizon_years} yr · {proj.load_tier.replace('TIER_', 'T')}
                     </td>
-                    <td className="py-3 px-3 font-mono text-[11px]">
+                    <td className="py-3.5 px-3.5 text-xs text-ink-2 tabular-nums">
                       {proj.status} (v{proj.version})
                     </td>
-                    <td className="py-3 px-3 text-right">
-                      <div className="inline-flex items-center gap-1.5">
+                    <td className="py-3.5 px-3.5 text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                         <Button
                           size="sm"
                           variant="primary"
+                          className="whitespace-nowrap"
                           onClick={() => navigate(`/projects/${proj.id}/workspace`)}
                         >
                           Open Workspace
@@ -235,6 +552,7 @@ export const ProjectsPage: React.FC = () => {
                         <Button
                           size="sm"
                           variant="secondary"
+                          className="whitespace-nowrap"
                           onClick={() => void handleDuplicate(proj.id)}
                         >
                           Duplicate
@@ -242,20 +560,37 @@ export const ProjectsPage: React.FC = () => {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => void handleDelete(proj.id)}
+                          className="whitespace-nowrap"
+                          onClick={() => setArchiveTarget(proj)}
                         >
                           Archive
                         </Button>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* Confirmation Dialog before archiving/deleting a project */}
+      <ConfirmDialog
+        open={archiveTarget !== null}
+        title="Archive Pre-Feasibility Project?"
+        description={
+          archiveTarget
+            ? `Are you sure you want to archive "${archiveTarget.name}"? This removes the project from the active portfolio register.`
+            : ''
+        }
+        confirmLabel="Confirm Archive"
+        cancelLabel="Cancel"
+        variant="danger"
+        isLoading={archiving}
+        onConfirm={() => void handleConfirmArchive()}
+        onClose={() => setArchiveTarget(null)}
+      />
     </div>
   );
 };
-

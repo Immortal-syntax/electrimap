@@ -15,13 +15,29 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft,
+  Compass,
+  FileUp,
+  MapPin,
+  PenTool,
+  RotateCcw,
+  Search,
+} from 'lucide-react';
 import { apiRequest } from '../lib/apiClient';
 import { useSessionStore } from '../stores/sessionStore';
 import { MapCanvas } from '../components/map/MapCanvas';
+import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Callout } from '../components/ui/Callout';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Input, Textarea } from '../components/ui/Input';
+import { PageHeader, Panel } from '../components/ui/Panel';
 import { QualityTag } from '../components/ui/QualityTag';
+import { Select } from '../components/ui/Select';
+import { Spinner } from '../components/ui/Skeleton';
+import { Tabs, TabsList, TabsTrigger } from '../components/ui/Tabs';
 import { ProjectDto } from './ProjectsPage';
 
 interface CensusInfoDto {
@@ -96,9 +112,13 @@ export const NewProjectWizardPage: React.FC = () => {
   // Step 2: AOI method & state
   const [methodTab, setMethodTab] = useState<AoiMethodTab>('ADMIN_UNIT');
   const [villages, setVillages] = useState<AdminUnitDto[]>([]);
+  const [loadingVillages, setLoadingVillages] = useState(true);
+  const [searchingVillages, setSearchingVillages] = useState(false);
   const [selectedLgd, setSelectedLgd] = useState<string>('398712');
   const [resolvedBoundary, setResolvedBoundary] = useState<AdminBoundaryDto | null>(null);
+  const [loadingBoundary, setLoadingBoundary] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchNoMatch, setSearchNoMatch] = useState(false);
 
   // Drawn polygon state
   const [drawnPolygon, setDrawnPolygon] = useState<GeoJSON.Polygon | null>(null);
@@ -110,9 +130,31 @@ export const NewProjectWizardPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loadAllVillages = async () => {
+    setLoadingVillages(true);
+    setSearchNoMatch(false);
+    try {
+      if (!user) {
+        await login('planner@electrimap.in', 'ElectriMap#2026');
+      }
+      const vList = await apiRequest<AdminUnitDto[]>(
+        '/api/v1/admin-units?level=VILLAGE',
+      );
+      setVillages(vList);
+      if (vList.length > 0 && !vList.some((v) => v.lgd_code === selectedLgd)) {
+        setSelectedLgd(vList[0]!.lgd_code);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load administrative units.');
+    } finally {
+      setLoadingVillages(false);
+    }
+  };
+
   useEffect(() => {
     let active = true;
     async function initAdminUnits() {
+      setLoadingVillages(true);
       try {
         if (!user) {
           await login('planner@electrimap.in', 'ElectriMap#2026');
@@ -125,6 +167,8 @@ export const NewProjectWizardPage: React.FC = () => {
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'Failed to load administrative units.');
+      } finally {
+        if (active) setLoadingVillages(false);
       }
     }
     void initAdminUnits();
@@ -138,6 +182,7 @@ export const NewProjectWizardPage: React.FC = () => {
     let active = true;
     async function loadBoundary() {
       if (!selectedLgd || methodTab !== 'ADMIN_UNIT') return;
+      setLoadingBoundary(true);
       try {
         if (!user) {
           await login('planner@electrimap.in', 'ElectriMap#2026');
@@ -149,6 +194,8 @@ export const NewProjectWizardPage: React.FC = () => {
         setResolvedBoundary(b);
       } catch {
         // Ignore transient lookup errors before auth completes
+      } finally {
+        if (active) setLoadingBoundary(false);
       }
     }
     void loadBoundary();
@@ -159,18 +206,30 @@ export const NewProjectWizardPage: React.FC = () => {
   }, [selectedLgd, methodTab, user]);
 
   const handleSearchVillages = async () => {
-    if (!searchQuery.trim()) return;
+    const q = searchQuery.trim();
+    if (!q) {
+      await loadAllVillages();
+      return;
+    }
+    setSearchingVillages(true);
+    setError(null);
+    setSearchNoMatch(false);
     try {
       const results = await apiRequest<AdminUnitDto[]>(
-        `/api/v1/admin-units/search?q=${encodeURIComponent(searchQuery.trim())}`,
+        `/api/v1/admin-units/search?q=${encodeURIComponent(q)}`,
       );
       const villageMatches = results.filter((u: AdminUnitDto) => u.level === 'VILLAGE');
       if (villageMatches.length > 0) {
         setVillages(villageMatches);
         setSelectedLgd(villageMatches[0]!.lgd_code);
+      } else {
+        setVillages([]);
+        setSearchNoMatch(true);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Village search failed.');
+    } finally {
+      setSearchingVillages(false);
     }
   };
 
@@ -252,18 +311,22 @@ export const NewProjectWizardPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-[1360px] w-full mx-auto p-4 space-y-4">
-      <div className="bg-sheet border border-rule-strong rounded-xs p-4 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="font-mono text-[11px] uppercase tracking-wider text-ink-2">
-            SHEET WIZARD-M1 · PROJECT &amp; AREA OF INTEREST (AOI) DEFINITION
+    <div className="page-container section-stack">
+      <PageHeader
+        overline="Project & Area of Interest (AOI) Definition"
+        title="Create Electrification Project & Define Study Boundary"
+        subtitle="Configure planning horizon parameters and select a village administrative unit, draw a custom polygon, or upload a GIS boundary file."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <QualityTag kind="ESTIMATED" label="CRS: WGS 84 ↔ DYNAMIC UTM (EPSG:32644)" />
+            <Link to="/projects">
+              <Button size="sm" variant="secondary" leftIcon={ArrowLeft}>
+                Back to Portfolio
+              </Button>
+            </Link>
           </div>
-          <h1 className="text-lg font-semibold text-ink mt-0.5">
-            Create Electrification Project &amp; Define Study Boundary
-          </h1>
-        </div>
-        <QualityTag kind="ESTIMATED" label="CRS: WGS 84 ↔ DYNAMIC UTM (EPSG:32644)" />
-      </div>
+        }
+      />
 
       {error && (
         <Callout tone="error" title="Validation or Submission Error">
@@ -273,330 +336,334 @@ export const NewProjectWizardPage: React.FC = () => {
 
       <form
         onSubmit={(e) => void handleCreateAndSetAoi(e)}
-        className="grid grid-cols-1 lg:grid-cols-12 gap-4"
+        className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start"
       >
         {/* Left Column: Metadata & AOI Method Selector */}
-        <div className="lg:col-span-5 space-y-4">
-          <section className="bg-sheet border border-rule-strong rounded-xs p-4 space-y-3">
-            <h2 className="small-caps-heading border-b border-rule pb-1.5">
-              1. Project Metadata &amp; Planning Horizon
-            </h2>
-
-            <div>
-              <label
-                htmlFor="proj-name"
-                className="block text-xs font-medium text-ink mb-1"
-              >
-                Project Title
-              </label>
-              <input
+        <div className="lg:col-span-5 space-y-5">
+          <Panel
+            overline="Step 1 of 2"
+            title="1. Project Metadata & Planning Horizon"
+            subtitle="Sets scheme template, demand growth horizon, and economic discount parameters."
+          >
+            <div className="space-y-3.5">
+              <Input
                 id="proj-name"
+                label="Project Title"
                 type="text"
                 required
+                minLength={2}
+                maxLength={200}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full h-8 px-2.5 text-xs bg-paper border border-rule-strong rounded-xs"
               />
-            </div>
 
-            <div>
-              <label
-                htmlFor="proj-desc"
-                className="block text-xs font-medium text-ink mb-1"
-              >
-                Scope / Engineering Notes
-              </label>
-              <textarea
+              <Textarea
                 id="proj-desc"
+                label="Scope / Engineering Notes"
                 rows={2}
+                maxLength={2000}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full p-2 text-xs bg-paper border border-rule-strong rounded-xs"
               />
-            </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label
-                  htmlFor="proj-scheme"
-                  className="block text-xs font-medium text-ink mb-1"
-                >
-                  Target Scheme
-                </label>
-                <select
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Select
                   id="proj-scheme"
+                  label="Target Scheme"
                   value={scheme}
                   onChange={(e) => setScheme(e.target.value)}
-                  className="w-full h-8 px-2 text-xs bg-paper border border-rule-strong rounded-xs"
-                >
-                  <option value="DA-JGUA / RDSS">DA-JGUA / RDSS</option>
-                  <option value="RDSS Feeder Separation">RDSS Feeder Separation</option>
-                  <option value="MNRE Off-Grid / Mini-Grid">MNRE Off-Grid / Mini-Grid</option>
-                  <option value="State Tribal Sub-Plan (TSP)">State Tribal Sub-Plan (TSP)</option>
-                </select>
-              </div>
+                  options={[
+                    { value: 'DA-JGUA / RDSS', label: 'DA-JGUA / RDSS' },
+                    { value: 'RDSS Feeder Separation', label: 'RDSS Feeder Separation' },
+                    {
+                      value: 'MNRE Off-Grid / Mini-Grid',
+                      label: 'MNRE Off-Grid / Mini-Grid',
+                    },
+                    {
+                      value: 'State Tribal Sub-Plan (TSP)',
+                      label: 'State Tribal Sub-Plan (TSP)',
+                    },
+                  ]}
+                />
 
-              <div>
-                <label
-                  htmlFor="proj-tier"
-                  className="block text-xs font-medium text-ink mb-1"
-                >
-                  Consumer Load Tier
-                </label>
-                <select
+                <Select
                   id="proj-tier"
+                  label="Consumer Load Tier"
                   value={loadTier}
                   onChange={(e) => setLoadTier(e.target.value)}
-                  className="w-full h-8 px-2 text-xs bg-paper border border-rule-strong rounded-xs font-mono"
-                >
-                  <option value="TIER_2_SUBSISTENCE">TIER_2 (0.25 kW/HH)</option>
-                  <option value="TIER_3_STANDARD">TIER_3 (0.50 kW/HH)</option>
-                  <option value="TIER_4_PRODUCTIVE">TIER_4 (1.00 kW/HH)</option>
-                </select>
+                  options={[
+                    { value: 'TIER_2_SUBSISTENCE', label: 'TIER_2 (0.25 kW/HH)' },
+                    { value: 'TIER_3_STANDARD', label: 'TIER_3 (0.50 kW/HH)' },
+                    { value: 'TIER_4_PRODUCTIVE', label: 'TIER_4 (1.00 kW/HH)' },
+                  ]}
+                />
               </div>
-            </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label
-                  htmlFor="proj-base-year"
-                  className="block text-xs font-medium text-ink mb-1"
-                >
-                  Base Year
-                </label>
-                <input
+              <div className="grid grid-cols-3 gap-2.5">
+                <Input
                   id="proj-base-year"
+                  label="Base Year"
                   type="number"
                   min={2020}
                   max={2035}
+                  mono
                   value={baseYear}
                   onChange={(e) => setBaseYear(Number(e.target.value))}
-                  className="w-full h-8 px-2 text-xs font-mono bg-paper border border-rule-strong rounded-xs"
                 />
-              </div>
-              <div>
-                <label
-                  htmlFor="proj-horizon"
-                  className="block text-xs font-medium text-ink mb-1"
-                >
-                  Horizon (yrs)
-                </label>
-                <input
+                <Input
                   id="proj-horizon"
+                  label="Horizon (yrs)"
                   type="number"
                   min={1}
                   max={30}
+                  mono
                   value={horizonYears}
                   onChange={(e) => setHorizonYears(Number(e.target.value))}
-                  className="w-full h-8 px-2 text-xs font-mono bg-paper border border-rule-strong rounded-xs"
                 />
-              </div>
-              <div>
-                <label
-                  htmlFor="proj-discount"
-                  className="block text-xs font-medium text-ink mb-1"
-                >
-                  Discount Rate
-                </label>
-                <input
+                <Input
                   id="proj-discount"
+                  label="Discount Rate"
                   type="number"
                   step="0.01"
                   min={0.01}
                   max={0.25}
+                  mono
                   value={discountRate}
                   onChange={(e) => setDiscountRate(Number(e.target.value))}
-                  className="w-full h-8 px-2 text-xs font-mono bg-paper border border-rule-strong rounded-xs"
                 />
               </div>
             </div>
-          </section>
+          </Panel>
 
-          <section className="bg-sheet border border-rule-strong rounded-xs p-4 space-y-3">
-            <h2 className="small-caps-heading border-b border-rule pb-1.5">
-              2. Area of Interest (AOI) Definition Method
-            </h2>
-
-            <div
-              role="tablist"
-              aria-label="AOI definition method"
-              className="grid grid-cols-3 border border-rule-strong rounded-xs overflow-hidden text-xs"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={methodTab === 'ADMIN_UNIT'}
-                onClick={() => setMethodTab('ADMIN_UNIT')}
-                className={`py-1.5 px-2 font-medium ${
-                  methodTab === 'ADMIN_UNIT'
-                    ? 'bg-accent text-white'
-                    : 'bg-paper text-ink-2 hover:text-ink'
-                }`}
+          <Panel
+            overline="Step 2 of 2"
+            title="2. Area of Interest (AOI) Definition Method"
+            subtitle="All AOI geometries are validated in WGS 84 and projected to dynamic UTM."
+          >
+            <div className="space-y-3">
+              <Tabs
+                variant="segmented"
+                value={methodTab}
+                onValueChange={(v) => setMethodTab(v as AoiMethodTab)}
               >
-                Admin Unit (LGD)
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={methodTab === 'USER_DRAWN'}
-                onClick={() => setMethodTab('USER_DRAWN')}
-                className={`py-1.5 px-2 font-medium border-l border-rule ${
-                  methodTab === 'USER_DRAWN'
-                    ? 'bg-accent text-white'
-                    : 'bg-paper text-ink-2 hover:text-ink'
-                }`}
-              >
-                Draw Polygon
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={methodTab === 'FILE_UPLOAD'}
-                onClick={() => setMethodTab('FILE_UPLOAD')}
-                className={`py-1.5 px-2 font-medium border-l border-rule ${
-                  methodTab === 'FILE_UPLOAD'
-                    ? 'bg-accent text-white'
-                    : 'bg-paper text-ink-2 hover:text-ink'
-                }`}
-              >
-                Upload GIS File
-              </button>
-            </div>
+                <TabsList
+                  aria-label="AOI definition method"
+                  className="grid grid-cols-3 w-full"
+                >
+                  <TabsTrigger value="ADMIN_UNIT" icon={MapPin}>
+                    Admin Unit (LGD)
+                  </TabsTrigger>
+                  <TabsTrigger value="USER_DRAWN" icon={PenTool}>
+                    Draw Polygon
+                  </TabsTrigger>
+                  <TabsTrigger value="FILE_UPLOAD" icon={FileUp}>
+                    Upload GIS File
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
 
-            {methodTab === 'ADMIN_UNIT' && (
-              <div className="space-y-3 pt-1">
-                <div className="flex gap-1.5">
-                  <input
-                    type="search"
-                    aria-label="Search village by name or LGD code"
-                    placeholder="Search village name or LGD / Census code..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1 h-8 px-2.5 text-xs bg-paper border border-rule-strong rounded-xs"
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void handleSearchVillages()}
-                  >
-                    Search
-                  </Button>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="select-village-lgd"
-                    className="block text-xs font-medium text-ink mb-1"
-                  >
-                    Select Target Village / Habitation (Koraput District, Odisha)
-                  </label>
-                  <select
-                    id="select-village-lgd"
-                    value={selectedLgd}
-                    onChange={(e) => setSelectedLgd(e.target.value)}
-                    className="w-full h-8 px-2 text-xs font-mono bg-paper border border-rule-strong rounded-xs"
-                  >
-                    {villages.map((v) => (
-                      <option key={v.lgd_code} value={v.lgd_code}>
-                        {v.name} (LGD {v.lgd_code} · {v.boundary_source})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {resolvedBoundary && (
-                  <div className="p-2.5 bg-paper border border-rule rounded-xs space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-ink">
-                        {resolvedBoundary.name} (LGD {resolvedBoundary.lgd_code})
-                      </span>
-                      <QualityTag
-                        kind={
-                          resolvedBoundary.boundary_source === 'APPROXIMATE_BUFFER'
-                            ? 'ASSUMED'
-                            : 'ESTIMATED'
+              {methodTab === 'ADMIN_UNIT' && (
+                <div className="space-y-3 pt-1">
+                  <div className="flex gap-1.5 items-end">
+                    <Input
+                      type="search"
+                      leftIcon={Search}
+                      aria-label="Search village by name or LGD code"
+                      placeholder="Search village name or LGD / Census code..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void handleSearchVillages();
                         }
-                        label={resolvedBoundary.boundary_source}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-1 font-mono text-[11px] text-ink-2">
-                      <div>Area: {resolvedBoundary.area_km2.toFixed(2)} km²</div>
-                      <div>Metric CRS: EPSG:{resolvedBoundary.metric_epsg}</div>
-                      {resolvedBoundary.census_info && (
-                        <>
-                          <div>
-                            Census 2011 HH: {resolvedBoundary.census_info.households}
-                          </div>
-                          <div>
-                            Population: {resolvedBoundary.census_info.total_pop} (ST:{' '}
-                            {resolvedBoundary.census_info.st_pop})
-                          </div>
-                        </>
-                      )}
-                    </div>
-                    {resolvedBoundary.warnings.includes(
-                      'APPROXIMATE_BOUNDARY_BUFFER_1500M',
-                    ) && (
-                      <div className="text-[11px] text-warn font-medium border-t border-rule pt-1">
-                        ⚠ Official village polygon unavailable in reference layer; generated a
-                        1.5 km metric circular buffer around village centroid.
-                      </div>
+                      }}
+                      containerClassName="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      isLoading={searchingVillages}
+                      onClick={() => void handleSearchVillages()}
+                    >
+                      Search
+                    </Button>
+                    {(searchQuery || searchNoMatch) && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        leftIcon={RotateCcw}
+                        onClick={() => {
+                          setSearchQuery('');
+                          void loadAllVillages();
+                        }}
+                        title="Restore all reference villages"
+                      >
+                        Reset
+                      </Button>
                     )}
                   </div>
-                )}
-              </div>
-            )}
 
-            {methodTab === 'USER_DRAWN' && (
-              <div className="p-3 bg-paper border border-rule rounded-xs text-xs space-y-1.5">
-                <div className="font-semibold text-ink">
-                  Interactive Map Polygon Drawing Active
-                </div>
-                <p className="text-ink-2">
-                  Click points directly on the MapLibre canvas on the right to place AOI
-                  vertices. Minimum 3 vertices; area must be between 0.01 km² and 500 km².
-                </p>
-                <div className="font-mono text-[11px] text-accent">
-                  Current Vertices Placed: {drawnVertexCount}{' '}
-                  {drawnVertexCount >= 3 ? '(Valid Polygon Ready)' : '(Add more points)'}
-                </div>
-              </div>
-            )}
+                  {loadingVillages ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-ink-2">
+                      <Spinner size="sm" />
+                      <span>Loading LGD village directory...</span>
+                    </div>
+                  ) : searchNoMatch || villages.length === 0 ? (
+                    <EmptyState
+                      compact
+                      icon={Compass}
+                      title="No Matching Reference Villages"
+                      description="No LGD village matched your query. Reset the search or switch to Draw Polygon / Upload GIS File."
+                      action={
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          onClick={() => {
+                            setSearchQuery('');
+                            void loadAllVillages();
+                          }}
+                        >
+                          Show All Villages
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <Select
+                      id="select-village-lgd"
+                      label="Select Target Village / Habitation (Koraput District, Odisha)"
+                      value={selectedLgd}
+                      onChange={(e) => setSelectedLgd(e.target.value)}
+                      options={villages.map((v) => ({
+                        value: v.lgd_code,
+                        label: `${v.name} (LGD ${v.lgd_code} · ${v.boundary_source})`,
+                      }))}
+                    />
+                  )}
 
-            {methodTab === 'FILE_UPLOAD' && (
-              <div className="p-3 bg-paper border border-rule rounded-xs text-xs space-y-2">
-                <label
-                  htmlFor="aoi-file-input"
-                  className="block font-semibold text-ink"
+                  {loadingBoundary && (
+                    <div className="flex items-center gap-2 py-1 text-xs text-ink-2">
+                      <Spinner size="xs" />
+                      <span>Resolving boundary polygon &amp; Census 2011 baseline...</span>
+                    </div>
+                  )}
+
+                  {resolvedBoundary && !loadingBoundary && (
+                    <div className="p-3.5 bg-paper border border-rule-subtle rounded-xs space-y-2 text-xs">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="font-semibold text-ink">
+                          {resolvedBoundary.name} (LGD {resolvedBoundary.lgd_code})
+                        </span>
+                        <QualityTag
+                          kind={
+                            resolvedBoundary.boundary_source === 'APPROXIMATE_BUFFER'
+                              ? 'ASSUMED'
+                              : 'ESTIMATED'
+                          }
+                          label={resolvedBoundary.boundary_source}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 text-xs text-ink-2 tabular-nums">
+                        <div>Area: {resolvedBoundary.area_km2.toFixed(2)} km²</div>
+                        <div>Metric CRS: EPSG:{resolvedBoundary.metric_epsg}</div>
+                        {resolvedBoundary.census_info && (
+                          <>
+                            <div>
+                              Census 2011 HH: {resolvedBoundary.census_info.households}
+                            </div>
+                            <div>
+                              Population: {resolvedBoundary.census_info.total_pop} (ST:{' '}
+                              {resolvedBoundary.census_info.st_pop})
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      {resolvedBoundary.warnings.includes(
+                        'APPROXIMATE_BOUNDARY_BUFFER_1500M',
+                      ) && (
+                        <Callout
+                          tone="warn"
+                          title="Approximate Circular Buffer Boundary"
+                        >
+                          Official village polygon unavailable in reference layer; generated a
+                          1.5 km metric circular buffer around village centroid.
+                        </Callout>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {methodTab === 'USER_DRAWN' && (
+                <div className="p-3.5 bg-paper border border-rule-subtle rounded-xs text-xs space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-ink">
+                      Interactive Map Polygon Drawing Active
+                    </span>
+                    <Badge
+                      variant={drawnVertexCount >= 3 ? 'ok' : 'warn'}
+                      size="sm"
+                      dot
+                    >
+                      {drawnVertexCount} Vertices
+                    </Badge>
+                  </div>
+                  <p className="text-ink-2 leading-relaxed">
+                    Click points directly on the MapLibre canvas on the right to place AOI
+                    vertices. Minimum 3 vertices; valid study area between 0.01 km² and 500 km².
+                  </p>
+                  <div className="text-xs text-ink-2">
+                    Status:{' '}
+                    <span className={drawnVertexCount >= 3 ? 'text-ok font-semibold' : 'text-accent'}>
+                      {drawnVertexCount >= 3
+                        ? 'Valid Polygon Ready for Validation'
+                        : 'Click map canvas to add vertices'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {methodTab === 'FILE_UPLOAD' && (
+                <div className="p-3.5 bg-paper border border-rule-subtle rounded-xs text-xs space-y-2">
+                  <label
+                    htmlFor="aoi-file-input"
+                    className="field-label"
+                  >
+                    Upload Boundary File (.geojson, .json, .kml, or Shapefile .zip)
+                  </label>
+                  <input
+                    id="aoi-file-input"
+                    type="file"
+                    accept=".geojson,.json,.kml,.zip"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                    className="block w-full text-xs text-ink-2 file:mr-3 file:py-1.5 file:px-3 file:rounded-xs file:border file:border-rule-strong file:text-xs file:font-medium file:bg-sheet file:text-ink hover:file:bg-subtle file:cursor-pointer"
+                  />
+                  {selectedFile && (
+                    <div className="text-xs font-medium text-ok">
+                      Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                    </div>
+                  )}
+                  <p className="text-xs text-ink-3 leading-relaxed">
+                    Shapefile .zip archives must include .shp, .shx, .dbf, and .prj. Geometries
+                    are automatically reprojected to EPSG:4326 and checked for self-intersections.
+                  </p>
+                </div>
+              )}
+
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  isLoading={submitting}
+                  fullWidth
                 >
-                  Upload Boundary File (.geojson, .json, .kml, or Shapefile .zip)
-                </label>
-                <input
-                  id="aoi-file-input"
-                  type="file"
-                  accept=".geojson,.json,.kml,.zip"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-                  className="block w-full text-xs text-ink-2 file:mr-3 file:py-1 file:px-2.5 file:rounded-xs file:border file:border-rule-strong file:text-xs file:font-medium file:bg-sheet file:text-ink"
-                />
-                <p className="text-[11px] text-ink-3 font-mono">
-                  Shapefile .zip archives must include .shp, .shx, .dbf, and .prj. Geometries
-                  are automatically reprojected to EPSG:4326 and checked for self-intersections.
-                </p>
+                  Validate Boundary &amp; Open Engineering Workspace →
+                </Button>
               </div>
-            )}
-
-            <div className="pt-2">
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={submitting}
-                className="w-full"
-              >
-                Validate Boundary &amp; Open Engineering Workspace →
-              </Button>
             </div>
-          </section>
+          </Panel>
         </div>
 
         {/* Right Column: Interactive MapLibre Canvas */}
@@ -617,7 +684,8 @@ export const NewProjectWizardPage: React.FC = () => {
               setDrawnPolygon(poly);
               setDrawnVertexCount(count);
             }}
-            heightClass="h-[540px]"
+            heightClass="h-[580px]"
+            defaultLayerPanelOpen={false}
           />
         </div>
       </form>
