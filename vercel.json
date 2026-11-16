@@ -1,6 +1,6 @@
 {
-  "installCommand": "cd frontend && npm install --include=dev",
-  "buildCommand": "cd frontend && npm run build",
+  "installCommand": "if [ -n \"$npm_config_cache_dir\" ]; then export npm_config_cache=\"$npm_config_cache_dir\"; unset npm_config_cache_dir; fi; if [ -n \"$NPM_CONFIG_CACHE_DIR\" ]; then export NPM_CONFIG_CACHE=\"$NPM_CONFIG_CACHE_DIR\"; unset NPM_CONFIG_CACHE_DIR; fi; cd frontend && npm install --include=dev",
+  "buildCommand": "if [ -n \"$npm_config_cache_dir\" ]; then export npm_config_cache=\"$npm_config_cache_dir\"; unset npm_config_cache_dir; fi; if [ -n \"$NPM_CONFIG_CACHE_DIR\" ]; then export NPM_CONFIG_CACHE=\"$NPM_CONFIG_CACHE_DIR\"; unset NPM_CONFIG_CACHE_DIR; fi; cd frontend && npm run build",
   "outputDirectory": "frontend/dist",
   "rewrites": [
     {
