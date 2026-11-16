@@ -1,0 +1,155 @@
+/*
+ * Copyright 2026 Swayam Kumar
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * Typed HTTP client for ElectriMap DPR REST API (/api/v1) with automatic CSRF header injection.
+ */
+
+export interface ApiErrorDetail {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export class ApiClientError extends Error {
+  public readonly code: string;
+  public readonly status: number;
+  public readonly details: Record<string, unknown>;
+
+  constructor(code: string, message: string, status: number, details: Record<string, unknown> = {}) {
+    super(message);
+    this.name = 'ApiClientError';
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
+
+let csrfTokenMemory: string | null = null;
+
+export function setCsrfToken(token: string | null): void {
+  csrfTokenMemory = token;
+  if (typeof window !== 'undefined') {
+    try {
+      if (token) {
+        window.sessionStorage.setItem('em_csrf_token', token);
+        window.localStorage.setItem('em_csrf_token', token);
+      } else {
+        window.sessionStorage.removeItem('em_csrf_token');
+        window.localStorage.removeItem('em_csrf_token');
+      }
+    } catch {
+      // Ignore storage quota or privacy-mode exceptions
+    }
+  }
+}
+
+export function getCsrfToken(): string | null {
+  if (csrfTokenMemory) return csrfTokenMemory;
+  if (typeof window !== 'undefined') {
+    try {
+      csrfTokenMemory =
+        window.sessionStorage.getItem('em_csrf_token') ??
+        window.localStorage.getItem('em_csrf_token');
+    } catch {
+      csrfTokenMemory = null;
+    }
+  }
+  return csrfTokenMemory;
+}
+
+export async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const method = (options.method ?? 'GET').toUpperCase();
+  const headers = new Headers(options.headers);
+
+  if (!(options.body instanceof FormData) && !headers.has('Content-Type') && method !== 'GET') {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+    const csrf = getCsrfToken();
+    if (csrf) {
+      headers.set('X-CSRF-Token', csrf);
+    }
+  }
+
+  const response = await fetch(path, {
+    ...options,
+    method,
+    headers,
+    credentials: 'include',
+  });
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  let body: unknown = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+
+  if (!response.ok) {
+    if (response.status === 401 && !path.startsWith('/api/v1/auth/')) {
+      setCsrfToken(null);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('electrimap:unauthorized'));
+      }
+    }
+
+    const errObj =
+      body && typeof body === 'object' && 'error' in body
+        ? (body as { error: ApiErrorDetail }).error
+        : null;
+
+    let detailMessage: string | null = null;
+    if (!errObj && body && typeof body === 'object' && 'detail' in body) {
+      const rawDetail = (body as { detail: unknown }).detail;
+      if (typeof rawDetail === 'string') {
+        detailMessage = rawDetail;
+      } else if (Array.isArray(rawDetail)) {
+        detailMessage = rawDetail
+          .map((item) => {
+            if (item && typeof item === 'object') {
+              const obj = item as { loc?: unknown[]; msg?: unknown };
+              const loc = Array.isArray(obj.loc)
+                ? obj.loc.filter((part) => part !== 'body').join('.')
+                : '';
+              const msg = typeof obj.msg === 'string' ? obj.msg : JSON.stringify(item);
+              return loc ? `${loc}: ${msg}` : msg;
+            }
+            return String(item);
+          })
+          .join('; ');
+      }
+    }
+
+    throw new ApiClientError(
+      errObj?.code ?? `HTTP_${response.status}`,
+      errObj?.message ?? detailMessage ?? `Request failed with status ${response.status}`,
+      response.status,
+      errObj?.details ?? {},
+    );
+  }
+
+  return body as T;
+}
+

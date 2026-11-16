@@ -1,0 +1,5297 @@
+{
+  "type": "FeatureCollection",
+  "name": "koraput_nandapur_buildings",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0001",
+        "confidence": 0.91,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71283354050536,
+              18.554503753598674
+            ],
+            [
+              82.71289085692943,
+              18.554503753598674
+            ],
+            [
+              82.71289085692943,
+              18.554570892337384
+            ],
+            [
+              82.71283354050536,
+              18.554570892337384
+            ],
+            [
+              82.71283354050536,
+              18.554503753598674
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0002",
+        "confidence": 0.878,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70892301824716,
+              18.553045435434772
+            ],
+            [
+              82.70900344717188,
+              18.553045435434772
+            ],
+            [
+              82.70900344717188,
+              18.553112347072187
+            ],
+            [
+              82.70892301824716,
+              18.553112347072187
+            ],
+            [
+              82.70892301824716,
+              18.553045435434772
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0003",
+        "confidence": 0.915,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.708816289377,
+              18.551782071064206
+            ],
+            [
+              82.70886218310211,
+              18.551782071064206
+            ],
+            [
+              82.70886218310211,
+              18.551846989273514
+            ],
+            [
+              82.708816289377,
+              18.551846989273514
+            ],
+            [
+              82.708816289377,
+              18.551782071064206
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0004",
+        "confidence": 0.88,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71129139848026,
+              18.550943254469452
+            ],
+            [
+              82.71136542448603,
+              18.550943254469452
+            ],
+            [
+              82.71136542448603,
+              18.55102542558303
+            ],
+            [
+              82.71129139848026,
+              18.55102542558303
+            ],
+            [
+              82.71129139848026,
+              18.550943254469452
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0005",
+        "confidence": 0.809,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70668993110321,
+              18.550215366145203
+            ],
+            [
+              82.70675172135576,
+              18.550215366145203
+            ],
+            [
+              82.70675172135576,
+              18.55028967264834
+            ],
+            [
+              82.70668993110321,
+              18.55028967264834
+            ],
+            [
+              82.70668993110321,
+              18.550215366145203
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0006",
+        "confidence": 0.889,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70905111087887,
+              18.552138708235567
+            ],
+            [
+              82.70911443446148,
+              18.552138708235567
+            ],
+            [
+              82.70911443446148,
+              18.552211582221116
+            ],
+            [
+              82.70905111087887,
+              18.552211582221116
+            ],
+            [
+              82.70905111087887,
+              18.552138708235567
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0007",
+        "confidence": 0.856,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.708253071085,
+              18.553508092398857
+            ],
+            [
+              82.70830135124513,
+              18.553508092398857
+            ],
+            [
+              82.70830135124513,
+              18.5535638668424
+            ],
+            [
+              82.708253071085,
+              18.5535638668424
+            ],
+            [
+              82.708253071085,
+              18.553508092398857
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0008",
+        "confidence": 0.77,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70924433728165,
+              18.547739894003485
+            ],
+            [
+              82.70932871029275,
+              18.547739894003485
+            ],
+            [
+              82.70932871029275,
+              18.54778546235117
+            ],
+            [
+              82.70924433728165,
+              18.54778546235117
+            ],
+            [
+              82.70924433728165,
+              18.547739894003485
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0009",
+        "confidence": 0.853,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70952212091773,
+              18.55385829034193
+            ],
+            [
+              82.7095757530389,
+              18.55385829034193
+            ],
+            [
+              82.7095757530389,
+              18.553940352845537
+            ],
+            [
+              82.70952212091773,
+              18.553940352845537
+            ],
+            [
+              82.70952212091773,
+              18.55385829034193
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0010",
+        "confidence": 0.957,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70977288551235,
+              18.548704577174924
+            ],
+            [
+              82.70982175780392,
+              18.548704577174924
+            ],
+            [
+              82.70982175780392,
+              18.54877821975321
+            ],
+            [
+              82.70977288551235,
+              18.54877821975321
+            ],
+            [
+              82.70977288551235,
+              18.548704577174924
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0011",
+        "confidence": 0.958,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71012796675531,
+              18.553001237678647
+            ],
+            [
+              82.71021182202014,
+              18.553001237678647
+            ],
+            [
+              82.71021182202014,
+              18.553062179042254
+            ],
+            [
+              82.71012796675531,
+              18.553062179042254
+            ],
+            [
+              82.71012796675531,
+              18.553001237678647
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0012",
+        "confidence": 0.954,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71078689294382,
+              18.554258455332864
+            ],
+            [
+              82.71088153263022,
+              18.554258455332864
+            ],
+            [
+              82.71088153263022,
+              18.554333317931725
+            ],
+            [
+              82.71078689294382,
+              18.554333317931725
+            ],
+            [
+              82.71078689294382,
+              18.554258455332864
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0013",
+        "confidence": 0.798,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70887110462378,
+              18.5489196135089
+            ],
+            [
+              82.7089367907683,
+              18.5489196135089
+            ],
+            [
+              82.7089367907683,
+              18.54896233479323
+            ],
+            [
+              82.70887110462378,
+              18.54896233479323
+            ],
+            [
+              82.70887110462378,
+              18.5489196135089
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0014",
+        "confidence": 0.932,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71150772254094,
+              18.550684407993817
+            ],
+            [
+              82.71160131316975,
+              18.550684407993817
+            ],
+            [
+              82.71160131316975,
+              18.550758670157578
+            ],
+            [
+              82.71150772254094,
+              18.550758670157578
+            ],
+            [
+              82.71150772254094,
+              18.550684407993817
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0015",
+        "confidence": 0.789,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70930543464056,
+              18.553528661917483
+            ],
+            [
+              82.70937485144786,
+              18.553528661917483
+            ],
+            [
+              82.70937485144786,
+              18.55360188702755
+            ],
+            [
+              82.70930543464056,
+              18.55360188702755
+            ],
+            [
+              82.70930543464056,
+              18.553528661917483
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0016",
+        "confidence": 0.923,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7061190330621,
+              18.551677819876673
+            ],
+            [
+              82.7061918986359,
+              18.551677819876673
+            ],
+            [
+              82.7061918986359,
+              18.551752240022857
+            ],
+            [
+              82.7061190330621,
+              18.551752240022857
+            ],
+            [
+              82.7061190330621,
+              18.551677819876673
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0017",
+        "confidence": 0.922,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7093807128704,
+              18.552247106114525
+            ],
+            [
+              82.70944496148412,
+              18.552247106114525
+            ],
+            [
+              82.70944496148412,
+              18.552292164555713
+            ],
+            [
+              82.7093807128704,
+              18.552292164555713
+            ],
+            [
+              82.7093807128704,
+              18.552247106114525
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0018",
+        "confidence": 0.874,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71153987298877,
+              18.554525332910185
+            ],
+            [
+              82.71159603870396,
+              18.554525332910185
+            ],
+            [
+              82.71159603870396,
+              18.554567799329607
+            ],
+            [
+              82.71153987298877,
+              18.554567799329607
+            ],
+            [
+              82.71153987298877,
+              18.554525332910185
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0019",
+        "confidence": 0.896,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70854076711362,
+              18.551616053625562
+            ],
+            [
+              82.70860346809305,
+              18.551616053625562
+            ],
+            [
+              82.70860346809305,
+              18.55169264022109
+            ],
+            [
+              82.70854076711362,
+              18.55169264022109
+            ],
+            [
+              82.70854076711362,
+              18.551616053625562
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0020",
+        "confidence": 0.744,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70829865073777,
+              18.555351417320082
+            ],
+            [
+              82.70835111893267,
+              18.555351417320082
+            ],
+            [
+              82.70835111893267,
+              18.55542938705363
+            ],
+            [
+              82.70829865073777,
+              18.55542938705363
+            ],
+            [
+              82.70829865073777,
+              18.555351417320082
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0021",
+        "confidence": 0.833,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70882624960674,
+              18.55310382539857
+            ],
+            [
+              82.7088753858999,
+              18.55310382539857
+            ],
+            [
+              82.7088753858999,
+              18.553179801056977
+            ],
+            [
+              82.70882624960674,
+              18.553179801056977
+            ],
+            [
+              82.70882624960674,
+              18.55310382539857
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0022",
+        "confidence": 0.809,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70793984970666,
+              18.552479362238312
+            ],
+            [
+              82.7080118341204,
+              18.552479362238312
+            ],
+            [
+              82.7080118341204,
+              18.552532069418483
+            ],
+            [
+              82.70793984970666,
+              18.552532069418483
+            ],
+            [
+              82.70793984970666,
+              18.552479362238312
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0023",
+        "confidence": 0.832,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71001512571364,
+              18.549790615718617
+            ],
+            [
+              82.71007556165071,
+              18.549790615718617
+            ],
+            [
+              82.71007556165071,
+              18.549854245388083
+            ],
+            [
+              82.71001512571364,
+              18.549854245388083
+            ],
+            [
+              82.71001512571364,
+              18.549790615718617
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0024",
+        "confidence": 0.797,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70643130754534,
+              18.549801508294152
+            ],
+            [
+              82.70648480291419,
+              18.549801508294152
+            ],
+            [
+              82.70648480291419,
+              18.549870754329483
+            ],
+            [
+              82.70643130754534,
+              18.549870754329483
+            ],
+            [
+              82.70643130754534,
+              18.549801508294152
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0025",
+        "confidence": 0.841,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71114049315673,
+              18.552901464622163
+            ],
+            [
+              82.71119655005745,
+              18.552901464622163
+            ],
+            [
+              82.71119655005745,
+              18.552975608317798
+            ],
+            [
+              82.71114049315673,
+              18.552975608317798
+            ],
+            [
+              82.71114049315673,
+              18.552901464622163
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0026",
+        "confidence": 0.78,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70894711398357,
+              18.551341176127515
+            ],
+            [
+              82.7090170376594,
+              18.551341176127515
+            ],
+            [
+              82.7090170376594,
+              18.5514025558114
+            ],
+            [
+              82.70894711398357,
+              18.5514025558114
+            ],
+            [
+              82.70894711398357,
+              18.551341176127515
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0027",
+        "confidence": 0.806,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70978505420506,
+              18.55246963898504
+            ],
+            [
+              82.709849921515,
+              18.55246963898504
+            ],
+            [
+              82.709849921515,
+              18.552542625651633
+            ],
+            [
+              82.70978505420506,
+              18.552542625651633
+            ],
+            [
+              82.70978505420506,
+              18.55246963898504
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0028",
+        "confidence": 0.788,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70883687480126,
+              18.553489235847625
+            ],
+            [
+              82.70889390947528,
+              18.553489235847625
+            ],
+            [
+              82.70889390947528,
+              18.55353781020546
+            ],
+            [
+              82.70883687480126,
+              18.55353781020546
+            ],
+            [
+              82.70883687480126,
+              18.553489235847625
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0029",
+        "confidence": 0.914,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70831633315257,
+              18.549268304709855
+            ],
+            [
+              82.7083993964785,
+              18.549268304709855
+            ],
+            [
+              82.7083993964785,
+              18.54932656498055
+            ],
+            [
+              82.70831633315257,
+              18.54932656498055
+            ],
+            [
+              82.70831633315257,
+              18.549268304709855
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0030",
+        "confidence": 0.901,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70797004909025,
+              18.552212263831624
+            ],
+            [
+              82.70801986805235,
+              18.552212263831624
+            ],
+            [
+              82.70801986805235,
+              18.552283374936646
+            ],
+            [
+              82.70797004909025,
+              18.552283374936646
+            ],
+            [
+              82.70797004909025,
+              18.552212263831624
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0031",
+        "confidence": 0.915,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71120472741661,
+              18.551641526645998
+            ],
+            [
+              82.71127322433983,
+              18.551641526645998
+            ],
+            [
+              82.71127322433983,
+              18.551711181470765
+            ],
+            [
+              82.71120472741661,
+              18.551711181470765
+            ],
+            [
+              82.71120472741661,
+              18.551641526645998
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0032",
+        "confidence": 0.856,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70855413937666,
+              18.551988595775047
+            ],
+            [
+              82.70861685658464,
+              18.551988595775047
+            ],
+            [
+              82.70861685658464,
+              18.552061372522413
+            ],
+            [
+              82.70855413937666,
+              18.552061372522413
+            ],
+            [
+              82.70855413937666,
+              18.551988595775047
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0033",
+        "confidence": 0.822,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71227280319843,
+              18.55113635764097
+            ],
+            [
+              82.71232106786995,
+              18.55113635764097
+            ],
+            [
+              82.71232106786995,
+              18.551184411022824
+            ],
+            [
+              82.71227280319843,
+              18.551184411022824
+            ],
+            [
+              82.71227280319843,
+              18.55113635764097
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0034",
+        "confidence": 0.81,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7098458557401,
+              18.55074400877532
+            ],
+            [
+              82.70991051956703,
+              18.55074400877532
+            ],
+            [
+              82.70991051956703,
+              18.550813135324635
+            ],
+            [
+              82.7098458557401,
+              18.550813135324635
+            ],
+            [
+              82.7098458557401,
+              18.55074400877532
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0035",
+        "confidence": 0.769,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71189068982487,
+              18.550423929462443
+            ],
+            [
+              82.71196098356818,
+              18.550423929462443
+            ],
+            [
+              82.71196098356818,
+              18.550477458716905
+            ],
+            [
+              82.71189068982487,
+              18.550477458716905
+            ],
+            [
+              82.71189068982487,
+              18.550423929462443
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0036",
+        "confidence": 0.804,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70981165381254,
+              18.552960511840535
+            ],
+            [
+              82.70986133567582,
+              18.552960511840535
+            ],
+            [
+              82.70986133567582,
+              18.553039989727072
+            ],
+            [
+              82.70981165381254,
+              18.553039989727072
+            ],
+            [
+              82.70981165381254,
+              18.552960511840535
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0037",
+        "confidence": 0.822,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71146345383,
+              18.551559532409712
+            ],
+            [
+              82.71153615571863,
+              18.551559532409712
+            ],
+            [
+              82.71153615571863,
+              18.551626187223146
+            ],
+            [
+              82.71146345383,
+              18.551626187223146
+            ],
+            [
+              82.71146345383,
+              18.551559532409712
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0038",
+        "confidence": 0.846,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70839123720633,
+              18.551232699714866
+            ],
+            [
+              82.70844663607117,
+              18.551232699714866
+            ],
+            [
+              82.70844663607117,
+              18.551276218046205
+            ],
+            [
+              82.70839123720633,
+              18.551276218046205
+            ],
+            [
+              82.70839123720633,
+              18.551232699714866
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0039",
+        "confidence": 0.819,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70746983966701,
+              18.551794174127103
+            ],
+            [
+              82.7075185102728,
+              18.551794174127103
+            ],
+            [
+              82.7075185102728,
+              18.551834285753785
+            ],
+            [
+              82.70746983966701,
+              18.551834285753785
+            ],
+            [
+              82.70746983966701,
+              18.551794174127103
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0040",
+        "confidence": 0.853,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70833226454059,
+              18.553448841319696
+            ],
+            [
+              82.70842066617081,
+              18.553448841319696
+            ],
+            [
+              82.70842066617081,
+              18.553512527107014
+            ],
+            [
+              82.70833226454059,
+              18.553512527107014
+            ],
+            [
+              82.70833226454059,
+              18.553448841319696
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0041",
+        "confidence": 0.858,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70818067429867,
+              18.552895742137366
+            ],
+            [
+              82.70823039784831,
+              18.552895742137366
+            ],
+            [
+              82.70823039784831,
+              18.552973635398313
+            ],
+            [
+              82.70818067429867,
+              18.552973635398313
+            ],
+            [
+              82.70818067429867,
+              18.552895742137366
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0042",
+        "confidence": 0.957,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70788112111268,
+              18.551666483159828
+            ],
+            [
+              82.70792783639992,
+              18.551666483159828
+            ],
+            [
+              82.70792783639992,
+              18.551713018782458
+            ],
+            [
+              82.70788112111268,
+              18.551713018782458
+            ],
+            [
+              82.70788112111268,
+              18.551666483159828
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0043",
+        "confidence": 0.812,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70756858580523,
+              18.55120112276739
+            ],
+            [
+              82.70765883668071,
+              18.55120112276739
+            ],
+            [
+              82.70765883668071,
+              18.551276945146356
+            ],
+            [
+              82.70756858580523,
+              18.551276945146356
+            ],
+            [
+              82.70756858580523,
+              18.55120112276739
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0044",
+        "confidence": 0.95,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70684062007085,
+              18.55522444864301
+            ],
+            [
+              82.70691101438001,
+              18.55522444864301
+            ],
+            [
+              82.70691101438001,
+              18.555285756396643
+            ],
+            [
+              82.70684062007085,
+              18.555285756396643
+            ],
+            [
+              82.70684062007085,
+              18.55522444864301
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0045",
+        "confidence": 0.959,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71126773449029,
+              18.551714047174197
+            ],
+            [
+              82.71135979811955,
+              18.551714047174197
+            ],
+            [
+              82.71135979811955,
+              18.551782797108828
+            ],
+            [
+              82.71126773449029,
+              18.551782797108828
+            ],
+            [
+              82.71126773449029,
+              18.551714047174197
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0046",
+        "confidence": 0.764,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70873321535163,
+              18.551835892251532
+            ],
+            [
+              82.70878057773638,
+              18.551835892251532
+            ],
+            [
+              82.70878057773638,
+              18.551900588613055
+            ],
+            [
+              82.70873321535163,
+              18.551900588613055
+            ],
+            [
+              82.70873321535163,
+              18.551835892251532
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0047",
+        "confidence": 0.851,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7093511421021,
+              18.55473335462091
+            ],
+            [
+              82.70939655932999,
+              18.55473335462091
+            ],
+            [
+              82.70939655932999,
+              18.55479908091035
+            ],
+            [
+              82.7093511421021,
+              18.55479908091035
+            ],
+            [
+              82.7093511421021,
+              18.55473335462091
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0048",
+        "confidence": 0.771,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70929417315195,
+              18.549047767278957
+            ],
+            [
+              82.70937896971905,
+              18.549047767278957
+            ],
+            [
+              82.70937896971905,
+              18.549090480053945
+            ],
+            [
+              82.70929417315195,
+              18.549090480053945
+            ],
+            [
+              82.70929417315195,
+              18.549047767278957
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0049",
+        "confidence": 0.846,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70939048137183,
+              18.553385832919997
+            ],
+            [
+              82.70945593771322,
+              18.553385832919997
+            ],
+            [
+              82.70945593771322,
+              18.55345066396068
+            ],
+            [
+              82.70939048137183,
+              18.55345066396068
+            ],
+            [
+              82.70939048137183,
+              18.553385832919997
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0050",
+        "confidence": 0.838,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70915577866302,
+              18.55377042393289
+            ],
+            [
+              82.70920849237821,
+              18.55377042393289
+            ],
+            [
+              82.70920849237821,
+              18.553825633280454
+            ],
+            [
+              82.70915577866302,
+              18.553825633280454
+            ],
+            [
+              82.70915577866302,
+              18.55377042393289
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0051",
+        "confidence": 0.83,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70826373080003,
+              18.55479314150086
+            ],
+            [
+              82.70835412325621,
+              18.55479314150086
+            ],
+            [
+              82.70835412325621,
+              18.554866337969308
+            ],
+            [
+              82.70826373080003,
+              18.554866337969308
+            ],
+            [
+              82.70826373080003,
+              18.55479314150086
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0052",
+        "confidence": 0.865,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71106971651078,
+              18.54938973890579
+            ],
+            [
+              82.71115447196956,
+              18.54938973890579
+            ],
+            [
+              82.71115447196956,
+              18.549431317812797
+            ],
+            [
+              82.71106971651078,
+              18.549431317812797
+            ],
+            [
+              82.71106971651078,
+              18.54938973890579
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0053",
+        "confidence": 0.799,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71106642502998,
+              18.55491941805226
+            ],
+            [
+              82.71113976465367,
+              18.55491941805226
+            ],
+            [
+              82.71113976465367,
+              18.554968359490672
+            ],
+            [
+              82.71106642502998,
+              18.554968359490672
+            ],
+            [
+              82.71106642502998,
+              18.55491941805226
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0054",
+        "confidence": 0.801,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70839569064744,
+              18.554267467872528
+            ],
+            [
+              82.70844636021263,
+              18.554267467872528
+            ],
+            [
+              82.70844636021263,
+              18.55432441271253
+            ],
+            [
+              82.70839569064744,
+              18.55432441271253
+            ],
+            [
+              82.70839569064744,
+              18.554267467872528
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0055",
+        "confidence": 0.953,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71209326462305,
+              18.551908351091978
+            ],
+            [
+              82.71216941396666,
+              18.551908351091978
+            ],
+            [
+              82.71216941396666,
+              18.55198776084902
+            ],
+            [
+              82.71209326462305,
+              18.55198776084902
+            ],
+            [
+              82.71209326462305,
+              18.551908351091978
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0056",
+        "confidence": 0.83,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7097011376867,
+              18.552115313442187
+            ],
+            [
+              82.70975289015867,
+              18.552115313442187
+            ],
+            [
+              82.70975289015867,
+              18.55217831472252
+            ],
+            [
+              82.7097011376867,
+              18.55217831472252
+            ],
+            [
+              82.7097011376867,
+              18.552115313442187
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0057",
+        "confidence": 0.943,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71223900664265,
+              18.5513599070691
+            ],
+            [
+              82.71228975807702,
+              18.5513599070691
+            ],
+            [
+              82.71228975807702,
+              18.5514217963395
+            ],
+            [
+              82.71223900664265,
+              18.5514217963395
+            ],
+            [
+              82.71223900664265,
+              18.5513599070691
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0058",
+        "confidence": 0.919,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7135957383417,
+              18.55260177249476
+            ],
+            [
+              82.71368845700448,
+              18.55260177249476
+            ],
+            [
+              82.71368845700448,
+              18.55264322951263
+            ],
+            [
+              82.7135957383417,
+              18.55264322951263
+            ],
+            [
+              82.7135957383417,
+              18.55260177249476
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0059",
+        "confidence": 0.806,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70671916386713,
+              18.552604305920912
+            ],
+            [
+              82.70679759101948,
+              18.552604305920912
+            ],
+            [
+              82.70679759101948,
+              18.552667864888154
+            ],
+            [
+              82.70671916386713,
+              18.552667864888154
+            ],
+            [
+              82.70671916386713,
+              18.552604305920912
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0060",
+        "confidence": 0.828,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71190084556021,
+              18.552743342279797
+            ],
+            [
+              82.71196350835551,
+              18.552743342279797
+            ],
+            [
+              82.71196350835551,
+              18.552812011565138
+            ],
+            [
+              82.71190084556021,
+              18.552812011565138
+            ],
+            [
+              82.71190084556021,
+              18.552743342279797
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0061",
+        "confidence": 0.747,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7115037559937,
+              18.550851790589263
+            ],
+            [
+              82.71156479552623,
+              18.550851790589263
+            ],
+            [
+              82.71156479552623,
+              18.550911037714997
+            ],
+            [
+              82.7115037559937,
+              18.550911037714997
+            ],
+            [
+              82.7115037559937,
+              18.550851790589263
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0062",
+        "confidence": 0.844,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7110688127658,
+              18.549590897830576
+            ],
+            [
+              82.7111185960253,
+              18.549590897830576
+            ],
+            [
+              82.7111185960253,
+              18.54964531102244
+            ],
+            [
+              82.7110688127658,
+              18.54964531102244
+            ],
+            [
+              82.7110688127658,
+              18.549590897830576
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0063",
+        "confidence": 0.82,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70843912436877,
+              18.552812610803862
+            ],
+            [
+              82.70849522112437,
+              18.552812610803862
+            ],
+            [
+              82.70849522112437,
+              18.552873966823746
+            ],
+            [
+              82.70843912436877,
+              18.552873966823746
+            ],
+            [
+              82.70843912436877,
+              18.552812610803862
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0064",
+        "confidence": 0.805,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71225317013868,
+              18.551997116535777
+            ],
+            [
+              82.71230606759799,
+              18.551997116535777
+            ],
+            [
+              82.71230606759799,
+              18.55207858620405
+            ],
+            [
+              82.71225317013868,
+              18.55207858620405
+            ],
+            [
+              82.71225317013868,
+              18.551997116535777
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0065",
+        "confidence": 0.887,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71197355540718,
+              18.553435870565067
+            ],
+            [
+              82.71204205343894,
+              18.553435870565067
+            ],
+            [
+              82.71204205343894,
+              18.553508234051357
+            ],
+            [
+              82.71197355540718,
+              18.553508234051357
+            ],
+            [
+              82.71197355540718,
+              18.553435870565067
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0066",
+        "confidence": 0.905,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71074663494753,
+              18.55621142360501
+            ],
+            [
+              82.7108383154206,
+              18.55621142360501
+            ],
+            [
+              82.7108383154206,
+              18.556273096571562
+            ],
+            [
+              82.71074663494753,
+              18.556273096571562
+            ],
+            [
+              82.71074663494753,
+              18.55621142360501
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0067",
+        "confidence": 0.944,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70874152752307,
+              18.553444629443636
+            ],
+            [
+              82.7087982644672,
+              18.553444629443636
+            ],
+            [
+              82.7087982644672,
+              18.553503275804232
+            ],
+            [
+              82.70874152752307,
+              18.553503275804232
+            ],
+            [
+              82.70874152752307,
+              18.553444629443636
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0068",
+        "confidence": 0.79,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7128508077815,
+              18.551734559847976
+            ],
+            [
+              82.71289693790114,
+              18.551734559847976
+            ],
+            [
+              82.71289693790114,
+              18.55181616482157
+            ],
+            [
+              82.7128508077815,
+              18.55181616482157
+            ],
+            [
+              82.7128508077815,
+              18.551734559847976
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0069",
+        "confidence": 0.843,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70771689071032,
+              18.553526751863572
+            ],
+            [
+              82.70778216154801,
+              18.553526751863572
+            ],
+            [
+              82.70778216154801,
+              18.55359814871962
+            ],
+            [
+              82.70771689071032,
+              18.55359814871962
+            ],
+            [
+              82.70771689071032,
+              18.553526751863572
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0070",
+        "confidence": 0.821,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71022401154178,
+              18.553195725412536
+            ],
+            [
+              82.71029957033272,
+              18.553195725412536
+            ],
+            [
+              82.71029957033272,
+              18.5532664326626
+            ],
+            [
+              82.71022401154178,
+              18.5532664326626
+            ],
+            [
+              82.71022401154178,
+              18.553195725412536
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0071",
+        "confidence": 0.955,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.709682341148,
+              18.554336772374654
+            ],
+            [
+              82.70974888622538,
+              18.554336772374654
+            ],
+            [
+              82.70974888622538,
+              18.554402894757775
+            ],
+            [
+              82.709682341148,
+              18.554402894757775
+            ],
+            [
+              82.709682341148,
+              18.554336772374654
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0072",
+        "confidence": 0.932,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71047086136933,
+              18.54915193397965
+            ],
+            [
+              82.71055231493793,
+              18.54915193397965
+            ],
+            [
+              82.71055231493793,
+              18.549203280001265
+            ],
+            [
+              82.71047086136933,
+              18.549203280001265
+            ],
+            [
+              82.71047086136933,
+              18.54915193397965
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0073",
+        "confidence": 0.949,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71126098413058,
+              18.551817348405905
+            ],
+            [
+              82.71132402791926,
+              18.551817348405905
+            ],
+            [
+              82.71132402791926,
+              18.551865076567125
+            ],
+            [
+              82.71126098413058,
+              18.551865076567125
+            ],
+            [
+              82.71126098413058,
+              18.551817348405905
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0074",
+        "confidence": 0.766,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.71050245242552,
+              18.550690897516116
+            ],
+            [
+              82.71055273744274,
+              18.550690897516116
+            ],
+            [
+              82.71055273744274,
+              18.55075408969929
+            ],
+            [
+              82.71050245242552,
+              18.55075408969929
+            ],
+            [
+              82.71050245242552,
+              18.550690897516116
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0075",
+        "confidence": 0.842,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Main Village Core",
+        "hrea_lightscore": 0.84
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.70663522403521,
+              18.55136374615973
+            ],
+            [
+              82.70671411808902,
+              18.55136374615973
+            ],
+            [
+              82.70671411808902,
+              18.55142535042698
+            ],
+            [
+              82.70663522403521,
+              18.55142535042698
+            ],
+            [
+              82.70663522403521,
+              18.55136374615973
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0076",
+        "confidence": 0.894,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72469745167395,
+              18.56167464042302
+            ],
+            [
+              82.72477606736817,
+              18.56167464042302
+            ],
+            [
+              82.72477606736817,
+              18.56172993193917
+            ],
+            [
+              82.72469745167395,
+              18.56172993193917
+            ],
+            [
+              82.72469745167395,
+              18.56167464042302
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0077",
+        "confidence": 0.894,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72293827635195,
+              18.564163719865498
+            ],
+            [
+              82.72303309629208,
+              18.564163719865498
+            ],
+            [
+              82.72303309629208,
+              18.564219835640145
+            ],
+            [
+              82.72293827635195,
+              18.564219835640145
+            ],
+            [
+              82.72293827635195,
+              18.564163719865498
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0078",
+        "confidence": 0.869,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72609105291406,
+              18.56166784266423
+            ],
+            [
+              82.72614974702246,
+              18.56166784266423
+            ],
+            [
+              82.72614974702246,
+              18.56173705544266
+            ],
+            [
+              82.72609105291406,
+              18.56173705544266
+            ],
+            [
+              82.72609105291406,
+              18.56166784266423
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0079",
+        "confidence": 0.918,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7257187872944,
+              18.56298823293088
+            ],
+            [
+              82.72578821567603,
+              18.56298823293088
+            ],
+            [
+              82.72578821567603,
+              18.563058850185413
+            ],
+            [
+              82.7257187872944,
+              18.563058850185413
+            ],
+            [
+              82.7257187872944,
+              18.56298823293088
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0080",
+        "confidence": 0.798,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72392407673017,
+              18.561095043016568
+            ],
+            [
+              82.72399743119236,
+              18.561095043016568
+            ],
+            [
+              82.72399743119236,
+              18.561141671300778
+            ],
+            [
+              82.72392407673017,
+              18.561141671300778
+            ],
+            [
+              82.72392407673017,
+              18.561095043016568
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0081",
+        "confidence": 0.889,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72543819663676,
+              18.561973885783306
+            ],
+            [
+              82.72551437002478,
+              18.561973885783306
+            ],
+            [
+              82.72551437002478,
+              18.562050198072995
+            ],
+            [
+              82.72543819663676,
+              18.562050198072995
+            ],
+            [
+              82.72543819663676,
+              18.561973885783306
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0082",
+        "confidence": 0.867,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72250389592527,
+              18.560784588830632
+            ],
+            [
+              82.72256672692792,
+              18.560784588830632
+            ],
+            [
+              82.72256672692792,
+              18.560836227131595
+            ],
+            [
+              82.72250389592527,
+              18.560836227131595
+            ],
+            [
+              82.72250389592527,
+              18.560784588830632
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0083",
+        "confidence": 0.931,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72343337694717,
+              18.561860670466384
+            ],
+            [
+              82.72352001806992,
+              18.561860670466384
+            ],
+            [
+              82.72352001806992,
+              18.561912190312114
+            ],
+            [
+              82.72343337694717,
+              18.561912190312114
+            ],
+            [
+              82.72343337694717,
+              18.561860670466384
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0084",
+        "confidence": 0.826,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72379968622518,
+              18.56228570847485
+            ],
+            [
+              82.72384667008612,
+              18.56228570847485
+            ],
+            [
+              82.72384667008612,
+              18.562360330719162
+            ],
+            [
+              82.72379968622518,
+              18.562360330719162
+            ],
+            [
+              82.72379968622518,
+              18.56228570847485
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0085",
+        "confidence": 0.833,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72483651672405,
+              18.5627528388339
+            ],
+            [
+              82.72491564427689,
+              18.5627528388339
+            ],
+            [
+              82.72491564427689,
+              18.562808919164972
+            ],
+            [
+              82.72483651672405,
+              18.562808919164972
+            ],
+            [
+              82.72483651672405,
+              18.5627528388339
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0086",
+        "confidence": 0.926,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72340649988743,
+              18.563055277419444
+            ],
+            [
+              82.72346273901239,
+              18.563055277419444
+            ],
+            [
+              82.72346273901239,
+              18.56311921994168
+            ],
+            [
+              82.72340649988743,
+              18.56311921994168
+            ],
+            [
+              82.72340649988743,
+              18.563055277419444
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0087",
+        "confidence": 0.844,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72246101580807,
+              18.563345114042075
+            ],
+            [
+              82.72252077738241,
+              18.563345114042075
+            ],
+            [
+              82.72252077738241,
+              18.563389142028722
+            ],
+            [
+              82.72246101580807,
+              18.563389142028722
+            ],
+            [
+              82.72246101580807,
+              18.563345114042075
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0088",
+        "confidence": 0.741,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72745522560132,
+              18.562128246086182
+            ],
+            [
+              82.72751282376865,
+              18.562128246086182
+            ],
+            [
+              82.72751282376865,
+              18.56219598241377
+            ],
+            [
+              82.72745522560132,
+              18.56219598241377
+            ],
+            [
+              82.72745522560132,
+              18.562128246086182
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0089",
+        "confidence": 0.944,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72498059586056,
+              18.562422596758267
+            ],
+            [
+              82.7250283441161,
+              18.562422596758267
+            ],
+            [
+              82.7250283441161,
+              18.56246435072704
+            ],
+            [
+              82.72498059586056,
+              18.56246435072704
+            ],
+            [
+              82.72498059586056,
+              18.562422596758267
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0090",
+        "confidence": 0.785,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72424081441524,
+              18.560028050352113
+            ],
+            [
+              82.72429314186151,
+              18.560028050352113
+            ],
+            [
+              82.72429314186151,
+              18.560071676391583
+            ],
+            [
+              82.72424081441524,
+              18.560071676391583
+            ],
+            [
+              82.72424081441524,
+              18.560028050352113
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0091",
+        "confidence": 0.802,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72230304897894,
+              18.5613296245707
+            ],
+            [
+              82.72239678033391,
+              18.5613296245707
+            ],
+            [
+              82.72239678033391,
+              18.56139349420042
+            ],
+            [
+              82.72230304897894,
+              18.56139349420042
+            ],
+            [
+              82.72230304897894,
+              18.5613296245707
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0092",
+        "confidence": 0.889,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72481740448191,
+              18.561294240838823
+            ],
+            [
+              82.724864215349,
+              18.561294240838823
+            ],
+            [
+              82.724864215349,
+              18.561344641913813
+            ],
+            [
+              82.72481740448191,
+              18.561344641913813
+            ],
+            [
+              82.72481740448191,
+              18.561294240838823
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0093",
+        "confidence": 0.896,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72491279358367,
+              18.562246907630463
+            ],
+            [
+              82.72496528731264,
+              18.562246907630463
+            ],
+            [
+              82.72496528731264,
+              18.56229976362053
+            ],
+            [
+              82.72491279358367,
+              18.56229976362053
+            ],
+            [
+              82.72491279358367,
+              18.562246907630463
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0094",
+        "confidence": 0.893,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72403634133373,
+              18.562652997334297
+            ],
+            [
+              82.72408142189255,
+              18.562652997334297
+            ],
+            [
+              82.72408142189255,
+              18.562694199373144
+            ],
+            [
+              82.72403634133373,
+              18.562694199373144
+            ],
+            [
+              82.72403634133373,
+              18.562652997334297
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0095",
+        "confidence": 0.807,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72403495118064,
+              18.562522159495927
+            ],
+            [
+              82.72408493012985,
+              18.562522159495927
+            ],
+            [
+              82.72408493012985,
+              18.562600241411918
+            ],
+            [
+              82.72403495118064,
+              18.562600241411918
+            ],
+            [
+              82.72403495118064,
+              18.562522159495927
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0096",
+        "confidence": 0.923,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72411491975951,
+              18.560759045463833
+            ],
+            [
+              82.72416497803503,
+              18.560759045463833
+            ],
+            [
+              82.72416497803503,
+              18.560825226598805
+            ],
+            [
+              82.72411491975951,
+              18.560825226598805
+            ],
+            [
+              82.72411491975951,
+              18.560759045463833
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0097",
+        "confidence": 0.811,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72310838171062,
+              18.563044236170484
+            ],
+            [
+              82.72316618148204,
+              18.563044236170484
+            ],
+            [
+              82.72316618148204,
+              18.563129201228854
+            ],
+            [
+              82.72310838171062,
+              18.563129201228854
+            ],
+            [
+              82.72310838171062,
+              18.563044236170484
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0098",
+        "confidence": 0.772,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72459628857737,
+              18.561254417786294
+            ],
+            [
+              82.72464519996507,
+              18.561254417786294
+            ],
+            [
+              82.72464519996507,
+              18.561331060188035
+            ],
+            [
+              82.72459628857737,
+              18.561331060188035
+            ],
+            [
+              82.72459628857737,
+              18.561254417786294
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0099",
+        "confidence": 0.9,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72491260702071,
+              18.562121665884366
+            ],
+            [
+              82.72498070360497,
+              18.562121665884366
+            ],
+            [
+              82.72498070360497,
+              18.562180134956936
+            ],
+            [
+              82.72491260702071,
+              18.562180134956936
+            ],
+            [
+              82.72491260702071,
+              18.562121665884366
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0100",
+        "confidence": 0.857,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72205982958455,
+              18.56246708070235
+            ],
+            [
+              82.72215172397718,
+              18.56246708070235
+            ],
+            [
+              82.72215172397718,
+              18.562527483430415
+            ],
+            [
+              82.72205982958455,
+              18.562527483430415
+            ],
+            [
+              82.72205982958455,
+              18.56246708070235
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0101",
+        "confidence": 0.882,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72228824525526,
+              18.56105525259437
+            ],
+            [
+              82.72235091203922,
+              18.56105525259437
+            ],
+            [
+              82.72235091203922,
+              18.56110865524483
+            ],
+            [
+              82.72228824525526,
+              18.56110865524483
+            ],
+            [
+              82.72228824525526,
+              18.56105525259437
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0102",
+        "confidence": 0.768,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72462526445426,
+              18.562350175320326
+            ],
+            [
+              82.72470343469497,
+              18.562350175320326
+            ],
+            [
+              82.72470343469497,
+              18.562397105219844
+            ],
+            [
+              82.72462526445426,
+              18.562397105219844
+            ],
+            [
+              82.72462526445426,
+              18.562350175320326
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0103",
+        "confidence": 0.939,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72520222000217,
+              18.56279171853467
+            ],
+            [
+              82.72526580148512,
+              18.56279171853467
+            ],
+            [
+              82.72526580148512,
+              18.562841229533902
+            ],
+            [
+              82.72520222000217,
+              18.562841229533902
+            ],
+            [
+              82.72520222000217,
+              18.56279171853467
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0104",
+        "confidence": 0.939,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72247742506805,
+              18.561396808954665
+            ],
+            [
+              82.72256772463123,
+              18.561396808954665
+            ],
+            [
+              82.72256772463123,
+              18.561455474692142
+            ],
+            [
+              82.72247742506805,
+              18.561455474692142
+            ],
+            [
+              82.72247742506805,
+              18.561396808954665
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0105",
+        "confidence": 0.779,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72339858685338,
+              18.563754444059303
+            ],
+            [
+              82.72346052768621,
+              18.563754444059303
+            ],
+            [
+              82.72346052768621,
+              18.563805479940036
+            ],
+            [
+              82.72339858685338,
+              18.563805479940036
+            ],
+            [
+              82.72339858685338,
+              18.563754444059303
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0106",
+        "confidence": 0.744,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72311472835699,
+              18.562405593572226
+            ],
+            [
+              82.72319125372458,
+              18.562405593572226
+            ],
+            [
+              82.72319125372458,
+              18.56246147275296
+            ],
+            [
+              82.72311472835699,
+              18.56246147275296
+            ],
+            [
+              82.72311472835699,
+              18.562405593572226
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0107",
+        "confidence": 0.86,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Podapadar Tola",
+        "hrea_lightscore": 0.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72568032529466,
+              18.561819122860864
+            ],
+            [
+              82.72575653785954,
+              18.561819122860864
+            ],
+            [
+              82.72575653785954,
+              18.561889196119814
+            ],
+            [
+              82.72568032529466,
+              18.561889196119814
+            ],
+            [
+              82.72568032529466,
+              18.561819122860864
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0108",
+        "confidence": 0.799,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74786878643805,
+              18.576486394134225
+            ],
+            [
+              82.74792826945196,
+              18.576486394134225
+            ],
+            [
+              82.74792826945196,
+              18.57653842055738
+            ],
+            [
+              82.74786878643805,
+              18.57653842055738
+            ],
+            [
+              82.74786878643805,
+              18.576486394134225
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0109",
+        "confidence": 0.926,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74706795687655,
+              18.579136328753044
+            ],
+            [
+              82.74713819292859,
+              18.579136328753044
+            ],
+            [
+              82.74713819292859,
+              18.579191517578828
+            ],
+            [
+              82.74706795687655,
+              18.579191517578828
+            ],
+            [
+              82.74706795687655,
+              18.579136328753044
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0110",
+        "confidence": 0.801,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74731666925524,
+              18.57865295172822
+            ],
+            [
+              82.74739044242223,
+              18.57865295172822
+            ],
+            [
+              82.74739044242223,
+              18.578735275927926
+            ],
+            [
+              82.74731666925524,
+              18.578735275927926
+            ],
+            [
+              82.74731666925524,
+              18.57865295172822
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0111",
+        "confidence": 0.895,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74942017626181,
+              18.57757862075192
+            ],
+            [
+              82.7495074809325,
+              18.57757862075192
+            ],
+            [
+              82.7495074809325,
+              18.57763959253967
+            ],
+            [
+              82.74942017626181,
+              18.57763959253967
+            ],
+            [
+              82.74942017626181,
+              18.57757862075192
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0112",
+        "confidence": 0.86,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74951568556995,
+              18.579677409323818
+            ],
+            [
+              82.74957859371845,
+              18.579677409323818
+            ],
+            [
+              82.74957859371845,
+              18.57975073598974
+            ],
+            [
+              82.74951568556995,
+              18.57975073598974
+            ],
+            [
+              82.74951568556995,
+              18.579677409323818
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0113",
+        "confidence": 0.757,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7480622090932,
+              18.57956257769629
+            ],
+            [
+              82.74812832699943,
+              18.57956257769629
+            ],
+            [
+              82.74812832699943,
+              18.579644778765935
+            ],
+            [
+              82.7480622090932,
+              18.579644778765935
+            ],
+            [
+              82.7480622090932,
+              18.57956257769629
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0114",
+        "confidence": 0.791,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74634241734651,
+              18.577556607115064
+            ],
+            [
+              82.74640593680594,
+              18.577556607115064
+            ],
+            [
+              82.74640593680594,
+              18.57760540853812
+            ],
+            [
+              82.74634241734651,
+              18.57760540853812
+            ],
+            [
+              82.74634241734651,
+              18.577556607115064
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0115",
+        "confidence": 0.853,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74878819283771,
+              18.579184818190008
+            ],
+            [
+              82.74886852717025,
+              18.579184818190008
+            ],
+            [
+              82.74886852717025,
+              18.57924645742858
+            ],
+            [
+              82.74878819283771,
+              18.57924645742858
+            ],
+            [
+              82.74878819283771,
+              18.579184818190008
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0116",
+        "confidence": 0.918,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74909318140436,
+              18.579585302855932
+            ],
+            [
+              82.74915517291177,
+              18.579585302855932
+            ],
+            [
+              82.74915517291177,
+              18.579661656729616
+            ],
+            [
+              82.74909318140436,
+              18.579661656729616
+            ],
+            [
+              82.74909318140436,
+              18.579585302855932
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0117",
+        "confidence": 0.777,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74591929534854,
+              18.577953532903475
+            ],
+            [
+              82.74597323909352,
+              18.577953532903475
+            ],
+            [
+              82.74597323909352,
+              18.578001243620513
+            ],
+            [
+              82.74591929534854,
+              18.578001243620513
+            ],
+            [
+              82.74591929534854,
+              18.577953532903475
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0118",
+        "confidence": 0.938,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74837578961885,
+              18.580603541032257
+            ],
+            [
+              82.74844745190823,
+              18.580603541032257
+            ],
+            [
+              82.74844745190823,
+              18.580645815197755
+            ],
+            [
+              82.74837578961885,
+              18.580645815197755
+            ],
+            [
+              82.74837578961885,
+              18.580603541032257
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0119",
+        "confidence": 0.925,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74951316431074,
+              18.57770344765713
+            ],
+            [
+              82.74959940261131,
+              18.57770344765713
+            ],
+            [
+              82.74959940261131,
+              18.577750190780137
+            ],
+            [
+              82.74951316431074,
+              18.577750190780137
+            ],
+            [
+              82.74951316431074,
+              18.57770344765713
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0120",
+        "confidence": 0.843,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74820312107725,
+              18.579539107537293
+            ],
+            [
+              82.74826604833716,
+              18.579539107537293
+            ],
+            [
+              82.74826604833716,
+              18.579585597749684
+            ],
+            [
+              82.74820312107725,
+              18.579585597749684
+            ],
+            [
+              82.74820312107725,
+              18.579539107537293
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0121",
+        "confidence": 0.865,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74610395976723,
+              18.57765253894544
+            ],
+            [
+              82.74617042594548,
+              18.57765253894544
+            ],
+            [
+              82.74617042594548,
+              18.577719145531738
+            ],
+            [
+              82.74610395976723,
+              18.577719145531738
+            ],
+            [
+              82.74610395976723,
+              18.57765253894544
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0122",
+        "confidence": 0.85,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7472291757135,
+              18.5792852479973
+            ],
+            [
+              82.74728823288451,
+              18.5792852479973
+            ],
+            [
+              82.74728823288451,
+              18.579338135883102
+            ],
+            [
+              82.7472291757135,
+              18.579338135883102
+            ],
+            [
+              82.7472291757135,
+              18.5792852479973
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0123",
+        "confidence": 0.909,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7490015508832,
+              18.57901839429462
+            ],
+            [
+              82.74907506391312,
+              18.57901839429462
+            ],
+            [
+              82.74907506391312,
+              18.57908814704747
+            ],
+            [
+              82.7490015508832,
+              18.57908814704747
+            ],
+            [
+              82.7490015508832,
+              18.57901839429462
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0124",
+        "confidence": 0.912,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74975873996682,
+              18.578127438258925
+            ],
+            [
+              82.749850370306,
+              18.578127438258925
+            ],
+            [
+              82.749850370306,
+              18.578201328773496
+            ],
+            [
+              82.74975873996682,
+              18.578201328773496
+            ],
+            [
+              82.74975873996682,
+              18.578127438258925
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0125",
+        "confidence": 0.95,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74806011843592,
+              18.581018239393163
+            ],
+            [
+              82.7481301431436,
+              18.581018239393163
+            ],
+            [
+              82.7481301431436,
+              18.58107659105626
+            ],
+            [
+              82.74806011843592,
+              18.58107659105626
+            ],
+            [
+              82.74806011843592,
+              18.581018239393163
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0126",
+        "confidence": 0.906,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74982191588293,
+              18.579165539483476
+            ],
+            [
+              82.74990936894804,
+              18.579165539483476
+            ],
+            [
+              82.74990936894804,
+              18.579216228302286
+            ],
+            [
+              82.74982191588293,
+              18.579216228302286
+            ],
+            [
+              82.74982191588293,
+              18.579165539483476
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0127",
+        "confidence": 0.753,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74672914355095,
+              18.58086576234491
+            ],
+            [
+              82.74682150508121,
+              18.58086576234491
+            ],
+            [
+              82.74682150508121,
+              18.580907962238616
+            ],
+            [
+              82.74672914355095,
+              18.580907962238616
+            ],
+            [
+              82.74672914355095,
+              18.58086576234491
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0128",
+        "confidence": 0.883,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7458572045817,
+              18.58036818524212
+            ],
+            [
+              82.74592347655164,
+              18.58036818524212
+            ],
+            [
+              82.74592347655164,
+              18.580412291816813
+            ],
+            [
+              82.7458572045817,
+              18.580412291816813
+            ],
+            [
+              82.7458572045817,
+              18.58036818524212
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0129",
+        "confidence": 0.954,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74857399527156,
+              18.581122512907854
+            ],
+            [
+              82.74865405586478,
+              18.581122512907854
+            ],
+            [
+              82.74865405586478,
+              18.581181664202713
+            ],
+            [
+              82.74857399527156,
+              18.581181664202713
+            ],
+            [
+              82.74857399527156,
+              18.581122512907854
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0130",
+        "confidence": 0.82,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74721281665056,
+              18.57835274799916
+            ],
+            [
+              82.74730604823341,
+              18.57835274799916
+            ],
+            [
+              82.74730604823341,
+              18.578412308272572
+            ],
+            [
+              82.74721281665056,
+              18.578412308272572
+            ],
+            [
+              82.74721281665056,
+              18.57835274799916
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0131",
+        "confidence": 0.743,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74519940469783,
+              18.580355504015962
+            ],
+            [
+              82.74528197763202,
+              18.580355504015962
+            ],
+            [
+              82.74528197763202,
+              18.580424788632165
+            ],
+            [
+              82.74519940469783,
+              18.580424788632165
+            ],
+            [
+              82.74519940469783,
+              18.580355504015962
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0132",
+        "confidence": 0.886,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74936346292,
+              18.579400531296685
+            ],
+            [
+              82.74944578106141,
+              18.579400531296685
+            ],
+            [
+              82.74944578106141,
+              18.57947025151224
+            ],
+            [
+              82.74936346292,
+              18.57947025151224
+            ],
+            [
+              82.74936346292,
+              18.579400531296685
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0133",
+        "confidence": 0.927,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74870175815221,
+              18.57908451545622
+            ],
+            [
+              82.74874876789404,
+              18.57908451545622
+            ],
+            [
+              82.74874876789404,
+              18.57915677439474
+            ],
+            [
+              82.74870175815221,
+              18.57915677439474
+            ],
+            [
+              82.74870175815221,
+              18.57908451545622
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0134",
+        "confidence": 0.8,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74724451471643,
+              18.579421961570503
+            ],
+            [
+              82.74729501297514,
+              18.579421961570503
+            ],
+            [
+              82.74729501297514,
+              18.579462314111847
+            ],
+            [
+              82.74724451471643,
+              18.579462314111847
+            ],
+            [
+              82.74724451471643,
+              18.579421961570503
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0135",
+        "confidence": 0.92,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Maliaguda PVTG Hamlet",
+        "hrea_lightscore": 0.04
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.74972773996583,
+              18.579092808296963
+            ],
+            [
+              82.74978990505143,
+              18.579092808296963
+            ],
+            [
+              82.74978990505143,
+              18.57917650662481
+            ],
+            [
+              82.74972773996583,
+              18.57917650662481
+            ],
+            [
+              82.74972773996583,
+              18.579092808296963
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0136",
+        "confidence": 0.82,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Isolated Homestead",
+        "hrea_lightscore": 0.02
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.702,
+              18.586
+            ],
+            [
+              82.702055,
+              18.586
+            ],
+            [
+              82.702055,
+              18.58605
+            ],
+            [
+              82.702,
+              18.58605
+            ],
+            [
+              82.702,
+              18.586
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0137",
+        "confidence": 0.82,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Isolated Homestead",
+        "hrea_lightscore": 0.02
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7085,
+              18.589499999999997
+            ],
+            [
+              82.708555,
+              18.589499999999997
+            ],
+            [
+              82.708555,
+              18.58955
+            ],
+            [
+              82.7085,
+              18.58955
+            ],
+            [
+              82.7085,
+              18.589499999999997
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0138",
+        "confidence": 0.82,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Isolated Homestead",
+        "hrea_lightscore": 0.02
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.715,
+              18.586
+            ],
+            [
+              82.715055,
+              18.586
+            ],
+            [
+              82.715055,
+              18.58605
+            ],
+            [
+              82.715,
+              18.58605
+            ],
+            [
+              82.715,
+              18.586
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0139",
+        "confidence": 0.82,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Isolated Homestead",
+        "hrea_lightscore": 0.02
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.72149999999999,
+              18.589499999999997
+            ],
+            [
+              82.721555,
+              18.589499999999997
+            ],
+            [
+              82.721555,
+              18.58955
+            ],
+            [
+              82.72149999999999,
+              18.58955
+            ],
+            [
+              82.72149999999999,
+              18.589499999999997
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0140",
+        "confidence": 0.82,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Isolated Homestead",
+        "hrea_lightscore": 0.02
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.728,
+              18.586
+            ],
+            [
+              82.728055,
+              18.586
+            ],
+            [
+              82.728055,
+              18.58605
+            ],
+            [
+              82.728,
+              18.58605
+            ],
+            [
+              82.728,
+              18.586
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0141",
+        "confidence": 0.82,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Isolated Homestead",
+        "hrea_lightscore": 0.02
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7345,
+              18.589499999999997
+            ],
+            [
+              82.734555,
+              18.589499999999997
+            ],
+            [
+              82.734555,
+              18.58955
+            ],
+            [
+              82.7345,
+              18.58955
+            ],
+            [
+              82.7345,
+              18.589499999999997
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0142",
+        "confidence": 0.82,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Isolated Homestead",
+        "hrea_lightscore": 0.02
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.741,
+              18.586
+            ],
+            [
+              82.741055,
+              18.586
+            ],
+            [
+              82.741055,
+              18.58605
+            ],
+            [
+              82.741,
+              18.58605
+            ],
+            [
+              82.741,
+              18.586
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "source_feature_id": "OBV3_KOR_0143",
+        "confidence": 0.82,
+        "dataset_key": "google_open_buildings_v3",
+        "hamlet_hint": "Isolated Homestead",
+        "hrea_lightscore": 0.02
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.7475,
+              18.589499999999997
+            ],
+            [
+              82.747555,
+              18.589499999999997
+            ],
+            [
+              82.747555,
+              18.58955
+            ],
+            [
+              82.7475,
+              18.58955
+            ],
+            [
+              82.7475,
+              18.589499999999997
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}
