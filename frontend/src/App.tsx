@@ -14,6 +14,7 @@
 
 import React, { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Analytics } from '@vercel/analytics/react'
 import { AppShell } from './components/layout/AppShell'
 import { LoadingState } from './components/ui/Skeleton'
 import { LandingPage } from './pages/LandingPage'
@@ -114,6 +115,7 @@ export const App: React.FC = () => {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AppShell>
+      <Analytics />
     </BrowserRouter>
   )
 }
