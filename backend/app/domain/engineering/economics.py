@@ -189,3 +189,27 @@ def evaluate_lifecycle_economics(
         npc_per_household_inr=npc_per_hh_inr,
         avoided_co2_tonnes_yr=avoided_co2_tonnes_yr,
     )
+
+
+def resolve_scheme_grant_policy(
+    scheme: str | None,
+    custom_grant_pct: float | None = None,
+) -> tuple[float, str]:
+    """Resolve capital subsidy share (%) and transparent policy basis from scheme metadata."""
+    if custom_grant_pct is not None:
+        clamped = max(0.0, min(100.0, float(custom_grant_pct)))
+        return (clamped, f"Explicit Project Grant Share ({clamped:.1f}%)")
+
+    scheme_upper = (scheme or "").strip().upper()
+    if "PM-JANMAN" in scheme_upper or "JANMAN" in scheme_upper:
+        return (90.0, "PM-JANMAN PVTG Special Central Grant Policy (90% Capital Subsidy)")
+    if "DA-JGUA" in scheme_upper or "JUGA" in scheme_upper:
+        return (90.0, "DA-JGUA Tribal Habitation Grant Norm (90% Capital Subsidy)")
+    if "DDUGJY" in scheme_upper:
+        return (60.0, "DDUGJY Standard Government Grant Norm (60% Capital Subsidy)")
+    if "RDSS" in scheme_upper:
+        return (60.0, "RDSS Loss-Reduction & Distribution Normative Grant (60% Capital Subsidy)")
+    return (
+        60.0,
+        "Default Central Electrification Grant Norm (60%; override via scheme/grant policy)",
+    )

@@ -17,9 +17,12 @@
 import hashlib
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import numpy as np
+import rasterio
+from rasterio.windows import from_bounds as window_from_bounds
 from shapely.geometry import LineString, Point, Polygon, mapping, shape
 from shapely.geometry.base import BaseGeometry
 from sqlalchemy import delete, select
@@ -29,14 +32,17 @@ from app.core.config import get_settings
 from app.core.errors import AppError, UploadValidationError
 from app.db.models.auth import User
 from app.db.models.ops import AuditEvent, Job
-from app.db.models.project import ProjectAoi, ProjectLayer
+from app.db.models.project import Project, ProjectAoi, ProjectLayer
 from app.db.models.reference import Dataset
 from app.db.models.spatial import Building, OsmFeature, SolarResource
-from app.domain.gis.crs import compute_metric_area_m2
+from app.domain.gis.crs import (
+    compute_metric_area_m2,
+    select_metric_epsg_for_geometry,
+)
 from app.domain.gis.layer_processing import (
     classify_building_footprint,
-    compute_layer_summaries,
-    render_raster_layer_png,
+    render_raster_arrays_png,
+    summarize_raster_arrays,
 )
 from app.schemas.data_layer import (
     DatasetProvenanceResponse,
@@ -156,7 +162,68 @@ OPEN_DATASETS_CATALOG: list[dict[str, Any]] = [
         "is_non_commercial": False,
         "notes": "Tagged as USER_ENTERED provenance.",
     },
+    {
+        "key": "synthetic_fallback",
+        "name": "Offline Parametric Fallback (Non-Verified Placeholder)",
+        "provider": "ElectriMap Offline Synthesis (Not Field or Satellite Observed)",
+        "url": "local://offline-synthetic-fallback",
+        "licence": "Internal Simulation Placeholder",
+        "licence_url": None,
+        "attribution_text": (
+            "WARNING: Synthetic placeholder generated because this AOI lies outside bundled open "
+            "reference extracts. Must be replaced by uploaded GIS data before DPR export."
+        ),
+        "spatial_resolution": "Synthetic parametric approximation",
+        "temporal_coverage": "Unavailable — synthetic offline placeholder",
+        "version": "fallback-v1",
+        "is_non_commercial": False,
+        "notes": "Triggers SYNTHETIC_FALLBACK_DATA export blocker until replaced by uploaded GIS.",
+    },
 ]
+
+_REF_BBOX_WGS84 = (82.68, 18.52, 82.78, 18.61)
+_REF_BOX_GEOM = Polygon(
+    [
+        (_REF_BBOX_WGS84[0], _REF_BBOX_WGS84[1]),
+        (_REF_BBOX_WGS84[2], _REF_BBOX_WGS84[1]),
+        (_REF_BBOX_WGS84[2], _REF_BBOX_WGS84[3]),
+        (_REF_BBOX_WGS84[0], _REF_BBOX_WGS84[3]),
+        (_REF_BBOX_WGS84[0], _REF_BBOX_WGS84[1]),
+    ]
+)
+
+
+def _intersects_reference_extract(aoi_geom: BaseGeometry) -> bool:
+    return bool(aoi_geom.intersects(_REF_BOX_GEOM))
+
+
+def _read_clipped_reference_raster(
+    raster_path: Path,
+    bbox: tuple[float, float, float, float],
+) -> tuple[np.ndarray, float, float] | None:
+    """Read a real GeoTIFF window covering bbox clamped to dataset bounds."""
+    if not raster_path.exists():
+        return None
+    minx, miny, maxx, maxy = bbox
+    with rasterio.open(raster_path) as src:
+        ds_bounds = src.bounds
+        c_minx = max(minx, ds_bounds.left)
+        c_miny = max(miny, ds_bounds.bottom)
+        c_maxx = min(maxx, ds_bounds.right)
+        c_maxy = min(maxy, ds_bounds.top)
+        if c_maxx <= c_minx or c_maxy <= c_miny:
+            return None
+        win = window_from_bounds(c_minx, c_miny, c_maxx, c_maxy, transform=src.transform)
+        win = win.round_offsets().round_lengths()
+        col_off = max(0, min(src.width - 1, int(win.col_off)))
+        row_off = max(0, min(src.height - 1, int(win.row_off)))
+        width = max(1, min(src.width - col_off, int(win.width)))
+        height = max(1, min(src.height - row_off, int(win.height)))
+        arr = src.read(1, window=rasterio.windows.Window(col_off, row_off, width, height))
+        mid_lat = (c_miny + c_maxy) * 0.5
+        cell_x_m = abs(float(src.res[0])) * 111320.0 * max(0.2, float(np.cos(np.radians(mid_lat))))
+        cell_y_m = abs(float(src.res[1])) * 110540.0
+        return arr, cell_x_m, cell_y_m
 
 
 def ensure_datasets_seeded(db: Session) -> dict[str, Dataset]:
@@ -222,9 +289,10 @@ def _ingest_buildings_for_aoi(
     project_id: str,
     aoi_geom: BaseGeometry,
     dataset_id: str,
+    fallback_dataset_id: str,
     metric_epsg: int,
-) -> tuple[int, dict[str, Any]]:
-    """Clip reference buildings or synthesize deterministic footprints inside aoi_geom."""
+) -> tuple[int, dict[str, Any], bool]:
+    """Clip reference buildings or synthesize explicit fallback footprints outside extract."""
     settings = get_settings()
     ref_bld_path = settings.data_dir / "reference" / "koraput_nandapur_buildings.geojson"
 
@@ -244,8 +312,12 @@ def _ingest_buildings_for_aoi(
                 fid = str(feat.get("properties", {}).get("id", f"OB-{idx + 1:04d}"))
                 candidate_polys.append((fid, geom_obj, conf))
 
-    # If AOI is outside Village Bheja, generate deterministic village footprints
+    used_fallback = False
+    active_dataset_id = dataset_id
+    # If AOI is outside bundled Open Buildings extract, synthesize explicit fallback footprints
     if not candidate_polys:
+        used_fallback = True
+        active_dataset_id = fallback_dataset_id
         min_lon, min_lat, max_lon, max_lat = aoi_geom.bounds
         cx, cy = aoi_geom.centroid.x, aoi_geom.centroid.y
         span_x = (max_lon - min_lon) * 0.25
@@ -274,7 +346,7 @@ def _ingest_buildings_for_aoi(
                 )
                 if aoi_geom.contains(poly.centroid):
                     conf = round(float(rng.uniform(0.74, 0.96)), 2)
-                    candidate_polys.append((f"OB-GEN-{counter:04d}", poly, conf))
+                    candidate_polys.append((f"SYNTH-BLD-{counter:04d}", poly, conf))
                     counter += 1
 
     counts_by_class: dict[str, int] = {
@@ -292,7 +364,7 @@ def _ingest_buildings_for_aoi(
         rows_to_insert.append(
             Building(
                 project_id=project_id,
-                dataset_id=dataset_id,
+                dataset_id=active_dataset_id,
                 source_feature_id=fid,
                 geom=poly,
                 centroid=Point(float(pt.x), float(pt.y)),
@@ -308,13 +380,21 @@ def _ingest_buildings_for_aoi(
     db.flush()
 
     total_detected = len(rows_to_insert)
-    return total_detected, {
+    summary: dict[str, Any] = {
         "total_detected": total_detected,
         "residential_count": counts_by_class["RESIDENTIAL"],
         "non_residential_count": counts_by_class["NON_RESIDENTIAL"],
         "outbuilding_count": counts_by_class["OUTBUILDING"],
         "noise_excluded_count": counts_by_class["NOISE"],
+        "is_synthetic_fallback": used_fallback,
+        "data_source_mode": "SYNTHETIC_FALLBACK" if used_fallback else "LOCAL_GEOJSON_EXTRACT",
     }
+    if used_fallback:
+        summary["fallback_notice"] = (
+            "AOI lies outside bundled Open Buildings reference extract; "
+            "synthetic placeholders generated. Upload buildings before DPR export."
+        )
+    return total_detected, summary, used_fallback
 
 
 def _ingest_osm_features_for_aoi(
@@ -322,21 +402,39 @@ def _ingest_osm_features_for_aoi(
     *,
     project_id: str,
     aoi_geom: BaseGeometry,
-) -> tuple[int, dict[str, Any]]:
-    """Populate OpenStreetMap road, waterway, and rural amenity features inside the AOI."""
+) -> tuple[int, dict[str, Any], bool]:
+    """Populate OSM roads, waterways, and amenities inside the AOI without cross-region leaks."""
     db.execute(delete(OsmFeature).where(OsmFeature.project_id == project_id))
 
     min_lon, min_lat, max_lon, max_lat = aoi_geom.bounds
     cx, cy = aoi_geom.centroid.x, aoi_geom.centroid.y
     dx = (max_lon - min_lon) * 0.38
     dy = (max_lat - min_lat) * 0.35
+    is_ref_koraput = _intersects_reference_extract(aoi_geom)
+
+    if is_ref_koraput:
+        road_1_name = "Nandapur-Bheja PMGSY Rural Road"
+        road_2_name = "Podapadar Cart Track"
+        water_name = "Kolab Tributary Stream"
+        amenity_1_name = "Govt. Upper Primary School"
+        amenity_2_name = "Health & Wellness Sub-Centre (PHC)"
+        amenity_3_name = "Gram Panchayat Anganwadi Centre"
+        base_tags: dict[str, Any] = {}
+    else:
+        road_1_name = "Synthesized Primary Corridor Track 1"
+        road_2_name = "Synthesized Unpaved Track 2"
+        water_name = "Synthesized Drainage Stream 1"
+        amenity_1_name = "Synthesized Community School Node"
+        amenity_2_name = "Synthesized Health Sub-Centre Node"
+        amenity_3_name = "Synthesized Community Hall Node"
+        base_tags = {"synthetic_fallback": True}
 
     features = [
         OsmFeature(
             project_id=project_id,
             category="ROAD",
-            name="Nandapur-Bheja PMGSY Rural Road",
-            tags={"highway": "tertiary", "surface": "asphalt"},
+            name=road_1_name,
+            tags={"highway": "tertiary", "surface": "asphalt", **base_tags},
             geom=LineString(
                 [
                     (min_lon + 0.004, cy - dy * 0.45),
@@ -348,8 +446,8 @@ def _ingest_osm_features_for_aoi(
         OsmFeature(
             project_id=project_id,
             category="ROAD",
-            name="Podapadar Cart Track",
-            tags={"highway": "track", "surface": "unpaved"},
+            name=road_2_name,
+            tags={"highway": "track", "surface": "unpaved", **base_tags},
             geom=LineString(
                 [
                     (cx, cy),
@@ -360,8 +458,8 @@ def _ingest_osm_features_for_aoi(
         OsmFeature(
             project_id=project_id,
             category="WATER",
-            name="Kolab Tributary Stream",
-            tags={"waterway": "river", "intermittent": "no"},
+            name=water_name,
+            tags={"waterway": "river", "intermittent": "no", **base_tags},
             geom=LineString(
                 [
                     (min_lon + 0.005, cy + dy * 0.10),
@@ -373,32 +471,41 @@ def _ingest_osm_features_for_aoi(
         OsmFeature(
             project_id=project_id,
             category="AMENITY",
-            name="Govt. Upper Primary School",
-            tags={"amenity": "school", "operator": "Dept. of School & Mass Education"},
+            name=amenity_1_name,
+            tags={"amenity": "school", **base_tags},
             geom=Point(cx - dx * 0.12, cy - dy * 0.08),
         ),
         OsmFeature(
             project_id=project_id,
             category="AMENITY",
-            name="Health & Wellness Sub-Centre (PHC)",
-            tags={"amenity": "clinic", "healthcare": "centre"},
+            name=amenity_2_name,
+            tags={"amenity": "clinic", **base_tags},
             geom=Point(cx - dx * 0.06, cy - dy * 0.04),
         ),
         OsmFeature(
             project_id=project_id,
             category="AMENITY",
-            name="Gram Panchayat Anganwadi Centre",
-            tags={"amenity": "community_centre"},
+            name=amenity_3_name,
+            tags={"amenity": "community_centre", **base_tags},
             geom=Point(cx + dx * 0.18, cy + dy * 0.12),
         ),
     ]
     db.add_all(features)
     db.flush()
-    return len(features), {
+    used_fallback = not is_ref_koraput
+    summary: dict[str, Any] = {
         "road_segments": 2,
         "waterway_segments": 1,
         "community_amenities": 3,
+        "is_synthetic_fallback": used_fallback,
+        "data_source_mode": "SYNTHETIC_FALLBACK" if used_fallback else "LOCAL_OSM_EXTRACT",
     }
+    if used_fallback:
+        summary["fallback_notice"] = (
+            "AOI lies outside bundled OSM reference extract; "
+            "generic synthetic fallback features generated."
+        )
+    return len(features), summary, used_fallback
 
 
 def _ingest_solar_resource_for_aoi(
@@ -407,20 +514,27 @@ def _ingest_solar_resource_for_aoi(
     project_id: str,
     aoi_geom: BaseGeometry,
     dataset_id: str,
-) -> dict[str, Any]:
+    fallback_dataset_id: str,
+) -> tuple[dict[str, Any], bool]:
     """Ingest NASA POWER monthly GHI (kWh/m^2/day) and 2m temperature (C) for the AOI centroid."""
     settings = get_settings()
     ref_solar_path = settings.data_dir / "reference" / "koraput_nandapur_solar.json"
+    is_ref_koraput = _intersects_reference_extract(aoi_geom)
 
+    lat = round(float(aoi_geom.centroid.y), 5)
+    lon = round(float(aoi_geom.centroid.x), 5)
+
+    # Default latitude-responsive fallback profile for AOIs outside reference extent
+    lat_offset = max(-0.4, min(0.6, (lat - 18.5) * 0.03))
     monthly_ghi: dict[str, float] = {
-        "Jan": 5.05,
-        "Feb": 5.62,
-        "Mar": 6.18,
-        "Apr": 6.35,
-        "May": 6.10,
-        "Jun": 4.45,
-        "Jul": 3.82,
-        "Aug": 3.95,
+        "Jan": round(5.05 + lat_offset * 0.2, 2),
+        "Feb": round(5.62 + lat_offset * 0.3, 2),
+        "Mar": round(6.18 + lat_offset * 0.4, 2),
+        "Apr": round(6.35 + lat_offset * 0.4, 2),
+        "May": round(6.10 + lat_offset * 0.4, 2),
+        "Jun": round(4.45 - abs(lon - 82.0) * 0.02, 2),
+        "Jul": round(3.82 - abs(lon - 82.0) * 0.02, 2),
+        "Aug": round(3.95 - abs(lon - 82.0) * 0.02, 2),
         "Sep": 4.48,
         "Oct": 4.92,
         "Nov": 4.98,
@@ -440,22 +554,25 @@ def _ingest_solar_resource_for_aoi(
         "Nov": 20.4,
         "Dec": 18.6,
     }
-    if ref_solar_path.exists():
+    used_fallback = True
+    active_dataset_id = fallback_dataset_id
+
+    if is_ref_koraput and ref_solar_path.exists():
         raw_solar = json.loads(ref_solar_path.read_text(encoding="utf-8"))
-        if "monthly_ghi_kwh_m2_day" in raw_solar:
-            monthly_ghi = {
-                k: float(v) for k, v in raw_solar["monthly_ghi_kwh_m2_day"].items()
-            }
-        if "monthly_temp_c" in raw_solar:
-            monthly_t2m = {k: float(v) for k, v in raw_solar["monthly_temp_c"].items()}
+        ghi_raw = raw_solar.get("monthly_ghi_kwh_m2_day") or raw_solar.get("ghi_kwh_m2_day")
+        t2m_raw = raw_solar.get("monthly_temp_c") or raw_solar.get("t2m_deg_c")
+        if isinstance(ghi_raw, dict) and ghi_raw:
+            monthly_ghi = {str(k): round(float(v), 3) for k, v in ghi_raw.items()}
+            used_fallback = False
+            active_dataset_id = dataset_id
+        if isinstance(t2m_raw, dict) and t2m_raw:
+            monthly_t2m = {str(k): round(float(v), 2) for k, v in t2m_raw.items()}
 
     worst_month = min(monthly_ghi, key=lambda k: monthly_ghi[k])
     worst_ghi = round(float(monthly_ghi[worst_month]), 2)
     annual_mean_ghi = round(
         float(sum(monthly_ghi.values()) / len(monthly_ghi)), 2
     )
-    lat = round(float(aoi_geom.centroid.y), 5)
-    lon = round(float(aoi_geom.centroid.x), 5)
     optimal_tilt = round(abs(lat) + 0.5, 1)
 
     existing = db.execute(
@@ -475,7 +592,7 @@ def _ingest_solar_resource_for_aoi(
                 worst_month=worst_month,
                 worst_ghi_kwh_m2_day=worst_ghi,
                 optimal_tilt_deg=optimal_tilt,
-                source_dataset_id=dataset_id,
+                source_dataset_id=active_dataset_id,
                 retrieved_at=now,
             )
         )
@@ -488,16 +605,24 @@ def _ingest_solar_resource_for_aoi(
         existing.worst_month = worst_month
         existing.worst_ghi_kwh_m2_day = worst_ghi
         existing.optimal_tilt_deg = optimal_tilt
-        existing.source_dataset_id = dataset_id
+        existing.source_dataset_id = active_dataset_id
         existing.retrieved_at = now
 
     db.flush()
-    return {
+    summary: dict[str, Any] = {
         "annual_mean_ghi_kwh_m2_day": annual_mean_ghi,
         "worst_month": worst_month,
         "worst_ghi_kwh_m2_day": worst_ghi,
         "optimal_tilt_deg": optimal_tilt,
+        "is_synthetic_fallback": used_fallback,
+        "data_source_mode": "SYNTHETIC_FALLBACK" if used_fallback else "NASA_POWER_LOCAL_EXTRACT",
     }
+    if used_fallback:
+        summary["fallback_notice"] = (
+            "AOI lies outside bundled NASA POWER reference extract; "
+            "parametric regional climatology used."
+        )
+    return summary, used_fallback
 
 
 def _upsert_project_layer(
@@ -568,23 +693,45 @@ def run_project_data_acquisition_pipeline(
 
     aoi_geom: BaseGeometry = aoi_row.geom
     min_lon, min_lat, max_lon, max_lat = [round(float(x), 5) for x in aoi_geom.bounds]
+    bbox_tuple = (min_lon, min_lat, max_lon, max_lat)
     bbox_list = [min_lon, min_lat, max_lon, max_lat]
     bbox_hash = hashlib.sha256(json.dumps(bbox_list).encode("utf-8")).hexdigest()[:16]
+
+    proj_row = db.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
+    metric_epsg = (
+        proj_row.metric_epsg
+        if proj_row is not None and proj_row.metric_epsg
+        else select_metric_epsg_for_geometry(aoi_geom)
+    )
+    fallback_ds_id = datasets_by_key["synthetic_fallback"].id
 
     if job is not None:
         update_job_progress(db, job, progress=15, stage="Clipping Open Buildings footprints")
 
-    bld_count, bld_summary = _ingest_buildings_for_aoi(
+    from app.services.invalidation import invalidate_downstream_from_stage
+
+    invalidate_downstream_from_stage(
+        db,
+        project_id=project_id,
+        stage="data",
+        drop_clusters=True,
+        bump_version=True,
+    )
+
+    bld_count, bld_summary, bld_is_fallback = _ingest_buildings_for_aoi(
         db,
         project_id=project_id,
         aoi_geom=aoi_geom,
         dataset_id=datasets_by_key["open_buildings_v3"].id,
-        metric_epsg=32644,
+        fallback_dataset_id=fallback_ds_id,
+        metric_epsg=metric_epsg,
     )
     _upsert_project_layer(
         db,
         project_id=project_id,
-        dataset_id=datasets_by_key["open_buildings_v3"].id,
+        dataset_id=(
+            fallback_ds_id if bld_is_fallback else datasets_by_key["open_buildings_v3"].id
+        ),
         layer_key="buildings",
         status="READY",
         feature_count=bld_count,
@@ -598,16 +745,90 @@ def run_project_data_acquisition_pipeline(
             db, job, progress=40, stage="Computing Copernicus 30m DEM & Horn slope"
         )
 
-    raster_summaries = compute_layer_summaries(aoi_geom)
+    settings = get_settings()
+    is_ref_koraput = _intersects_reference_extract(aoi_geom)
+    dem_clip = (
+        _read_clipped_reference_raster(
+            settings.data_dir / "reference" / "koraput_nandapur_dem_30m.tif",
+            bbox_tuple,
+        )
+        if is_ref_koraput
+        else None
+    )
+    wc_clip = (
+        _read_clipped_reference_raster(
+            settings.data_dir / "reference" / "koraput_nandapur_worldcover_30m.tif",
+            bbox_tuple,
+        )
+        if is_ref_koraput
+        else None
+    )
+
+    if dem_clip is not None and wc_clip is not None:
+        dem_arr, cell_x_m, cell_y_m = dem_clip
+        wc_arr, _, _ = wc_clip
+        real_summaries = summarize_raster_arrays(
+            dem_arr,
+            wc_arr,
+            cell_size_x_m=cell_x_m,
+            cell_size_y_m=cell_y_m,
+            radiance=None,
+        )
+        dem_summary: dict[str, Any] = {
+            **real_summaries["dem"],
+            "is_synthetic_fallback": False,
+            "data_source_mode": "LOCAL_GEOTIFF_EXTRACT",
+            "source_file": "koraput_nandapur_dem_30m.tif",
+        }
+        lc_summary: dict[str, Any] = {
+            **real_summaries["landcover"],
+            "is_synthetic_fallback": False,
+            "data_source_mode": "LOCAL_GEOTIFF_EXTRACT",
+            "source_file": "koraput_nandapur_worldcover_30m.tif",
+        }
+        dem_dataset_id = datasets_by_key["copernicus_dem_glo30"].id
+        lc_dataset_id = datasets_by_key["esa_worldcover_2021"].id
+    else:
+        dem_summary = {
+            "elevation_min_m": None,
+            "elevation_max_m": None,
+            "elevation_mean_m": None,
+            "slope_mean_deg": None,
+            "slope_max_deg": None,
+            "steep_area_pct": None,
+            "is_synthetic_fallback": True,
+            "data_source_mode": "SYNTHETIC_FALLBACK",
+            "fallback_notice": (
+                "No local Copernicus DEM GeoTIFF covers this AOI; terrain relief & slope "
+                "metrics are unavailable without DEM upload or live tile retrieval."
+            ),
+        }
+        lc_summary = {
+            "tree_cover_pct": None,
+            "canopy_share_pct": None,
+            "shrub_grass_pct": None,
+            "cropland_pct": None,
+            "built_up_pct": None,
+            "water_barrier_pct": None,
+            "is_synthetic_fallback": True,
+            "data_source_mode": "SYNTHETIC_FALLBACK",
+            "fallback_notice": (
+                "No local ESA WorldCover GeoTIFF covers this AOI; "
+                "canopy & water shares are unavailable."
+            ),
+        }
+        dem_dataset_id = fallback_ds_id
+        lc_dataset_id = fallback_ds_id
+
     _upsert_project_layer(
         db,
         project_id=project_id,
-        dataset_id=datasets_by_key["copernicus_dem_glo30"].id,
+        dataset_id=dem_dataset_id,
         layer_key="dem_slope",
         status="READY",
         feature_count=1,
         bbox=bbox_list,
-        summary_metrics=raster_summaries["dem_slope"],
+        summary_metrics=dem_summary,
         cache_key=f"dem_{bbox_hash}",
     )
 
@@ -619,29 +840,43 @@ def run_project_data_acquisition_pipeline(
     _upsert_project_layer(
         db,
         project_id=project_id,
-        dataset_id=datasets_by_key["esa_worldcover_2021"].id,
+        dataset_id=lc_dataset_id,
         layer_key="landcover",
         status="READY",
         feature_count=1,
         bbox=bbox_list,
-        summary_metrics=raster_summaries["landcover"],
+        summary_metrics=lc_summary,
         cache_key=f"wc_{bbox_hash}",
     )
 
     if job is not None:
         update_job_progress(
-            db, job, progress=75, stage="Processing HREA / VIIRS night-time lights"
+            db, job, progress=75, stage="Checking HREA / VIIRS night-time lights availability"
         )
 
+    nl_summary: dict[str, Any] = {
+        "availability": "NO_LOCAL_VIIRS_RASTER",
+        "is_unavailable": True,
+        "is_synthetic_fallback": False,
+        "observation_period": None,
+        "acquisition_date": None,
+        "mean_radiance_nw_cm2_sr": None,
+        "max_radiance_nw_cm2_sr": None,
+        "dark_area_pct": None,
+        "fallback_notice": (
+            "No local VIIRS Black Marble GeoTIFF is stored in the offline bundle; "
+            "nighttime brightness metrics and acquisition dates are unavailable."
+        ),
+    }
     _upsert_project_layer(
         db,
         project_id=project_id,
         dataset_id=datasets_by_key["viirs_hrea_nightlights"].id,
         layer_key="nightlights",
         status="READY",
-        feature_count=1,
+        feature_count=0,
         bbox=bbox_list,
-        summary_metrics=raster_summaries["nightlights"],
+        summary_metrics=nl_summary,
         cache_key=f"nl_{bbox_hash}",
     )
 
@@ -650,13 +885,15 @@ def run_project_data_acquisition_pipeline(
             db, job, progress=90, stage="Loading OpenStreetMap roads, water & amenities"
         )
 
-    osm_count, osm_summary = _ingest_osm_features_for_aoi(
+    osm_count, osm_summary, osm_is_fallback = _ingest_osm_features_for_aoi(
         db, project_id=project_id, aoi_geom=aoi_geom
     )
     _upsert_project_layer(
         db,
         project_id=project_id,
-        dataset_id=datasets_by_key["openstreetmap_overpass"].id,
+        dataset_id=(
+            fallback_ds_id if osm_is_fallback else datasets_by_key["openstreetmap_overpass"].id
+        ),
         layer_key="osm_features",
         status="READY",
         feature_count=osm_count,
@@ -670,16 +907,19 @@ def run_project_data_acquisition_pipeline(
             db, job, progress=95, stage="Retrieving NASA POWER monthly GHI & T2M"
         )
 
-    solar_summary = _ingest_solar_resource_for_aoi(
+    solar_summary, solar_is_fallback = _ingest_solar_resource_for_aoi(
         db,
         project_id=project_id,
         aoi_geom=aoi_geom,
         dataset_id=datasets_by_key["nasa_power_agro_re"].id,
+        fallback_dataset_id=fallback_ds_id,
     )
     _upsert_project_layer(
         db,
         project_id=project_id,
-        dataset_id=datasets_by_key["nasa_power_agro_re"].id,
+        dataset_id=(
+            fallback_ds_id if solar_is_fallback else datasets_by_key["nasa_power_agro_re"].id
+        ),
         layer_key="solar_resource",
         status="READY",
         feature_count=12,
@@ -777,6 +1017,16 @@ def list_project_layers_with_provenance(
     return [_serialize_project_layer(layer, ds_by_id) for layer in layers]
 
 
+_ALLOWED_OSM_CATEGORIES = {"ROAD", "WATER", "AMENITY", "SUBSTATION", "POLE", "BOUNDARY"}
+_OSM_CATEGORY_ALIASES = {"HIGHWAY": "ROAD", "ROADS": "ROAD", "WATERWAY": "WATER", "RIVER": "WATER"}
+
+
+def _transparent_placeholder_png() -> bytes:
+    """Return a valid 4x4 fully transparent PNG (never fabricates fake pixels)."""
+    zero_rad = np.zeros((4, 4), dtype=np.float32)
+    return render_raster_arrays_png("nightlights", radiance=zero_rad)
+
+
 def get_layer_raster_png_and_bounds(
     db: Session,
     *,
@@ -785,7 +1035,8 @@ def get_layer_raster_png_and_bounds(
     user: User,
     observation_period: str = "2024_ANNUAL",
 ) -> tuple[bytes, list[float]]:
-    """Return colorized PNG bytes and [min_lon, min_lat, max_lon, max_lat] for a raster layer."""
+    """Return colorized PNG bytes from GeoTIFFs (or transparent PNG when unavailable)."""
+    del observation_period  # Signature kept for API compat; dates are never synthesized.
     proj = get_owned_project_or_404(db, project_id, user)
     aoi_row = db.execute(
         select(ProjectAoi).where(ProjectAoi.project_id == proj.id)
@@ -799,6 +1050,7 @@ def get_layer_raster_png_and_bounds(
     min_lon, min_lat, max_lon, max_lat = [
         round(float(x), 5) for x in aoi_row.geom.bounds
     ]
+    bbox_tuple = (min_lon, min_lat, max_lon, max_lat)
     if layer_key not in {"dem_slope", "landcover", "nightlights"}:
         raise AppError(
             code="INVALID_RASTER_LAYER_KEY",
@@ -808,12 +1060,32 @@ def get_layer_raster_png_and_bounds(
             ),
             status_code=422,
         )
-    png_bytes = render_raster_layer_png(
-        layer_key,
-        (min_lon, min_lat, max_lon, max_lat),
-        observation_period=observation_period,
-    )
-    return png_bytes, [min_lon, min_lat, max_lon, max_lat]
+
+    settings = get_settings()
+    if layer_key in {"dem_slope", "landcover"} and _intersects_reference_extract(aoi_row.geom):
+        if layer_key == "dem_slope":
+            clipped = _read_clipped_reference_raster(
+                settings.data_dir / "reference" / "koraput_nandapur_dem_30m.tif",
+                bbox_tuple,
+            )
+            if clipped is not None:
+                elev_arr, cx_m, cy_m = clipped
+                png_bytes = render_raster_arrays_png(
+                    "dem", elev_m=elev_arr, cell_size_m=max(cx_m, cy_m)
+                )
+                return png_bytes, [min_lon, min_lat, max_lon, max_lat]
+        else:
+            clipped = _read_clipped_reference_raster(
+                settings.data_dir / "reference" / "koraput_nandapur_worldcover_30m.tif",
+                bbox_tuple,
+            )
+            if clipped is not None:
+                wc_arr, _, _ = clipped
+                png_bytes = render_raster_arrays_png("landcover", landcover=wc_arr)
+                return png_bytes, [min_lon, min_lat, max_lon, max_lat]
+
+    # Never synthesize fake terrain or VIIRS blobs when no raster exists on disk.
+    return _transparent_placeholder_png(), [min_lon, min_lat, max_lon, max_lat]
 
 
 def get_project_vector_layer_geojson(
@@ -909,51 +1181,124 @@ def upload_custom_project_layer(
             "Uploaded GeoJSON must be a FeatureCollection with at least 1 feature."
         )
 
-    added_count = 0
-    if layer_key == "buildings":
-        for idx, feat in enumerate(features):
-            geom_obj = shape(feat["geometry"])
-            if isinstance(geom_obj, Polygon) and not geom_obj.is_empty:
-                area_m2 = round(
-                    compute_metric_area_m2(geom_obj, metric_epsg=proj.metric_epsg), 2
-                )
-                size_class, is_excl = classify_building_footprint(area_m2, 1.0)
-                pt = geom_obj.centroid
-                db.add(
-                    Building(
-                        project_id=proj.id,
-                        dataset_id=user_ds.id,
-                        source_feature_id=f"USER-BLD-{idx + 1:04d}",
-                        geom=geom_obj,
-                        centroid=Point(float(pt.x), float(pt.y)),
-                        area_m2=area_m2,
-                        confidence=1.0,
-                        size_class=size_class,
-                        is_user_added=True,
-                        is_excluded=is_excl,
-                    )
-                )
-                added_count += 1
-    elif layer_key == "osm_features":
-        for feat in features:
-            geom_obj = shape(feat["geometry"])
-            props = feat.get("properties") or {}
-            cat = str(props.get("category", "AMENITY")).upper()
-            db.add(
-                OsmFeature(
-                    project_id=proj.id,
-                    category=cat,
-                    name=props.get("name", "User Uploaded Feature"),
-                    tags=props,
-                    geom=geom_obj,
-                )
-            )
-            added_count += 1
-    else:
+    if layer_key not in {"buildings", "osm_features"}:
         raise UploadValidationError(
             f"Unsupported custom upload layer_key '{layer_key}'. "
             "Expected 'buildings' or 'osm_features'."
         )
+
+    added_count = 0
+    if layer_key == "buildings":
+        from app.services.invalidation import invalidate_downstream_from_stage
+
+        invalidate_downstream_from_stage(
+            db,
+            project_id=proj.id,
+            stage="data",
+            drop_clusters=True,
+            bump_version=True,
+        )
+        db.execute(delete(Building).where(Building.project_id == proj.id))
+        counts_by_class: dict[str, int] = {}
+        for idx, feat in enumerate(features):
+            if not isinstance(feat, dict) or not feat.get("geometry"):
+                raise UploadValidationError(
+                    f"Feature index {idx} is missing a valid GeoJSON geometry object."
+                )
+            try:
+                geom_obj = shape(feat["geometry"])
+            except Exception as exc:
+                raise UploadValidationError(
+                    f"Feature index {idx} has malformed geometry: {exc}"
+                ) from exc
+            if not geom_obj.is_valid or geom_obj.is_empty:
+                raise UploadValidationError(
+                    f"Feature index {idx} has an invalid or empty geometry."
+                )
+            if not isinstance(geom_obj, Polygon):
+                raise UploadValidationError(
+                    f"Feature index {idx} must be a Polygon geometry for 'buildings' upload."
+                )
+            area_m2 = round(
+                compute_metric_area_m2(geom_obj, metric_epsg=proj.metric_epsg), 2
+            )
+            size_class, is_excl = classify_building_footprint(area_m2, 1.0)
+            counts_by_class[size_class] = counts_by_class.get(size_class, 0) + 1
+            pt = geom_obj.centroid
+            db.add(
+                Building(
+                    project_id=proj.id,
+                    dataset_id=user_ds.id,
+                    source_feature_id=f"USER-BLD-{idx + 1:04d}",
+                    geom=geom_obj,
+                    centroid=Point(float(pt.x), float(pt.y)),
+                    area_m2=area_m2,
+                    confidence=1.0,
+                    size_class=size_class,
+                    is_user_added=True,
+                    is_excluded=is_excl,
+                )
+            )
+            added_count += 1
+        summary_metrics: dict[str, Any] = {
+            "user_uploaded_features": added_count,
+            "residential_count": counts_by_class.get("RESIDENTIAL", 0),
+            "is_synthetic_fallback": False,
+            "data_source_mode": "USER_UPLOADED_GEOJSON",
+        }
+    else:
+        existing_osm = (
+            db.execute(select(OsmFeature).where(OsmFeature.project_id == proj.id))
+            .scalars()
+            .all()
+        )
+        for existing_row in existing_osm:
+            if (existing_row.tags or {}).get("synthetic_fallback"):
+                db.delete(existing_row)
+
+        counts_by_cat: dict[str, int] = {}
+        for idx, feat in enumerate(features):
+            if not isinstance(feat, dict) or not feat.get("geometry"):
+                raise UploadValidationError(
+                    f"Feature index {idx} is missing a valid GeoJSON geometry object."
+                )
+            try:
+                geom_obj = shape(feat["geometry"])
+            except Exception as exc:
+                raise UploadValidationError(
+                    f"Feature index {idx} has malformed geometry: {exc}"
+                ) from exc
+            if not geom_obj.is_valid or geom_obj.is_empty:
+                raise UploadValidationError(
+                    f"Feature index {idx} has an invalid or empty geometry."
+                )
+            props = feat.get("properties") or {}
+            raw_cat = str(props.get("category", "AMENITY")).strip().upper()
+            cat = _OSM_CATEGORY_ALIASES.get(raw_cat, raw_cat)
+            if cat not in _ALLOWED_OSM_CATEGORIES:
+                raise UploadValidationError(
+                    f"Feature index {idx} has unsupported OSM category '{raw_cat}'. "
+                    f"Allowed: {sorted(_ALLOWED_OSM_CATEGORIES)}."
+                )
+            counts_by_cat[cat] = counts_by_cat.get(cat, 0) + 1
+            db.add(
+                OsmFeature(
+                    project_id=proj.id,
+                    category=cat,
+                    name=str(props.get("name", f"Uploaded Feature {idx + 1}")),
+                    tags={**props, "synthetic_fallback": False},
+                    geom=geom_obj,
+                )
+            )
+            added_count += 1
+        summary_metrics = {
+            "user_uploaded_features": added_count,
+            "road_segments": counts_by_cat.get("ROAD", 0),
+            "waterway_segments": counts_by_cat.get("WATER", 0),
+            "community_amenities": counts_by_cat.get("AMENITY", 0),
+            "is_synthetic_fallback": False,
+            "data_source_mode": "USER_UPLOADED_GEOJSON",
+        }
 
     aoi_row = db.execute(
         select(ProjectAoi).where(ProjectAoi.project_id == proj.id)
@@ -961,7 +1306,7 @@ def upload_custom_project_layer(
     bbox_list = (
         [round(float(x), 5) for x in aoi_row.geom.bounds]
         if aoi_row and aoi_row.geom
-        else [82.68, 18.52, 82.78, 18.61]
+        else [0.0, 0.0, 0.0, 0.0]
     )
 
     layer_row = _upsert_project_layer(
@@ -972,8 +1317,50 @@ def upload_custom_project_layer(
         status="READY",
         feature_count=added_count,
         bbox=bbox_list,
-        summary_metrics={"user_uploaded_features": added_count},
+        summary_metrics=summary_metrics,
         cache_key="user_upload",
     )
     db.commit()
     return _serialize_project_layer(layer_row, {user_ds.id: user_ds})
+
+
+def load_reference_terrain_arrays_for_aoi(
+    aoi_geom: BaseGeometry | None,
+) -> tuple[np.ndarray | None, np.ndarray | None, tuple[float, float, float, float] | None]:
+    """Load clipped Copernicus DEM & WorldCover NumPy arrays inside reference extent."""
+    if aoi_geom is None or aoi_geom.is_empty or not _intersects_reference_extract(aoi_geom):
+        return (None, None, None)
+
+    settings = get_settings()
+    dem_path = settings.data_dir / "reference" / "koraput_nandapur_dem_30m.tif"
+    wc_path = settings.data_dir / "reference" / "koraput_nandapur_worldcover_30m.tif"
+    if not dem_path.exists() or not wc_path.exists():
+        return (None, None, None)
+
+    minx, miny, maxx, maxy = aoi_geom.bounds
+    with rasterio.open(dem_path) as dem_src, rasterio.open(wc_path) as wc_src:
+        c_minx = max(minx - 0.005, float(dem_src.bounds.left))
+        c_miny = max(miny - 0.005, float(dem_src.bounds.bottom))
+        c_maxx = min(maxx + 0.005, float(dem_src.bounds.right))
+        c_maxy = min(maxy + 0.005, float(dem_src.bounds.top))
+        if c_maxx <= c_minx or c_maxy <= c_miny:
+            return (None, None, None)
+
+        win = window_from_bounds(c_minx, c_miny, c_maxx, c_maxy, transform=dem_src.transform)
+        win = win.round_offsets().round_lengths()
+        col_off = max(0, min(dem_src.width - 1, int(win.col_off)))
+        row_off = max(0, min(dem_src.height - 1, int(win.row_off)))
+        width = max(1, min(dem_src.width - col_off, int(win.width)))
+        height = max(1, min(dem_src.height - row_off, int(win.height)))
+        read_win = rasterio.windows.Window(col_off, row_off, width, height)
+
+        dem_arr = dem_src.read(1, window=read_win)
+        wc_arr = wc_src.read(1, window=read_win)
+        win_bounds = rasterio.windows.bounds(read_win, transform=dem_src.transform)
+        bounds_tuple = (
+            float(win_bounds[0]),
+            float(win_bounds[1]),
+            float(win_bounds[2]),
+            float(win_bounds[3]),
+        )
+        return (dem_arr, wc_arr, bounds_tuple)

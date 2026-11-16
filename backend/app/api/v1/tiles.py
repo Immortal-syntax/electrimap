@@ -33,6 +33,18 @@ from app.services.settlement_service import get_project_settlement_state
 router = APIRouter(prefix="/api/v1/tiles", tags=["Vector Tiles"])
 
 
+def _compute_tile_etag(
+    project_id: str,
+    version: int,
+    layer: str,
+    z: int,
+    x: int,
+    y: int,
+) -> str:
+    etag_seed = f"{project_id}:v{version}:{layer}:{z}:{x}:{y}".encode()
+    return f'"{hashlib.sha256(etag_seed).hexdigest()[:24]}"'
+
+
 @router.get("/{project_id}/{layer}/{z}/{x}/{y}.mvt")
 def get_vector_tile(
     project_id: str,
@@ -54,8 +66,7 @@ def get_vector_tile(
             status_code=404,
         )
 
-    etag_seed = f"{proj.id}:v{proj.version}:{layer}:{z}:{x}:{y}".encode()
-    etag_val = f'"{hashlib.sha256(etag_seed).hexdigest()[:24]}"'
+    etag_val = _compute_tile_etag(proj.id, proj.version, layer, z, x, y)
     if request.headers.get("if-none-match") == etag_val:
         return Response(
             status_code=304,
@@ -122,6 +133,8 @@ def get_vector_tile(
     payload_bytes = json.dumps(
         {"tile": [z, x, y], "layer": layer, "feature_count": len(fc["features"])}
     ).encode("utf-8")
+    db.refresh(proj)
+    etag_val = _compute_tile_etag(proj.id, proj.version, layer, z, x, y)
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
     return Response(
         content=payload_bytes,

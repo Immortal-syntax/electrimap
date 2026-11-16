@@ -21,7 +21,7 @@ class LoginRequest(BaseModel):
     """Credentials payload for POST /api/v1/auth/login."""
 
     email: str = Field(..., min_length=3, max_length=255)
-    password: str = Field(..., min_length=6, max_length=255)
+    password: str = Field(..., min_length=1, max_length=255)
 
 
 class UserResponse(BaseModel):

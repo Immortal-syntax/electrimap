@@ -185,6 +185,76 @@ def test_classify_habitation_clusters_enforces_epistemic_honesty() -> None:
     iso_item = next(c for c in classified if c.cluster.is_isolated_group)
     assert iso_item.proxy_class == "UNKNOWN"
 
+    # When VIIRS nightlights are unavailable, never fabricate radiance or electrified status
+    for item in classified:
+        assert item.nl_lightscore is None
+        assert item.mean_radiance_nw_cm2_sr is None
+        assert item.proxy_class == "UNKNOWN"
+        assert item.proxy_confidence == "LOW"
+        assert item.evidence["nightlights_available"] is False
+
+
+def test_classify_habitation_clusters_samples_real_rasters_when_provided() -> None:
+    """When real DEM, WorldCover, and VIIRS arrays are supplied, sample them honestly."""
+    import numpy as np
+
+    aoi_poly = Polygon(
+        [
+            (82.705, 18.550),
+            (82.745, 18.550),
+            (82.745, 18.580),
+            (82.705, 18.580),
+            (82.705, 18.550),
+        ]
+    )
+    buildings: list[BuildingFootprintInput] = []
+    for i in range(12):
+        buildings.append(
+            _make_square_building(
+                f"CORE-{i}",
+                82.715 + (i % 4) * 0.0002,
+                18.556 + (i // 4) * 0.0002,
+            )
+        )
+    for i in range(6):
+        buildings.append(
+            _make_square_building(
+                f"REMOTE-{i}",
+                82.738 + (i % 3) * 0.0002,
+                18.575 + (i // 3) * 0.0002,
+            )
+        )
+
+    clustering = run_dbscan_habitation_clustering(buildings, metric_epsg=32644)
+    rows, cols = 60, 80
+    dem_arr = np.full((rows, cols), 700.0, dtype=np.float32)
+    wc_arr = np.full((rows, cols), 40, dtype=np.uint8)
+    wc_arr[0:20, 50:80] = 10  # Tree cover in NE corner (remote cluster)
+    rad_arr = np.zeros((rows, cols), dtype=np.float32)
+    # Bright southern core (~lat 18.556 -> bottom rows), dark NE corner
+    rad_arr[35:60, 0:35] = 2.0
+    bounds = (82.705, 18.550, 82.745, 18.580)
+
+    classified = classify_habitation_clusters(
+        clustering.clusters,
+        aoi_geom=aoi_poly,
+        road_geoms_wgs84=[LineString([(82.715, 18.556), (82.720, 18.558)])],
+        metric_epsg=32644,
+        dem_elev_wgs84=dem_arr,
+        worldcover_wgs84=wc_arr,
+        raster_bounds_wgs84=bounds,
+        cell_size_m=30.0,
+        radiance_wgs84=rad_arr,
+        radiance_bounds_wgs84=bounds,
+    )
+    by_label = {item.cluster.label: item for item in classified}
+    assert by_label["CL-01"].proxy_class == "LIKELY_ELECTRIFIED"
+    assert by_label["CL-01"].nl_lightscore == 1.0
+    assert by_label["CL-01"].evidence["terrain_source"] == "COPERNICUS_DEM_30M"
+    assert by_label["CL-02"].proxy_class == "POTENTIALLY_UNSERVED"
+    assert by_label["CL-02"].canopy_share == 1.0
+    assert by_label["CL-02"].nl_lightscore == 0.0
+
 
 def test_reconcile_census_households_flags_30pct_divergence() -> None:
     reconciled_ok = reconcile_census_households(

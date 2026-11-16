@@ -42,6 +42,7 @@ from app.db.models.spatial import OsmFeature
 from app.domain.engineering.demand import (
     DEFAULT_PROJECT_ASSUMPTIONS,
     compute_project_demand_summary,
+    get_assumptions_for_load_tier,
 )
 from app.domain.gis.gap_analysis import (
     ClusterGapInput,
@@ -62,6 +63,7 @@ from app.schemas.infrastructure import (
     ProjectSettingsListResponse,
     ProjectSettingsPatchRequest,
 )
+from app.services.concurrency import acquire_pg_xact_lock, project_lock
 from app.services.project_service import get_owned_project_or_404
 from app.services.settlement_service import execute_settlement_clustering_pipeline
 
@@ -93,8 +95,23 @@ def _serialize_infra_asset(row: InfrastructureAsset) -> InfrastructureAssetRespo
     )
 
 
-def ensure_project_settings_seeded(db: Session, project_id: str) -> list[ProjectSetting]:
+def ensure_project_settings_seeded(
+    db: Session,
+    project_id: str,
+    load_tier: str | None = None,
+) -> list[ProjectSetting]:
     """Ensure all 14 default engineering assumptions exist in `project_settings`."""
+    with project_lock(db, project_id):
+        acquire_pg_xact_lock(db, f"project:{project_id}")
+        return _ensure_project_settings_seeded_locked(db, project_id, load_tier)
+
+
+def _ensure_project_settings_seeded_locked(
+    db: Session,
+    project_id: str,
+    load_tier: str | None = None,
+) -> list[ProjectSetting]:
+    tier_defaults = get_assumptions_for_load_tier(load_tier)
     existing = (
         db.execute(
             select(ProjectSetting)
@@ -109,12 +126,13 @@ def ensure_project_settings_seeded(db: Session, project_id: str) -> list[Project
 
     for spec in DEFAULT_PROJECT_ASSUMPTIONS:
         if spec.key not in existing_by_key:
+            eff_val = tier_defaults.get(spec.key, spec.default_value)
             row = ProjectSetting(
                 project_id=project_id,
                 key=spec.key,
                 category=spec.category,
                 label=spec.label,
-                value=spec.default_value,
+                value=eff_val,
                 default_value=spec.default_value,
                 min_value=spec.min_value,
                 max_value=spec.max_value,
@@ -139,6 +157,34 @@ def ensure_project_settings_seeded(db: Session, project_id: str) -> list[Project
             .all()
         )
     return list(existing)
+
+
+def apply_load_tier_to_project_settings(
+    db: Session,
+    project_id: str,
+    load_tier: str,
+) -> None:
+    """Synchronize tier-specific baseline demand settings when a project's load_tier changes."""
+    from app.domain.engineering.demand import LOAD_TIER_ASSUMPTION_PRESETS
+
+    tier_norm = load_tier.strip().upper()
+    if tier_norm.startswith("TIER_2"):
+        tier_key = "TIER_2_SUBSISTENCE"
+    elif tier_norm.startswith("TIER_4"):
+        tier_key = "TIER_4_PRODUCTIVE"
+    else:
+        tier_key = "TIER_3_STANDARD"
+    preset = LOAD_TIER_ASSUMPTION_PRESETS.get(tier_key, {})
+    if not preset:
+        return
+    rows = ensure_project_settings_seeded(db, project_id, load_tier=tier_key)
+    for r in rows:
+        if r.key in preset:
+            r.default_value = float(preset[r.key])
+            if not r.is_user_edited:
+                r.value = float(preset[r.key])
+                r.updated_at = datetime.now(UTC)
+    db.commit()
 
 
 def _serialize_setting(row: ProjectSetting) -> ProjectSettingResponse:
@@ -232,6 +278,21 @@ def update_project_settings_state(
         )
     )
     db.commit()
+
+    # Cascade recomputation if clusters already exist
+    has_clusters = (
+        db.execute(
+            select(SettlementCluster.id).where(SettlementCluster.project_id == proj.id)
+        ).first()
+        is not None
+    )
+    if has_clusters:
+        compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
+        compute_and_persist_project_demand(db, project_id=proj.id, user=user)
+        from app.services.planning_service import sync_project_scenarios_after_upstream_change
+
+        sync_project_scenarios_after_upstream_change(db, project_id=proj.id, user=user)
+
     return get_project_settings_state(db, project_id=proj.id, user=user)
 
 
@@ -243,9 +304,10 @@ def reset_project_settings_state(
 ) -> ProjectSettingsListResponse:
     """Reset all project assumptions to their normative REC/CEA defaults."""
     proj = get_owned_project_or_404(db, project_id, user)
-    rows = ensure_project_settings_seeded(db, proj.id)
+    rows = ensure_project_settings_seeded(db, proj.id, load_tier=proj.load_tier)
+    tier_defaults = get_assumptions_for_load_tier(proj.load_tier)
     for r in rows:
-        r.value = r.default_value
+        r.value = float(tier_defaults.get(r.key, r.default_value))
         r.is_user_edited = False
         r.quality_tag = "ESTIMATED"
         r.override_note = None
@@ -262,6 +324,20 @@ def reset_project_settings_state(
         )
     )
     db.commit()
+
+    has_clusters = (
+        db.execute(
+            select(SettlementCluster.id).where(SettlementCluster.project_id == proj.id)
+        ).first()
+        is not None
+    )
+    if has_clusters:
+        compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
+        compute_and_persist_project_demand(db, project_id=proj.id, user=user)
+        from app.services.planning_service import sync_project_scenarios_after_upstream_change
+
+        sync_project_scenarios_after_upstream_change(db, project_id=proj.id, user=user)
+
     return get_project_settings_state(db, project_id=proj.id, user=user)
 
 
@@ -361,8 +437,18 @@ def create_infrastructure_asset(
     db.commit()
     db.refresh(asset)
 
-    # Recompute gap analysis automatically so cluster d_infra_m stays current
+    # Recompute gap analysis & resync scenarios automatically so cluster d_infra_m & HT stay current
     compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
+    from app.services.invalidation import resync_downstream_after_upstream_change
+
+    resync_downstream_after_upstream_change(
+        db,
+        project_id=proj.id,
+        user=user,
+        recompute_gap=False,
+        recompute_demand=False,
+        recompute_scenarios=True,
+    )
     return _serialize_infra_asset(asset)
 
 
@@ -410,6 +496,16 @@ def update_infrastructure_asset(
     db.refresh(asset)
 
     compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
+    from app.services.invalidation import resync_downstream_after_upstream_change
+
+    resync_downstream_after_upstream_change(
+        db,
+        project_id=proj.id,
+        user=user,
+        recompute_gap=False,
+        recompute_demand=False,
+        recompute_scenarios=True,
+    )
     return _serialize_infra_asset(asset)
 
 
@@ -437,6 +533,16 @@ def delete_infrastructure_asset(
     db.delete(asset)
     db.commit()
     compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
+    from app.services.invalidation import resync_downstream_after_upstream_change
+
+    resync_downstream_after_upstream_change(
+        db,
+        project_id=proj.id,
+        user=user,
+        recompute_gap=False,
+        recompute_demand=False,
+        recompute_scenarios=True,
+    )
 
 
 def upload_infrastructure_geojson(
@@ -478,8 +584,12 @@ def upload_infrastructure_geojson(
             props.get("asset_type")
             or ("HT_LINE" if geom_obj.geom_type in {"LineString", "MultiLineString"} else "DT")
         ).upper()
-        if raw_type not in {"HT_LINE", "LT_LINE", "POLE", "DT", "SUBSTATION", "TIE_IN"}:
-            raw_type = "TIE_IN"
+        allowed_asset_types = {"HT_LINE", "LT_LINE", "POLE", "DT", "SUBSTATION", "TIE_IN"}
+        if raw_type not in allowed_asset_types:
+            raise UploadValidationError(
+                f"Feature #{idx + 1} has unsupported asset_type '{raw_type}'. "
+                f"Expected one of {sorted(allowed_asset_types)}."
+            )
 
         name_val = str(props.get("name") or f"Uploaded {raw_type} #{idx + 1}")
         v_kv = (
@@ -511,6 +621,16 @@ def upload_infrastructure_geojson(
 
     db.commit()
     compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
+    from app.services.invalidation import resync_downstream_after_upstream_change
+
+    resync_downstream_after_upstream_change(
+        db,
+        project_id=proj.id,
+        user=user,
+        recompute_gap=False,
+        recompute_demand=False,
+        recompute_scenarios=True,
+    )
     return list_project_infrastructure(db, project_id=proj.id, user=user)
 
 
@@ -521,6 +641,19 @@ def compute_and_persist_gap_analysis(
     user: User,
 ) -> ProjectGapAnalysisResponse:
     """Run UTM terrain-weighted distance and obstacle gap analysis and persist results."""
+    with project_lock(db, project_id):
+        acquire_pg_xact_lock(db, f"project:{project_id}")
+        return _compute_and_persist_gap_analysis_locked(
+            db, project_id=project_id, user=user
+        )
+
+
+def _compute_and_persist_gap_analysis_locked(
+    db: Session,
+    *,
+    project_id: str,
+    user: User,
+) -> ProjectGapAnalysisResponse:
     proj = get_owned_project_or_404(db, project_id, user)
     settings_rows = ensure_project_settings_seeded(db, proj.id)
     settings_map = {r.key: r.value for r in settings_rows}
@@ -604,6 +737,7 @@ def compute_and_persist_gap_analysis(
         waterway_geoms_wgs84=water_geoms,
         metric_epsg=proj.metric_epsg,
         grid_max_terrain_m=settings_map.get("grid_max_terrain_distance_m", 3500.0),
+        minigrid_min_households=int(settings_map.get("minigrid_min_households", 15.0)),
     )
 
     # Clear prior gap rows and persist fresh analysis
@@ -640,10 +774,13 @@ def compute_and_persist_gap_analysis(
                 corridor_geom=res.corridor_line_wgs84,
             )
         )
-        # Keep SettlementCluster.d_infra_m synchronized
+        # Keep SettlementCluster.d_infra_m and evidence['d_infra_m'] synchronized
         cl_row = cluster_by_id.get(res.cluster_id)
         if cl_row is not None:
             cl_row.d_infra_m = res.d_straight_m
+            ev = dict(cl_row.evidence or {})
+            ev["d_infra_m"] = res.d_straight_m
+            cl_row.evidence = ev
 
         if corridor_dict is not None:
             corridor_features.append(
@@ -710,6 +847,19 @@ def compute_and_persist_project_demand(
     user: User,
 ) -> ProjectDemandSummaryResponse:
     """Compute and persist 7-category parametric demand per cluster and project summary."""
+    with project_lock(db, project_id):
+        acquire_pg_xact_lock(db, f"project:{project_id}")
+        return _compute_and_persist_project_demand_locked(
+            db, project_id=project_id, user=user
+        )
+
+
+def _compute_and_persist_project_demand_locked(
+    db: Session,
+    *,
+    project_id: str,
+    user: User,
+) -> ProjectDemandSummaryResponse:
     proj = get_owned_project_or_404(db, project_id, user)
     settings_rows = ensure_project_settings_seeded(db, proj.id)
     assumptions_map = {r.key: r.value for r in settings_rows}

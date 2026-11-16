@@ -21,7 +21,10 @@ Must NEVER import database models, file storage, or HTTP clients.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+from numpy.typing import NDArray
 from shapely.geometry import LineString, MultiLineString, MultiPoint
+from shapely.geometry.base import BaseGeometry
 
 from app.domain.engineering.constants import get_default_constants_map
 from app.domain.engineering.network_sizing import (
@@ -129,16 +132,25 @@ def compute_voltage_drop_analysis(
     dt_count: int,
     power_factor_cos_phi: float = 0.85,
     constants: dict[str, float] | None = None,
+    lt_3ph_length_m: float = 0.0,
+    lt_1ph_length_m: float = 0.0,
 ) -> VoltageDropAnalysisResult:
-    """Compute 3-phase 11 kV HT and 415 V LT voltage drop (V and %) against CEA limits."""
+    """Compute 3-phase 11 kV HT and 415 V/240 V LT voltage drop (V and %) against CEA limits."""
     consts = {**get_default_constants_map(), **(constants or {})}
     cos_phi = max(0.5, min(0.99, power_factor_cos_phi))
     sin_phi = math.sqrt(max(0.0, 1.0 - cos_phi * cos_phi))
 
     r_ht = consts["ht_11kv_r_ohm_per_km"]
     x_ht = consts["ht_11kv_x_ohm_per_km"]
-    r_lt = consts["lt_415v_3ph_r_ohm_per_km"]
-    x_lt = consts["lt_415v_3ph_x_ohm_per_km"]
+    r_lt_3ph = consts["lt_415v_3ph_r_ohm_per_km"]
+    x_lt_3ph = consts["lt_415v_3ph_x_ohm_per_km"]
+    r_lt_1ph = consts["lt_240v_1ph_r_ohm_per_km"]
+    x_lt_1ph = consts["lt_240v_1ph_x_ohm_per_km"]
+    total_lt_seg = max(0.0, lt_3ph_length_m) + max(0.0, lt_1ph_length_m)
+    share_1ph = (max(0.0, lt_1ph_length_m) / total_lt_seg) if total_lt_seg > 0.0 else 0.0
+    # 1-phase lateral loop resistance weight (2*Z_1ph vs sqrt(3)*Z_3ph on tail fraction)
+    r_lt = (1.0 - share_1ph) * r_lt_3ph + share_1ph * r_lt_1ph
+    x_lt = (1.0 - share_1ph) * x_lt_3ph + share_1ph * x_lt_1ph
     ht_limit_pct = consts["ht_max_vdrop_pct"]
     lt_limit_pct = consts["lt_max_vdrop_pct"]
 
@@ -193,11 +205,18 @@ def compute_annual_technical_losses(
     max_lt_branch_m: float,
     placed_dts: list[PlacedDistributionTransformer],
     constants: dict[str, float] | None = None,
+    lt_3ph_length_m: float = 0.0,
+    lt_1ph_length_m: float = 0.0,
 ) -> TechnicalLossesResult:
     """Compute annual HT/LT I²R conductor losses and IS 1180 DT iron/copper losses."""
     consts = {**get_default_constants_map(), **(constants or {})}
     r_ht = consts["ht_11kv_r_ohm_per_km"]
-    r_lt = consts["lt_415v_3ph_r_ohm_per_km"]
+    total_lt_seg = max(0.0, lt_3ph_length_m) + max(0.0, lt_1ph_length_m)
+    share_1ph = (max(0.0, lt_1ph_length_m) / total_lt_seg) if total_lt_seg > 0.0 else 0.0
+    r_lt = (
+        (1.0 - share_1ph) * consts["lt_415v_3ph_r_ohm_per_km"]
+        + share_1ph * consts["lt_240v_1ph_r_ohm_per_km"]
+    )
 
     if peak_kw_horizon <= 0.0 or energy_kwh_day_horizon <= 0.0:
         return TechnicalLossesResult(
@@ -342,6 +361,12 @@ def evaluate_cluster_engineering_layout(
     power_factor_cos_phi: float = 0.85,
     constants: dict[str, float] | None = None,
     metric_epsg: int = DEFAULT_METRIC_EPSG,
+    dem_elev_wgs84: NDArray[np.floating] | None = None,
+    landcover_wgs84: NDArray[np.integer] | None = None,
+    raster_bounds_wgs84: tuple[float, float, float, float] | None = None,
+    road_geoms_wgs84: list[BaseGeometry] | None = None,
+    water_geoms_wgs84: list[BaseGeometry] | None = None,
+    allow_centroid_ring_fallback: bool = True,
 ) -> ClusterEngineeringEvaluation:
     """Evaluate complete network routing, DT sizing, voltage drop, losses, and solar/BESS."""
     consts = {**get_default_constants_map(), **(constants or {})}
@@ -353,6 +378,16 @@ def evaluate_cluster_engineering_layout(
             n_non_residential=n_non_residential,
             constants=consts,
         )
+        pr = max(0.55, min(0.90, consts["solar_pr_ratio"]))
+        eff_ghi = max(3.5, worst_ghi_kwh_m2_day)
+        shs_capable_kwh_day = round(shs.total_pv_kwp * eff_ghi * pr, 3)
+        if energy_kwh_day_horizon > shs_capable_kwh_day + 0.05:
+            notes.append(
+                f"Unmet load notice: SHS array capability ({shs_capable_kwh_day:.2f} kWh/day "
+                f"from {shs.total_pv_kwp:.2f} kWp) is below full horizon demand "
+                f"({energy_kwh_day_horizon:.2f} kWh/day); delivered energy for LCOE is bounded "
+                "at physical PV generation capability."
+            )
         zero_vdrop = VoltageDropAnalysisResult(
             ht_current_a=0.0,
             ht_drop_v=0.0,
@@ -422,6 +457,7 @@ def evaluate_cluster_engineering_layout(
         dt_max_loading_ratio=consts["dt_max_loading_ratio"],
         lt_max_radial_reach_m=consts["lt_max_radial_reach_m"],
         metric_epsg=metric_epsg,
+        allow_centroid_ring_fallback=allow_centroid_ring_fallback,
     )
     lt_mst = build_cluster_415v_lt_mst(
         cluster_centroid_wgs84=cluster_centroid_wgs84,
@@ -430,6 +466,7 @@ def evaluate_cluster_engineering_layout(
         placed_dts=placed_dts,
         lt_standard_span_m=consts["lt_standard_span_m"],
         metric_epsg=metric_epsg,
+        allow_centroid_ring_fallback=allow_centroid_ring_fallback,
     )
     dt_points_wgs84 = build_dt_multipoint_wgs84(placed_dts)
 
@@ -447,6 +484,8 @@ def evaluate_cluster_engineering_layout(
             dt_count=max(1, len(placed_dts)),
             power_factor_cos_phi=power_factor_cos_phi,
             constants=consts,
+            lt_3ph_length_m=lt_mst.lt_3ph_length_m,
+            lt_1ph_length_m=lt_mst.lt_1ph_length_m,
         )
         losses = compute_annual_technical_losses(
             peak_kw_horizon=peak_kw_horizon,
@@ -457,6 +496,8 @@ def evaluate_cluster_engineering_layout(
             max_lt_branch_m=lt_mst.max_lt_branch_m,
             placed_dts=[],
             constants=consts,
+            lt_3ph_length_m=lt_mst.lt_3ph_length_m,
+            lt_1ph_length_m=lt_mst.lt_1ph_length_m,
         )
         notes.append(
             f"Solar PV + LiFePO4 Mini-Grid sized for worst-month GHI "
@@ -476,7 +517,7 @@ def evaluate_cluster_engineering_layout(
             peak_kva_horizon=peak_kva_horizon,
             energy_kwh_day_horizon=energy_kwh_day_horizon,
             annual_energy_mwh_horizon=annual_energy_mwh_horizon,
-            placed_dts=placed_dts,
+            placed_dts=[],
             dt_count=0,
             total_dt_rating_kva=0.0,
             max_dt_loading_pct=0.0,
@@ -493,13 +534,13 @@ def evaluate_cluster_engineering_layout(
             standalone_shs=None,
             ht_line_wgs84=None,
             lt_lines_wgs84=lt_mst.lt_lines_wgs84,
-            dt_points_wgs84=dt_points_wgs84,
+            dt_points_wgs84=None,
             engineering_notes=notes,
         )
 
     # GRID_EXTENSION or GRID_AUGMENTATION
     if modality == "GRID_AUGMENTATION" and tie_in_wgs84 is None:
-        # Augmentation of an already electrified cluster with local LT reconductoring & DT upgrade
+        # No infrastructure tie-in or utility feeder uploaded -> flag requires_tie_in (CRIT-04)
         ht_res = route_cluster_11kv_ht_feeder(
             tie_in_wgs84=None,
             placed_dts=placed_dts,
@@ -520,6 +561,11 @@ def evaluate_cluster_engineering_layout(
             ht_standard_span_m=consts["ht_standard_span_m"],
             ht_steep_span_m=consts["ht_steep_span_m"],
             metric_epsg=metric_epsg,
+            dem_elev_wgs84=dem_elev_wgs84,
+            landcover_wgs84=landcover_wgs84,
+            raster_bounds_wgs84=raster_bounds_wgs84,
+            road_geoms_wgs84=road_geoms_wgs84,
+            water_geoms_wgs84=water_geoms_wgs84,
         )
 
     vdrop = compute_voltage_drop_analysis(
@@ -529,6 +575,8 @@ def evaluate_cluster_engineering_layout(
         dt_count=len(placed_dts),
         power_factor_cos_phi=power_factor_cos_phi,
         constants=consts,
+        lt_3ph_length_m=lt_mst.lt_3ph_length_m,
+        lt_1ph_length_m=lt_mst.lt_1ph_length_m,
     )
     losses = compute_annual_technical_losses(
         peak_kw_horizon=peak_kw_horizon,
@@ -539,15 +587,17 @@ def evaluate_cluster_engineering_layout(
         max_lt_branch_m=lt_mst.max_lt_branch_m,
         placed_dts=placed_dts,
         constants=consts,
+        lt_3ph_length_m=lt_mst.lt_3ph_length_m,
+        lt_1ph_length_m=lt_mst.lt_1ph_length_m,
     )
 
     total_dt_kva = sum(dt.rating_kva for dt in placed_dts)
     max_dt_load_pct = max((dt.loading_pct for dt in placed_dts), default=0.0)
 
-    if ht_res.requires_tie_in and modality == "GRID_EXTENSION":
+    if ht_res.requires_tie_in and modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"}:
         notes.append(
             "Existing 11 kV tie-in point is UNSET (Core Principle #4). "
-            "Place an assumed 11 kV tie-in point or upload utility GIS to route the 11 kV feeder."
+            "Place an assumed 11 kV tie-in point or upload utility GIS to validate grid supply."
         )
     else:
         notes.append(
@@ -569,7 +619,10 @@ def evaluate_cluster_engineering_layout(
         est_households=est_households,
         modality=modality,
         is_manual_override=is_manual_override,
-        requires_tie_in=ht_res.requires_tie_in and modality == "GRID_EXTENSION",
+        requires_tie_in=(
+            ht_res.requires_tie_in
+            and modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"}
+        ),
         peak_kw_horizon=peak_kw_horizon,
         peak_kva_horizon=peak_kva_horizon,
         energy_kwh_day_horizon=energy_kwh_day_horizon,

@@ -23,6 +23,7 @@ Adheres strictly to AGENTS.md:
 
 import csv
 import io
+import math
 from dataclasses import dataclass
 
 VALID_SOR_CATEGORIES: frozenset[str] = frozenset(
@@ -352,11 +353,43 @@ def parse_and_validate_sor_csv(csv_content: str) -> SorCsvParseResult:
     parsed_items: list[RateItemSpec] = []
     unset_codes: list[str] = []
 
-    stream = io.StringIO(csv_content.strip())
-    reader = csv.DictReader(stream)
+    raw_csv = csv_content or ""
+    if "\x00" in raw_csv:
+        return SorCsvParseResult(
+            is_valid=False,
+            items=[],
+            errors=[
+                CsvRowValidationError(
+                    row_number=1,
+                    item_code="CSV",
+                    field="file",
+                    message="CSV contains invalid NUL bytes.",
+                )
+            ],
+            unset_item_codes=[],
+        )
+    cleaned = raw_csv.lstrip("\ufeff")
+    stream = io.StringIO(cleaned.strip())
+    try:
+        reader = csv.DictReader(stream)
+        fieldnames = reader.fieldnames
+    except csv.Error as exc:
+        return SorCsvParseResult(
+            is_valid=False,
+            items=[],
+            errors=[
+                CsvRowValidationError(
+                    row_number=1,
+                    item_code="HEADER",
+                    field="file",
+                    message=f"Malformed CSV syntax: {exc}",
+                )
+            ],
+            unset_item_codes=[],
+        )
 
     required_cols = {"item_code", "description", "category", "unit", "rate_inr"}
-    if not reader.fieldnames:
+    if not fieldnames:
         return SorCsvParseResult(
             is_valid=False,
             items=[],
@@ -371,7 +404,7 @@ def parse_and_validate_sor_csv(csv_content: str) -> SorCsvParseResult:
             unset_item_codes=[],
         )
 
-    normalized_headers = {h.strip() for h in reader.fieldnames if h}
+    normalized_headers = {h.strip() for h in fieldnames if h}
     missing_cols = sorted(required_cols - normalized_headers)
     if missing_cols:
         return SorCsvParseResult(
@@ -389,7 +422,38 @@ def parse_and_validate_sor_csv(csv_content: str) -> SorCsvParseResult:
         )
 
     seen_codes: set[str] = set()
-    for idx, raw_row in enumerate(reader, start=2):
+    try:
+        rows_iter = list(enumerate(reader, start=2))
+    except csv.Error as exc:
+        return SorCsvParseResult(
+            is_valid=False,
+            items=[],
+            errors=[
+                CsvRowValidationError(
+                    row_number=1,
+                    item_code="CSV",
+                    field="file",
+                    message=f"Malformed CSV row data: {exc}",
+                )
+            ],
+            unset_item_codes=[],
+        )
+    if not rows_iter:
+        return SorCsvParseResult(
+            is_valid=False,
+            items=[],
+            errors=[
+                CsvRowValidationError(
+                    row_number=1,
+                    item_code="HEADER",
+                    field="file",
+                    message="CSV contains header row only and zero rate items.",
+                )
+            ],
+            unset_item_codes=[],
+        )
+
+    for idx, raw_row in rows_iter:
         row = {
             (k.strip() if k else ""): (v.strip() if isinstance(v, str) else "")
             for k, v in raw_row.items()
@@ -467,14 +531,14 @@ def parse_and_validate_sor_csv(csv_content: str) -> SorCsvParseResult:
         else:
             try:
                 val = float(raw_rate)
-                if val <= 0.0:
+                if not math.isfinite(val) or val <= 0.0:
                     errors.append(
                         CsvRowValidationError(
                             row_number=idx,
                             item_code=item_code,
                             field="rate_inr",
                             message=(
-                                f"rate_inr ({raw_rate}) must be strictly positive (> 0), "
+                                f"rate_inr ({raw_rate}) must be a finite positive number (> 0), "
                                 "or 'UNSET' if unknown."
                             ),
                         )

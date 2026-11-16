@@ -120,3 +120,26 @@
 - [x] **M8-5:** Docker container configuration and offline evaluation readiness
 - [x] **M8-6:** Comprehensive technical documentation and user manual finalization
 
+---
+
+## UI / UX Redesign & Vision Reset
+- [x] **VISION-RESET-1:** Softened cartographic design system tokens, elevation, shell navigation, and shared UI primitives *(Completed 2026-11-15)*
+- [x] **VISION-RESET-2:** Live interactive MapLibre hero composition on `/`, foregrounded portfolio register on `/projects`, and integrated GIS overview workspace on `/projects/:id/workspace` *(Completed 2026-11-15)*
+- [x] **VISION-RESET-3:** Specialised GIS workstation HUD/legend/inspector polish, desktop Cost BOQ column alignment, mobile `390x844` responsive verification, and zero-regression test suite pass *(Completed 2026-11-15)*
+
+## Full-Stack Product Audit & Master Remediation (`AUD-01`–`AUD-29`)
+- [x] **REMEDIATION-PHASE-1:** Epistemic honesty, strict demo/non-demo GIS isolation, zero-cluster export gates, `UNSET` total withholding, verified-cluster confirmation, and transactional wizard validation (`AUD-01`, `AUD-03`–`AUD-05`, `AUD-07`, `AUD-09`–`AUD-11`, `AUD-18`, `AUD-19`, `AUD-23`) *(Completed 2026-11-15)*
+- [x] **REMEDIATION-PHASE-2:** Engineering cascade sync (`load_tier`, Stage 3→4→5 consistency), SLD/PDF completeness, real terrain routing disclosure, auth redirect hardening, and error visibility (`AUD-02`, `AUD-06`, `AUD-08`, `AUD-12`–`AUD-17`, `AUD-20`) *(Completed 2026-11-15)*
+- [x] **REMEDIATION-PHASE-3:** Multi-viewport responsive polish (`768px` header/panel stacking, `390px` basemap wrapping & bounded `GisFeatureInspectorDrawer`), `QualityTag` Lucide icons, modal scroll/focus traps, MVT wiring, `ref-buildings-fill` inspector dispatch, and live Edge CDP verification (`AUD-21`, `AUD-22`, `AUD-24`–`AUD-29`) *(Completed 2026-11-15)*
+
+---
+
+## Full Data Integrity, Contextual Help & End-to-End DPR PDF Audit Remediation
+- [x] **AUDIT-PDF-TIER-1:** Real VIIRS/DEM/WorldCover raster sampling (`UNKNOWN` proxy when VIIRS unavailable), distinct Grid vs. Mini-Grid vs. SHS comparison economics, `1280 Wh` SHS BESS, `200 kVA` DT split limit, 1-phase impedance weighting, terrain-conditioned equipment supply, unified synthetic predicate (`CRIT-01`–`CRIT-05`, `HIGH-02`, `MED-03`) *(Completed 2026-11-16)*
+- [x] **AUDIT-PDF-TIER-2:** SQLite `PRAGMA foreign_keys=ON`, deterministic cascading invalidation/resync (`backend/app/services/invalidation.py`), UTM cluster-building lookup, CSV NUL/header hardening, Excel growth/coincident demand totals & empty guards (`CRIT-06`, `HIGH-03`, `HIGH-04`) *(Completed 2026-11-16)*
+- [x] **AUDIT-PDF-TIER-3:** 24-section DPR PDF layout & cartography overhaul (Plate 1 de-conflicted labels, Plate 2 network map, multi-row wrapped SLD, full table `Paragraph` wrapping, dynamic coincidence & `1.03x` sag, `O&M` fix) & frontend enum sync + blank wizard defaults (`HIGH-01`, `HIGH-05`) *(Completed 2026-11-16)*
+- [x] **AUDIT-PDF-TIER-4:** Full technical glossary expansion (+8 terms, `NPV` -> `NPC`), constant alignment (`<12 m²`, `150 m` / `5` buildings), null guards, inline range labels, WCAG `24×24px` tooltip targets, `aria-pressed` & Escape handlers, live E2E + visual 12-page PDF + Edge CDP verification (`MED-01`, `MED-02`, `LOW-01`, `LOW-02`) *(Completed 2026-11-16)*
+- [x] **UX-IA-STEP1-SIMPLIFICATION:** Task-focused Step 1 redesign (`Get your map ready`, `Fetch map data`), honest `Ready`/`Partially available`/`Action needed` status classification (`mapDataReadiness.ts`), collapsed `Data sources & technical information` drawer, consolidated single-icon tooltips, visible data-quality warnings, explicit `Next: Villages & Habitations` transition, and generalized overview provenance simplification *(Completed 2026-11-16)*
+- [x] **UX-IA-STEP5-SIMPLIFICATION:** Simplified Step 5 (`CostAndScenarioComparisonPanel.tsx`, `beginnerGlossary.ts`) foregrounding Estimated project cost, Upfront cost per household, and Recommended electrification plan; moved NPC/LCOE/OPEX/subsidy metrics into collapsed `Financial details`; consolidated citations into collapsed `Rate sources & assumptions`; replaced repeated `ESTIMATED`/`Unit Prices Set` tags with honest rate-status breakdown (`Field-verified / Approved: 0`); simplified BOQ to 4 columns with expandable item details & inline rate controls and translated category labels *(Completed 2026-11-16)*
+- [x] **AUTH-INDIVIDUAL-ACCOUNTS:** Implemented individual accounts for Swayam Kumar (`swayamkr26@gmail.com`) and Sumit Kushwaha (`sumitp@gmail.com`) with Argon2id backend hashes (`seed_service.py`), removed hardcoded frontend credentials/autofill (`LoginPage.tsx`), updated `AppShell` header to show only the authenticated user's full name (`Swayam Kumar` / `Sumit Kushwaha`), preserved shared Sample Study (`DEMO_PROJECT_ID`) access alongside private project isolation (`project_service.py`), and verified refresh persistence, sign-out invalidation, and browser-back protection *(Completed 2026-11-16)*
+

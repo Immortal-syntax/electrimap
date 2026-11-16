@@ -247,9 +247,12 @@ STANDARD_ENGINEERING_CONSTANTS: tuple[EngineeringConstantSpec, ...] = (
     ),
     EngineeringConstantSpec(
         key="shs_kit_bess_wh",
-        value=800.0,
+        value=1280.0,
         unit="Wh/HH",
-        description="Standalone Solar Home System (SHS) LiFePO4 battery capacity per household",
+        description=(
+            "Standalone Solar Home System (SHS) LiFePO4 battery capacity per household "
+            "(12.8 V 100 Ah)"
+        ),
         citation="Ministry of Power New Solar Power Scheme (for PVTG Habitations under DA-JGUA)",
         status="SOURCE_VERIFIED",
     ),

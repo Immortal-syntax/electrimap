@@ -24,6 +24,7 @@ from typing import Any
 
 from shapely.geometry import mapping
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -34,14 +35,16 @@ from app.db.models.infrastructure import (
     ProjectDemandEstimate,
 )
 from app.db.models.planning import ClusterEngineeringLayout, PlanningScenario
+from app.db.models.project import ProjectAoi
 from app.db.models.reference import EngineeringConstant
 from app.db.models.settlement import SettlementCluster
-from app.db.models.spatial import Building, SolarResource
+from app.db.models.spatial import Building, OsmFeature, SolarResource
 from app.domain.engineering.calculations import evaluate_cluster_engineering_layout
 from app.domain.engineering.constants import (
     STANDARD_ENGINEERING_CONSTANTS,
     get_default_constants_map,
 )
+from app.domain.gis.crs import project_geometry
 from app.schemas.planning import (
     ClusterEngineeringLayoutResponse,
     EngineeringConstantListResponse,
@@ -50,6 +53,8 @@ from app.schemas.planning import (
     PlanningScenarioListResponse,
     PlanningScenarioResponse,
 )
+from app.services.concurrency import acquire_pg_xact_lock, keyed_lock, project_lock
+from app.services.data_service import load_reference_terrain_arrays_for_aoi
 from app.services.infrastructure_service import (
     compute_and_persist_gap_analysis,
     compute_and_persist_project_demand,
@@ -73,26 +78,60 @@ def list_engineering_constants(db: Session) -> EngineeringConstantListResponse:
         .all()
     )
     if not rows:
-        for spec in STANDARD_ENGINEERING_CONSTANTS:
-            db.add(
-                EngineeringConstant(
-                    key=spec.key,
-                    value=spec.value,
-                    unit=spec.unit,
-                    description=spec.description,
-                    citation=spec.citation,
-                    status=spec.status,
-                    updated_by="system_seed",
+        with keyed_lock("global:engineering_constants"):
+            acquire_pg_xact_lock(db, "global:engineering_constants")
+            rows = (
+                db.execute(select(EngineeringConstant).order_by(EngineeringConstant.key.asc()))
+                .scalars()
+                .all()
+            )
+            if not rows:
+                for spec in STANDARD_ENGINEERING_CONSTANTS:
+                    db.add(
+                        EngineeringConstant(
+                            key=spec.key,
+                            value=spec.value,
+                            unit=spec.unit,
+                            description=spec.description,
+                            citation=spec.citation,
+                            status=spec.status,
+                            updated_by="system_seed",
+                        )
+                    )
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
+                rows = (
+                    db.execute(
+                        select(EngineeringConstant).order_by(EngineeringConstant.key.asc())
+                    )
+                    .scalars()
+                    .all()
                 )
-            )
-        db.commit()
-        rows = (
-            db.execute(
-                select(EngineeringConstant).order_by(EngineeringConstant.key.asc())
-            )
-            .scalars()
-            .all()
-        )
+
+    else:
+        spec_by_key = {spec.key: spec for spec in STANDARD_ENGINEERING_CONSTANTS}
+        dirty = False
+        for r in rows:
+            matched_spec = spec_by_key.get(r.key)
+            if (
+                matched_spec is not None
+                and r.updated_by == "system_seed"
+                and (
+                    r.value != matched_spec.value
+                    or r.description != matched_spec.description
+                    or r.citation != matched_spec.citation
+                )
+            ):
+                r.value = matched_spec.value
+                r.unit = matched_spec.unit
+                r.description = matched_spec.description
+                r.citation = matched_spec.citation
+                r.status = matched_spec.status
+                dirty = True
+        if dirty:
+            db.commit()
 
     return EngineeringConstantListResponse(
         count=len(rows),
@@ -116,23 +155,37 @@ def _resolve_default_modality_for_scenario(
     effective_class: str,
     est_households: int,
     d_terrain_m: float | None,
-    minigrid_min_hh: int = 25,
+    minigrid_min_hh: int = 15,
 ) -> str:
     """Resolve the target electrification modality for a cluster under a given scenario."""
     if scenario_key == "GRID_EXTENSION_ONLY":
-        if effective_class in {"LIKELY_ELECTRIFIED", "POTENTIALLY_UNDERSERVED"}:
+        if effective_class in {
+            "LIKELY_ELECTRIFIED",
+            "POTENTIALLY_UNDERSERVED",
+            "ELECTRIFIED",
+            "GRID_CONNECTED",
+            "UNDERSERVED",
+        }:
             return "GRID_AUGMENTATION"
         return "GRID_EXTENSION"
 
     if scenario_key == "MINIGRID_PRIORITY":
-        if effective_class in {"LIKELY_ELECTRIFIED", "POTENTIALLY_UNDERSERVED"}:
+        if effective_class in {
+            "LIKELY_ELECTRIFIED",
+            "ELECTRIFIED",
+            "GRID_CONNECTED",
+        }:
             return "GRID_AUGMENTATION"
         if est_households >= max(10, minigrid_min_hh // 2):
             return "SOLAR_MINIGRID"
         return "STANDALONE_SHS"
 
     if scenario_key == "SHS_DISPERSED":
-        if effective_class in {"LIKELY_ELECTRIFIED", "POTENTIALLY_UNDERSERVED"}:
+        if effective_class in {
+            "LIKELY_ELECTRIFIED",
+            "ELECTRIFIED",
+            "GRID_CONNECTED",
+        }:
             return "GRID_AUGMENTATION"
         return "STANDALONE_SHS"
 
@@ -147,7 +200,13 @@ def _resolve_default_modality_for_scenario(
 
     # When infrastructure is UNSET (`UNSET_INFRA_REQUIRED`), select optimal modality based on
     # settlement size and electrification status while preserving `requires_tie_in` for Grid
-    if effective_class in {"LIKELY_ELECTRIFIED", "POTENTIALLY_UNDERSERVED"}:
+    if effective_class in {
+        "LIKELY_ELECTRIFIED",
+        "POTENTIALLY_UNDERSERVED",
+        "ELECTRIFIED",
+        "GRID_CONNECTED",
+        "UNDERSERVED",
+    }:
         return "GRID_AUGMENTATION"
     if d_terrain_m is None:
         return "SOLAR_MINIGRID" if est_households >= minigrid_min_hh else "STANDALONE_SHS"
@@ -352,6 +411,25 @@ def generate_or_update_scenario(
     preserve_manual_overrides: bool = False,
 ) -> PlanningScenarioResponse:
     """Generate or recalculate a planning scenario and persist all cluster engineering layouts."""
+    with project_lock(db, project_id):
+        acquire_pg_xact_lock(db, f"project:{project_id}")
+        return _generate_or_update_scenario_locked(
+            db,
+            project_id=project_id,
+            user=user,
+            scenario_key=scenario_key,
+            preserve_manual_overrides=preserve_manual_overrides,
+        )
+
+
+def _generate_or_update_scenario_locked(
+    db: Session,
+    *,
+    project_id: str,
+    user: User,
+    scenario_key: str = "HYBRID_OPTIMAL",
+    preserve_manual_overrides: bool = False,
+) -> PlanningScenarioResponse:
     proj = get_owned_project_or_404(db, project_id, user)
     settings_rows = ensure_project_settings_seeded(db, proj.id)
     settings_map = {r.key: r.value for r in settings_rows}
@@ -443,13 +521,25 @@ def generate_or_update_scenario(
         **{c.key: c.value for c in const_resp.items},
     }
 
-    # Check if scenario already exists
-    scenario = db.execute(
-        select(PlanningScenario).where(
-            PlanningScenario.project_id == proj.id,
-            PlanningScenario.scenario_key == scenario_key,
+    # Check if scenario already exists (clean up any historical duplicate rows defensively)
+    acquire_pg_xact_lock(db, f"project:{proj.id}")
+    matching_scenarios = list(
+        db.execute(
+            select(PlanningScenario)
+            .where(
+                PlanningScenario.project_id == proj.id,
+                PlanningScenario.scenario_key == scenario_key,
+            )
+            .order_by(PlanningScenario.created_at.asc(), PlanningScenario.id.asc())
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .all()
+    )
+    scenario = matching_scenarios[0] if matching_scenarios else None
+    if len(matching_scenarios) > 1:
+        for duplicate_scen in matching_scenarios[1:]:
+            db.delete(duplicate_scen)
+        db.flush()
 
     manual_overrides_by_cid: dict[str, str] = {}
     if scenario is not None and preserve_manual_overrides:
@@ -508,7 +598,7 @@ def generate_or_update_scenario(
         manual_overrides_by_cid=manual_overrides_by_cid,
         worst_ghi=worst_ghi,
         power_factor_cos_phi=settings_map.get("power_factor_cos_phi", 0.85),
-        minigrid_min_hh=int(settings_map.get("minigrid_min_households", 25.0)),
+        minigrid_min_hh=int(settings_map.get("minigrid_min_households", 15.0)),
         consts_map=consts_map,
         metric_epsg=proj.metric_epsg,
     )
@@ -551,6 +641,23 @@ def _recompute_scenario_clusters(
     total_bess_kwh = 0.0
     total_shs_kits = 0
 
+    aoi_row = db.execute(
+        select(ProjectAoi).where(ProjectAoi.project_id == scenario.project_id)
+    ).scalar_one_or_none()
+    aoi_geom = aoi_row.geom if aoi_row is not None else None
+    dem_elev_wgs84, landcover_wgs84, raster_bounds_wgs84 = load_reference_terrain_arrays_for_aoi(
+        aoi_geom
+    )
+    osm_rows = (
+        db.execute(select(OsmFeature).where(OsmFeature.project_id == scenario.project_id))
+        .scalars()
+        .all()
+    )
+    road_geoms_wgs84 = [r.geom for r in osm_rows if r.category == "ROAD" and r.geom is not None]
+    water_geoms_wgs84 = [r.geom for r in osm_rows if r.category == "WATER" and r.geom is not None]
+    fallback_cx = float(aoi_geom.centroid.x) if aoi_geom is not None else 0.0
+    fallback_cy = float(aoi_geom.centroid.y) if aoi_geom is not None else 0.0
+
     for cl in clusters:
         gap_row = gap_by_cid.get(cl.id)
         dem_row = demand_by_cid.get(cl.id)
@@ -577,16 +684,24 @@ def _recompute_scenario_clusters(
             )
             is_manual = False
 
-        # Collect residential/institutional building points inside or near this cluster polygon
-        b_pts: list[tuple[float, float]] = []
-        if cl.geom is not None:
-            buffered_poly = cl.geom.buffer(0.0005)
+        # Collect active buildings assigned to this cluster (fallback: 25 m metric UTM hull buffer)
+        b_pts: list[tuple[float, float]] = [
+            (float(b.centroid.x), float(b.centroid.y))
+            for b in buildings
+            if b.centroid is not None and not b.is_excluded and b.cluster_id == cl.id
+        ]
+        if not b_pts and cl.geom is not None:
+            cl_utm = project_geometry(
+                cl.geom, source_epsg=4326, target_epsg=metric_epsg
+            ).buffer(25.0)
             for b in buildings:
-                if b.centroid is not None and buffered_poly.contains(b.centroid):
-                    b_pts.append((float(b.centroid.x), float(b.centroid.y)))
+                if b.centroid is not None and not b.is_excluded and b.cluster_id is None:
+                    b_utm = project_geometry(b.centroid, source_epsg=4326, target_epsg=metric_epsg)
+                    if cl_utm.contains(b_utm):
+                        b_pts.append((float(b.centroid.x), float(b.centroid.y)))
 
-        c_lon = float(cl.centroid.x) if cl.centroid is not None else 82.732
-        c_lat = float(cl.centroid.y) if cl.centroid is not None else 18.567
+        c_lon = float(cl.centroid.x) if cl.centroid is not None else fallback_cx
+        c_lat = float(cl.centroid.y) if cl.centroid is not None else fallback_cy
 
         tie_in_pt = _extract_tie_in_point_for_cluster(
             cluster=cl,
@@ -622,6 +737,12 @@ def _recompute_scenario_clusters(
             power_factor_cos_phi=power_factor_cos_phi,
             constants=consts_map,
             metric_epsg=metric_epsg,
+            dem_elev_wgs84=dem_elev_wgs84,
+            landcover_wgs84=landcover_wgs84,
+            raster_bounds_wgs84=raster_bounds_wgs84,
+            road_geoms_wgs84=road_geoms_wgs84,
+            water_geoms_wgs84=water_geoms_wgs84,
+            allow_centroid_ring_fallback=False,
         )
 
         pv_kwp = (
@@ -783,22 +904,34 @@ def get_project_scenarios(
         .all()
     )
     if not scenarios:
-        generate_or_update_scenario(
-            db,
-            project_id=proj.id,
-            user=user,
-            scenario_key="HYBRID_OPTIMAL",
-            preserve_manual_overrides=False,
-        )
-        scenarios = (
-            db.execute(
-                select(PlanningScenario)
-                .where(PlanningScenario.project_id == proj.id)
-                .order_by(PlanningScenario.created_at.asc())
+        with project_lock(db, proj.id):
+            acquire_pg_xact_lock(db, f"project:{proj.id}")
+            scenarios = (
+                db.execute(
+                    select(PlanningScenario)
+                    .where(PlanningScenario.project_id == proj.id)
+                    .order_by(PlanningScenario.created_at.asc())
+                )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
+            if not scenarios:
+                generate_or_update_scenario(
+                    db,
+                    project_id=proj.id,
+                    user=user,
+                    scenario_key="HYBRID_OPTIMAL",
+                    preserve_manual_overrides=False,
+                )
+                scenarios = (
+                    db.execute(
+                        select(PlanningScenario)
+                        .where(PlanningScenario.project_id == proj.id)
+                        .order_by(PlanningScenario.created_at.asc())
+                    )
+                    .scalars()
+                    .all()
+                )
 
     serialized = [_serialize_scenario(db, s) for s in scenarios]
     active_scen = next((s for s in serialized if s.is_active), serialized[0])
@@ -849,6 +982,14 @@ def override_cluster_modality(
 
     layout_row.modality = modality
     layout_row.is_manual_override = True
+    from app.services.invalidation import invalidate_downstream_from_stage
+
+    invalidate_downstream_from_stage(
+        db,
+        project_id=proj.id,
+        stage="boq_only",
+        bump_version=True,
+    )
     db.commit()
 
     return generate_or_update_scenario(
@@ -858,3 +999,44 @@ def override_cluster_modality(
         scenario_key=scenario.scenario_key,
         preserve_manual_overrides=True,
     )
+
+
+def sync_project_scenarios_after_upstream_change(
+    db: Session,
+    *,
+    project_id: str,
+    user: User,
+) -> None:
+    """Recompute all persisted scenarios after upstream demand/assumption/tier changes."""
+    from app.services.invalidation import invalidate_downstream_from_stage
+
+    invalidate_downstream_from_stage(
+        db,
+        project_id=project_id,
+        stage="boq_only",
+        bump_version=True,
+    )
+    db.commit()
+    scenarios = (
+        db.execute(
+            select(PlanningScenario)
+            .where(PlanningScenario.project_id == project_id)
+            .order_by(PlanningScenario.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if not scenarios:
+        return
+    prior_active_key = next(
+        (s.scenario_key for s in scenarios if s.is_active), scenarios[0].scenario_key
+    )
+    other_keys = [s.scenario_key for s in scenarios if s.scenario_key != prior_active_key]
+    for key in [*other_keys, prior_active_key]:
+        generate_or_update_scenario(
+            db,
+            project_id=project_id,
+            user=user,
+            scenario_key=key,
+            preserve_manual_overrides=True,
+        )

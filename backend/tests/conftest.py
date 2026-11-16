@@ -26,6 +26,7 @@ import app.db.models as _models  # noqa: F401
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app as fastapi_app
+from app.services.seed_service import ensure_seed_data
 
 
 @pytest.fixture()
@@ -52,6 +53,22 @@ def db_session() -> Generator[Session, None, None]:
 @pytest.fixture()
 def client(db_session: Session) -> Generator[TestClient, None, None]:
     """Provide a FastAPI TestClient wired to the isolated test database session."""
+
+    def override_get_db() -> Generator[Session, None, None]:
+        yield db_session
+
+    fastapi_app.dependency_overrides[get_db] = override_get_db
+    with TestClient(fastapi_app) as test_client:
+        yield test_client
+    fastapi_app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def seeded_client(
+    db_session: Session,
+) -> Generator[TestClient, None, None]:
+    """Provide an isolated TestClient with seed users, AdminUnits, and Koraput Demo seeded."""
+    ensure_seed_data(db_session)
 
     def override_get_db() -> Generator[Session, None, None]:
         yield db_session

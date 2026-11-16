@@ -29,6 +29,7 @@ from dataclasses import dataclass
 
 from shapely.geometry import LineString, Point, Polygon
 from shapely.geometry.base import BaseGeometry
+from shapely.ops import nearest_points
 
 from app.domain.gis.crs import project_geometry
 
@@ -146,7 +147,10 @@ def recommend_cluster_modality(
             "USER_ASSUMED tie-in point on the map to evaluate grid extension distance.",
         )
 
-    if effective_class in {"LIKELY_ELECTRIFIED", "ELECTRIFIED"} and d_terrain_m <= 1200.0:
+    if (
+        effective_class in {"LIKELY_ELECTRIFIED", "ELECTRIFIED", "GRID_CONNECTED"}
+        and d_terrain_m <= 1200.0
+    ):
         return (
             "GRID_AUGMENTATION",
             f"Habitation is classified as {effective_class} within {d_terrain_m:.0f} m "
@@ -154,10 +158,10 @@ def recommend_cluster_modality(
             "intensification & DT check.",
         )
 
-    if effective_class == "POTENTIALLY_UNDERSERVED" and d_terrain_m <= 1800.0:
+    if effective_class in {"POTENTIALLY_UNDERSERVED", "UNDERSERVED"} and d_terrain_m <= 1800.0:
         return (
             "GRID_AUGMENTATION",
-            f"Potentially underserved habitation at {d_terrain_m:.0f} m effective distance; "
+            f"Underserved habitation ({effective_class}) at {d_terrain_m:.0f} m distance; "
             "recommend additional 25/63 kVA DT placement and LT tail-end reconductoring.",
         )
 
@@ -246,7 +250,7 @@ def run_project_gap_analysis(
                 if isinstance(asset_utm, Point):
                     nearest_pt_utm = asset_utm
                 else:
-                    nearest_pt_utm = asset_utm.centroid
+                    nearest_pt_utm = nearest_points(c_utm.centroid, asset_utm)[1]
 
         water_crossings = 0
         corridor_wgs84: LineString | None = None

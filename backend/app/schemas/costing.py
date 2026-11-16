@@ -170,6 +170,7 @@ class ClusterBoqBreakdownResponse(BaseModel):
     total_capex_lakhs: float
     has_unset_rates: bool
     unset_item_codes: list[str]
+    totals_withheld: bool = False
     economics: LifecycleEconomicsResponse
     lines: list[BoqLineItemResponse]
 
@@ -198,6 +199,8 @@ class ScenarioBoqResponse(BaseModel):
     total_capex_lakhs: float
     has_unset_rates: bool
     unset_item_codes: list[str]
+    totals_withheld: bool = False
+    grant_policy_note: str | None = None
     export_blocked_reason: str | None
     economics: LifecycleEconomicsResponse
     aggregated_lines: list[BoqLineItemResponse]
@@ -258,6 +261,7 @@ class ScenarioComparisonCard(BaseModel):
     avoided_co2_tonnes_yr: float
     has_unset_rates: bool
     unset_item_codes: list[str]
+    totals_withheld: bool = False
 
 
 class ProjectScenarioComparisonResponse(BaseModel):
@@ -270,6 +274,7 @@ class ProjectScenarioComparisonResponse(BaseModel):
     horizon_years: int
     has_unset_rates: bool
     unset_item_codes: list[str]
+    totals_withheld: bool = False
     export_blocked_reason: str | None
     scenarios: list[ScenarioComparisonCard]
     habitation_comparisons: list[HabitationOptionComparisonRow]

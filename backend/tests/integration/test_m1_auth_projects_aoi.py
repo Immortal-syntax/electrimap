@@ -26,7 +26,17 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.db.models.auth import User
-from app.services.seed_service import DEFAULT_PLANNER_EMAIL, DEFAULT_PLANNER_PASSWORD
+from app.services.seed_service import (
+    DEFAULT_PLANNER_EMAIL,
+    DEFAULT_PLANNER_PASSWORD,
+    DEMO_PROJECT_ID,
+    SUMIT_DISPLAY_NAME,
+    SUMIT_EMAIL,
+    SUMIT_PASSWORD,
+    SWAYAM_DISPLAY_NAME,
+    SWAYAM_EMAIL,
+    SWAYAM_PASSWORD,
+)
 
 
 def _login_planner(client: TestClient) -> str:
@@ -311,3 +321,88 @@ def test_set_aoi_and_multipart_file_uploads(client: TestClient, tmp_path: Path) 
     )
     assert bad_shp.status_code == 422
     assert bad_shp.json()["error"]["code"] == "MISSING_CRS_PRJ"
+
+
+def test_individual_user_signin_and_sample_study_access_isolation(
+    seeded_client: TestClient,
+) -> None:
+    """Verify Swayam & Sumit login, Sample Study access, and private project isolation."""
+    client = seeded_client
+
+    # 1. Unregistered email and wrong password return 401
+    unknown = client.post(
+        "/api/v1/auth/login",
+        json={"email": "not-registered@example.com", "password": "1234"},
+    )
+    assert unknown.status_code == 401
+    bad_pw = client.post(
+        "/api/v1/auth/login",
+        json={"email": SUMIT_EMAIL, "password": "wrong-password"},
+    )
+    assert bad_pw.status_code == 401
+
+    # 2. Swayam signs in with swayamkr26@gmail.com / 1234
+    swayam_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": SWAYAM_EMAIL, "password": SWAYAM_PASSWORD},
+    )
+    assert swayam_login.status_code == 200
+    swayam_body = swayam_login.json()
+    assert swayam_body["user"]["display_name"] == SWAYAM_DISPLAY_NAME
+    assert "password_hash" not in swayam_body["user"]
+    assert "password" not in swayam_body["user"]
+    swayam_csrf = swayam_body["csrf_token"]
+
+    # Create a private project owned by Swayam
+    priv_res = client.post(
+        "/api/v1/projects",
+        headers={"X-CSRF-Token": swayam_csrf},
+        json={"name": "Swayam Private Assessment"},
+    )
+    assert priv_res.status_code == 201
+    swayam_priv_id = priv_res.json()["id"]
+
+    # Verify Swayam can access the Sample Study
+    assert client.get(f"/api/v1/projects/{DEMO_PROJECT_ID}").status_code == 200
+
+    # Logout Swayam & verify protected endpoints immediately return 401
+    logout_swayam = client.post(
+        "/api/v1/auth/logout",
+        headers={"X-CSRF-Token": swayam_csrf},
+    )
+    assert logout_swayam.status_code == 200
+    assert client.get("/api/v1/auth/me").status_code == 401
+    assert client.get(f"/api/v1/projects/{DEMO_PROJECT_ID}").status_code == 401
+
+    # 3. Sumit signs in with sumitp@gmail.com / 1234
+    sumit_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": SUMIT_EMAIL, "password": SUMIT_PASSWORD},
+    )
+    assert sumit_login.status_code == 200
+    sumit_body = sumit_login.json()
+    assert sumit_body["user"]["display_name"] == SUMIT_DISPLAY_NAME
+    assert sumit_body["user"]["email"] == SUMIT_EMAIL
+    assert "password_hash" not in sumit_body["user"]
+    sumit_csrf = sumit_body["csrf_token"]
+
+    # /me strictly reflects Sumit's verified session
+    me_sumit = client.get("/api/v1/auth/me")
+    assert me_sumit.status_code == 200
+    assert me_sumit.json()["user"]["display_name"] == SUMIT_DISPLAY_NAME
+
+    # Sumit can access the shared Sample Study and list it, but NOT Swayam's private project
+    assert client.get(f"/api/v1/projects/{DEMO_PROJECT_ID}").status_code == 200
+    assert client.get(f"/api/v1/projects/{swayam_priv_id}").status_code == 404
+    listed_ids = {p["id"] for p in client.get("/api/v1/projects").json()}
+    assert DEMO_PROJECT_ID in listed_ids
+    assert swayam_priv_id not in listed_ids
+
+    # Logout Sumit invalidates session completely
+    logout_sumit = client.post(
+        "/api/v1/auth/logout",
+        headers={"X-CSRF-Token": sumit_csrf},
+    )
+    assert logout_sumit.status_code == 200
+    assert client.get("/api/v1/auth/me").status_code == 401
+    assert client.get("/api/v1/projects").status_code == 401

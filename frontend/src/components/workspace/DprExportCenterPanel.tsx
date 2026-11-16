@@ -14,10 +14,28 @@
  * limitations under the License.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import {
+  ArrowRight,
+  FileCheck2,
+  FileSpreadsheet,
+  FileText,
+  FolderArchive,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+} from 'lucide-react';
+import { formatScenarioLabel } from '../../lib/beginnerGlossary';
+import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
 import { Callout } from '../ui/Callout';
+import { EmptyState } from '../ui/EmptyState';
+import { Input } from '../ui/Input';
+import { Panel } from '../ui/Panel';
 import { QualityTag } from '../ui/QualityTag';
+import { Select } from '../ui/Select';
 import { StatTile } from '../ui/StatTile';
+import { HelpTooltip } from '../ui/Tooltip';
 
 export interface PreFlightCheckItemDto {
   check_code: string;
@@ -75,11 +93,36 @@ export interface ProjectExportListDto {
   items: ProjectExportRecordDto[];
 }
 
+type FixableSectionKey = 'data' | 'settlements' | 'infrastructure' | 'network' | 'cost';
+
+function resolveStepNavigation(checkCode: string): {
+  section: FixableSectionKey;
+  label: string;
+} {
+  if (/SYNTHETIC|AOI|LAYER|RASTER|DATA|INGEST/i.test(checkCode)) {
+    return { section: 'data', label: 'Fix in Step 1' };
+  }
+  if (/CLUSTER|SETTLEMENT|CENSUS|VERIF|AXIS_2/i.test(checkCode)) {
+    return { section: 'settlements', label: 'Fix in Step 2' };
+  }
+  if (/TIE_?IN|INFRA|DEMAND|GAP|EXISTING/i.test(checkCode)) {
+    return { section: 'infrastructure', label: 'Fix in Step 3' };
+  }
+  if (/CEA|VOLTAGE|NETWORK|SCENARIO|ROUT|LINE|TRANSFORMER/i.test(checkCode)) {
+    return { section: 'network', label: 'Fix in Step 4' };
+  }
+  if (/BOQ|RATE|SOR|COST|ECON|FINANC/i.test(checkCode)) {
+    return { section: 'cost', label: 'Fix in Step 5' };
+  }
+  return { section: 'data', label: 'Review Step 1' };
+}
+
 interface DprExportCenterPanelProps {
   projectId: string;
   preflight: PreFlightReportDto | null;
   exportLog: ProjectExportListDto | null;
   onRefreshAuditAndLogs: () => Promise<void>;
+  onNavigateSection?: (section: FixableSectionKey) => void;
 }
 
 export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
@@ -87,318 +130,693 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
   preflight,
   exportLog,
   onRefreshAuditAndLogs,
+  onNavigateSection,
 }) => {
   const [activeTab, setActiveTab] = useState<'checks' | 'sections' | 'exports'>('checks');
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [downloadingArtifact, setDownloadingArtifact] = useState<
+    'dpr-pdf' | 'boq-xlsx' | 'gis-package' | null
+  >(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [checkStatusFilter, setCheckStatusFilter] = useState<'ALL' | 'FAIL' | 'WARN' | 'PASS'>(
+    'ALL',
+  );
+  const [sectionFilter, setSectionFilter] = useState<'ALL' | 'POPULATED' | 'NO_DATA'>('ALL');
+  const [sectionSearch, setSectionSearch] = useState('');
 
-  if (!preflight) {
-    return null;
-  }
+  const filteredChecks = useMemo(() => {
+    const items = preflight?.checks ?? [];
+    if (checkStatusFilter === 'ALL') return items;
+    return items.filter((chk) => chk.status === checkStatusFilter);
+  }, [preflight, checkStatusFilter]);
 
-  const populatedCount = preflight.sections.filter((s) => s.is_populated).length;
-  const explicitNoDataCount = preflight.sections.length - populatedCount;
+  const filteredSections = useMemo(() => {
+    const items = preflight?.sections ?? [];
+    const q = sectionSearch.trim().toLowerCase();
+    return items.filter((sec) => {
+      if (sectionFilter === 'POPULATED' && !sec.is_populated) return false;
+      if (sectionFilter === 'NO_DATA' && sec.is_populated) return false;
+      if (!q) return true;
+      return (
+        String(sec.section_number).includes(q) ||
+        sec.title.toLowerCase().includes(q) ||
+        sec.group.toLowerCase().includes(q) ||
+        sec.data_status_note.toLowerCase().includes(q)
+      );
+    });
+  }, [preflight, sectionFilter, sectionSearch]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    setRefreshError(null);
     try {
       await onRefreshAuditAndLogs();
+    } catch (err) {
+      setRefreshError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to refresh pre-flight audit and export logs.',
+      );
     } finally {
       setRefreshing(false);
     }
   };
 
-  return (
-    <section
-      aria-label="Complete 24-Section DPR Pre-Flight Audit and Export Center"
-      className="bg-sheet border border-rule-strong rounded-xs p-4 space-y-4"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule pb-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="small-caps-heading">
-              Step 7 · Complete 24-Section DPR, Live-Formula Excel BOQ &amp; GIS Export Center
-            </span>
-            <QualityTag kind={preflight.can_export ? 'VERIFIED' : 'ASSUMED'} />
-          </div>
-          <p className="text-xs text-ink-2 mt-0.5">
-            Active Scenario: <strong className="font-mono">{preflight.active_scenario_key}</strong>{' '}
-            · Watermark: <code className="text-[11px]">{preflight.watermark_text}</code>
-          </p>
-        </div>
+  const handleDownloadArtifact = async (
+    artifact: 'dpr-pdf' | 'boq-xlsx' | 'gis-package',
+    fallbackFilename: string,
+  ) => {
+    setDownloadingArtifact(artifact);
+    setDownloadError(null);
+    try {
+      const resp = await fetch(`/api/v1/projects/${projectId}/exports/${artifact}`, {
+        credentials: 'include',
+      });
+      if (!resp.ok) {
+        let msg = `Export '${artifact}' failed (HTTP ${resp.status}).`;
+        try {
+          const payload = (await resp.json()) as {
+            detail?: string | { message?: string };
+            message?: string;
+            error?: { message?: string; code?: string };
+          };
+          const detailMsg =
+            typeof payload.detail === 'string'
+              ? payload.detail
+              : payload.detail?.message;
+          msg = payload.error?.message ?? payload.message ?? detailMsg ?? msg;
+        } catch {
+          // ignore non-JSON body
+        }
+        throw new Error(msg);
+      }
+      const blob = await resp.blob();
+      const cd = resp.headers.get('content-disposition') ?? '';
+      const match = /filename="?([^";]+)"?/i.exec(cd);
+      const filename = match?.[1] ?? fallbackFilename;
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+      await handleRefresh();
+    } catch (err) {
+      setDownloadError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to download export artifact. Check pre-flight audit and session status.',
+      );
+    } finally {
+      setDownloadingArtifact(null);
+    }
+  };
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={refreshing}
-            onClick={() => void handleRefresh()}
-            className="px-2.5 py-1.5 text-xs font-mono border border-rule-strong bg-paper hover:bg-sheet rounded-xs"
-          >
-            {refreshing ? 'Auditing…' : 'Re-Run Pre-Flight Audit'}
-          </button>
-
-          {preflight.can_export ? (
-            <>
-              <a
-                href={`/api/v1/projects/${projectId}/exports/dpr-pdf`}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => {
-                  setTimeout(() => void handleRefresh(), 1500);
-                }}
-                className="px-3 py-1.5 text-xs font-mono bg-accent text-white rounded-xs hover:opacity-90"
-              >
-                Download 24-Section DPR (.pdf)
-              </a>
-              <a
-                href={`/api/v1/projects/${projectId}/exports/boq-xlsx`}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => {
-                  setTimeout(() => void handleRefresh(), 1500);
-                }}
-                className="px-3 py-1.5 text-xs font-mono bg-emerald-800 text-white rounded-xs hover:opacity-90"
-              >
-                Download Formula BOQ (.xlsx)
-              </a>
-            </>
-          ) : (
-            <span
-              title="Resolve hard blockers in Pre-Flight Checklist to enable PDF and Excel BOQ export."
-              className="px-3 py-1.5 text-xs font-mono bg-amber-900/20 text-amber-900 border border-amber-700/40 rounded-xs cursor-not-allowed"
+  if (!preflight) {
+    return (
+      <Panel
+        as="section"
+        aria-label="Final Report and Cost Workbook Download"
+        overline="Step 6 · Final Checks &amp; Report Download"
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            Final Report &amp; Cost Workbook Download
+            <HelpTooltip glossaryKey="dpr" />
+          </span>
+        }
+        icon={FileCheck2}
+      >
+        {refreshError && (
+          <Callout tone="error" title="Readiness Check Failed" className="mb-3">
+            {refreshError}
+          </Callout>
+        )}
+        <EmptyState
+          icon={FileCheck2}
+          overline="Export Readiness Gate"
+          title="Final Readiness Check Not Run Yet"
+          description="Check which planning steps are complete, whether all item prices are filled in, and how many of the 24 report sections have real data."
+          epistemicNote="Exported reports carry a preliminary watermark unless field verification reaches 100%."
+          action={
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              leftIcon={RefreshCw}
+              isLoading={refreshing}
+              onClick={() => void handleRefresh()}
             >
-              PDF &amp; Excel Export Blocked ({preflight.hard_blockers_failed} Hard Blocker)
-            </span>
-          )}
-
-          <a
-            href={`/api/v1/projects/${projectId}/exports/gis-package`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => {
-              setTimeout(() => void handleRefresh(), 1500);
-            }}
-            className="px-3 py-1.5 text-xs font-mono border border-accent text-accent bg-accent-tint/30 rounded-xs hover:bg-accent-tint/60"
-          >
-            Download Cleaned GIS Package (.zip)
-          </a>
-        </div>
-      </div>
-
-      {!preflight.can_export && (
-        <Callout
-          tone="error"
-          title="DPR & Excel BOQ Export Blocked by Pre-Flight Hard Blocker (Core Principle #4)"
-        >
-          {preflight.checks
-            .filter((c) => c.category === 'HARD_BLOCKER' && c.status === 'FAIL')
-            .map((c) => `${c.title}: ${c.detail} (${c.remediation})`)
-            .join(' | ')}
-        </Callout>
-      )}
-
-      {preflight.requires_not_field_verified_watermark && preflight.can_export && (
-        <Callout
-          tone="warn"
-          title="Mandatory Preliminary Engineering & Unverified Watermark Active (FR-10.3)"
-        >
-          Axis-2 field verification coverage is below 100%. Every page of the exported 24-section
-          PDF DPR carries the diagonal watermark{' '}
-          <code>{preflight.watermark_text}</code> so satellite proxy classifications are never
-          mistaken for physical utility meter inspection.
-        </Callout>
-      )}
-
-      {/* Summary KPI Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile
-          label="Pre-Flight Integrity Gate"
-          value={preflight.can_export ? 'READY TO EXPORT' : 'BLOCKED'}
-          quality={preflight.can_export ? 'VERIFIED' : 'ASSUMED'}
-          subtitle={`${preflight.hard_blockers_failed} Hard Blockers · ${preflight.soft_warnings_count} Soft Warnings`}
+              {refreshing ? 'Checking…' : 'Check Readiness Now'}
+            </Button>
+          }
         />
-        <StatTile
-          label="24-Section DPR Coverage"
-          value={`${preflight.sections.length}/24`}
-          unit="Sections"
-          quality="VERIFIED"
-          subtitle={`${populatedCount} populated · ${explicitNoDataCount} explicit 'No data available' notes`}
-        />
-        <StatTile
-          label="Snapshot SHA-256 Digest"
-          value={`${preflight.snapshot_hash.slice(0, 12)}…`}
-          quality="VERIFIED"
-          subtitle={`Version v${preflight.project_version} · ${preflight.active_scenario_key}`}
-        />
-        <StatTile
-          label="Logged Export Artifacts"
-          value={String(exportLog?.total_exports ?? 0)}
-          unit="files"
-          quality="ESTIMATED"
-          subtitle="Append-only SHA-256 export audit trail"
-        />
-      </div>
+      </Panel>
+    );
+  }
 
-      {/* Tab Switcher */}
-      <div className="flex items-center gap-2 border-b border-rule pt-1">
-        <button
+  const populatedCount = preflight.sections.filter((s) => s.is_populated).length;
+  const explicitNoDataCount = preflight.sections.length - populatedCount;
+  const failChecksCount = preflight.checks.filter((c) => c.status === 'FAIL').length;
+  const warnChecksCount = preflight.checks.filter((c) => c.status === 'WARN').length;
+  const passChecksCount = preflight.checks.filter((c) => c.status === 'PASS').length;
+
+  return (
+    <Panel
+      as="section"
+      aria-label="Final Report and Cost Workbook Download"
+      overline="Step 6 · Final Checks &amp; Report Download"
+      title={
+        <span className="inline-flex items-center gap-1.5">
+          Final Report &amp; Cost Workbook Download
+          <HelpTooltip glossaryKey="dpr" />
+        </span>
+      }
+      subtitle={
+        <>
+          Selected Plan:{' '}
+          <strong className="text-ink">
+            {formatScenarioLabel(preflight.active_scenario_key)}
+          </strong>{' '}
+          · Report Stamp: <span className="text-ink-2">{preflight.watermark_text}</span>
+        </>
+      }
+      icon={FileCheck2}
+      badge={
+        <QualityTag
+          kind={preflight.can_export ? 'ESTIMATED' : 'ASSUMED'}
+          label={
+            preflight.can_export
+              ? 'Ready to Export'
+              : `Steps Needed (${preflight.hard_blockers_failed})`
+          }
+        />
+      }
+      actions={
+        <Button
           type="button"
-          onClick={() => setActiveTab('checks')}
-          className={`px-3 py-1.5 text-xs font-mono border-b-2 -mb-px ${
-            activeTab === 'checks'
-              ? 'border-accent text-accent font-semibold'
-              : 'border-transparent text-ink-2 hover:text-ink'
-          }`}
+          size="sm"
+          variant="secondary"
+          leftIcon={RefreshCw}
+          isLoading={refreshing}
+          onClick={() => void handleRefresh()}
         >
-          1. Pre-Flight Audit Checklist ({preflight.checks.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('sections')}
-          className={`px-3 py-1.5 text-xs font-mono border-b-2 -mb-px ${
-            activeTab === 'sections'
-              ? 'border-accent text-accent font-semibold'
-              : 'border-transparent text-ink-2 hover:text-ink'
-          }`}
-        >
-          2. 24-Section DPR Compilation Index ({preflight.sections.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('exports')}
-          className={`px-3 py-1.5 text-xs font-mono border-b-2 -mb-px ${
-            activeTab === 'exports'
-              ? 'border-accent text-accent font-semibold'
-              : 'border-transparent text-ink-2 hover:text-ink'
-          }`}
-        >
-          3. Cryptographic SHA-256 Export Audit Log ({exportLog?.total_exports ?? 0})
-        </button>
-      </div>
-
-      {activeTab === 'checks' && (
-        <div className="overflow-x-auto border border-rule rounded-xs bg-paper">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-sheet border-b border-rule text-[11px] font-mono text-ink-2">
-                <th className="p-2">Rule Code</th>
-                <th className="p-2">Category</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Check Title &amp; Finding</th>
-                <th className="p-2">Planner Remediation</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-rule/60">
-              {preflight.checks.map((chk) => (
-                <tr key={chk.check_code} className="hover:bg-sheet/60">
-                  <td className="p-2 font-mono font-semibold text-ink">{chk.check_code}</td>
-                  <td className="p-2 font-mono text-[11px] text-ink-2">{chk.category}</td>
-                  <td className="p-2 font-mono">
-                    <span
-                      className={`px-1.5 py-0.5 rounded-xs text-[10px] font-bold ${
-                        chk.status === 'PASS'
-                          ? 'bg-emerald-900/15 text-emerald-800'
-                          : chk.status === 'WARN'
-                            ? 'bg-amber-900/15 text-amber-800'
-                            : 'bg-red-900/15 text-red-800'
-                      }`}
-                    >
-                      {chk.status}
-                    </span>
-                  </td>
-                  <td className="p-2 text-ink">
-                    <div className="font-medium">{chk.title}</div>
-                    <div className="text-[11px] text-ink-2">{chk.detail}</div>
-                  </td>
-                  <td className="p-2 text-[11px] text-ink-2">{chk.remediation}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {activeTab === 'sections' && (
-        <div className="overflow-x-auto border border-rule rounded-xs bg-paper max-h-[380px] overflow-y-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead className="sticky top-0 bg-sheet border-b border-rule text-[11px] font-mono text-ink-2">
-              <tr>
-                <th className="p-2">Sec #</th>
-                <th className="p-2">DPR Part</th>
-                <th className="p-2">Section Title</th>
-                <th className="p-2">Compilation Status</th>
-                <th className="p-2">Data / Epistemic Disclosure Note</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-rule/60">
-              {preflight.sections.map((sec) => (
-                <tr key={sec.section_key} className="hover:bg-sheet/60">
-                  <td className="p-2 font-mono font-semibold text-ink">
-                    Sec {sec.section_number}
-                  </td>
-                  <td className="p-2 font-mono text-[11px] text-ink-2">{sec.group}</td>
-                  <td className="p-2 font-medium text-ink">{sec.title}</td>
-                  <td className="p-2 font-mono text-[11px]">
-                    {sec.is_populated ? (
-                      <span className="px-1.5 py-0.5 rounded-xs bg-emerald-900/15 text-emerald-800">
-                        POPULATED
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 rounded-xs bg-amber-900/15 text-amber-800">
-                        EXPLICIT_NO_DATA_NOTE
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-2 text-[11px] text-ink-2">{sec.data_status_note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {activeTab === 'exports' && (
-        <div className="overflow-x-auto border border-rule rounded-xs bg-paper">
-          {!exportLog || exportLog.items.length === 0 ? (
-            <div className="p-4 text-xs font-mono text-ink-2">
-              No export artifacts have been downloaded in this session yet. Click one of the
-              export buttons above to generate a cryptographically hashed PDF DPR, Excel BOQ, or
-              GIS ZIP bundle.
+          {refreshing ? 'Checking…' : 'Re-Check Readiness'}
+        </Button>
+      }
+    >
+      <div className="space-y-5">
+        {/* Deliverable Download Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-subtle border border-rule-subtle rounded-xs">
+          <div className="text-xs text-ink-2 space-y-1 max-w-xl">
+            <div className="font-semibold text-ink">
+              Downloadable Project Files (Saved Version {preflight.project_version} ·{' '}
+              <span className="font-mono text-xs tabular-nums">
+                {preflight.snapshot_hash.slice(0, 12)}…
+              </span>
+              )
             </div>
-          ) : (
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-sheet border-b border-rule text-[11px] font-mono text-ink-2">
-                  <th className="p-2">Export Kind</th>
-                  <th className="p-2">Filename</th>
-                  <th className="p-2">Scenario</th>
-                  <th className="p-2 text-right">Size (KB)</th>
-                  <th className="p-2">File SHA-256</th>
-                  <th className="p-2">Snapshot SHA-256</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-rule/60 font-mono text-[11px]">
-                {exportLog.items.map((exp) => (
-                  <tr key={exp.id} className="hover:bg-sheet/60">
-                    <td className="p-2 font-semibold text-ink">{exp.export_kind}</td>
-                    <td className="p-2 text-ink">{exp.filename}</td>
-                    <td className="p-2 text-ink-2">{exp.scenario_key}</td>
-                    <td className="p-2 text-right text-ink">
-                      {(exp.file_size_bytes / 1024).toFixed(1)} KB
-                    </td>
-                    <td className="p-2 text-ink-2" title={exp.file_sha256}>
-                      {exp.file_sha256.slice(0, 16)}…
-                    </td>
-                    <td className="p-2 text-ink-2" title={exp.snapshot_hash}>
-                      {exp.snapshot_hash.slice(0, 16)}…
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+            <p className="text-xs leading-relaxed">
+              The <strong>24-Section PDF Report</strong> and{' '}
+              <strong>Excel Cost Workbook (.xlsx)</strong> unlock once all required steps
+              pass. You can download the <strong>Map Files (.zip)</strong> for review at any
+              time.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {preflight.can_export ? (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  leftIcon={FileText}
+                  isLoading={downloadingArtifact === 'dpr-pdf'}
+                  loadingText="Building 24-Section PDF…"
+                  disabled={downloadingArtifact !== null}
+                  onClick={() =>
+                    void handleDownloadArtifact(
+                      'dpr-pdf',
+                      `electrimap_dpr_${projectId.slice(0, 8)}.pdf`,
+                    )
+                  }
+                >
+                  Download 24-Section Report (.pdf)
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={FileSpreadsheet}
+                  isLoading={downloadingArtifact === 'boq-xlsx'}
+                  loadingText="Building Excel Workbook…"
+                  disabled={downloadingArtifact !== null}
+                  onClick={() =>
+                    void handleDownloadArtifact(
+                      'boq-xlsx',
+                      `electrimap_boq_${projectId.slice(0, 8)}.xlsx`,
+                    )
+                  }
+                >
+                  Download Cost Workbook (.xlsx)
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="danger-outline"
+                leftIcon={ShieldAlert}
+                disabled
+                title="Resolve required items in Readiness Checks below to unlock PDF and Excel downloads."
+              >
+                PDF &amp; Excel Locked ({preflight.hard_blockers_failed}{' '}
+                {preflight.hard_blockers_failed === 1 ? 'Step' : 'Steps'} Needed)
+              </Button>
+            )}
+
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              leftIcon={FolderArchive}
+              isLoading={downloadingArtifact === 'gis-package'}
+              loadingText="Preparing Map ZIP…"
+              disabled={downloadingArtifact !== null}
+              onClick={() =>
+                void handleDownloadArtifact(
+                  'gis-package',
+                  `electrimap_gis_${projectId.slice(0, 8)}.zip`,
+                )
+              }
+            >
+              Download Map Files (.zip)
+            </Button>
+          </div>
         </div>
-      )}
-    </section>
+
+        {downloadError && (
+          <Callout
+            tone="error"
+            title="File Download Failed"
+            action={
+              <Button size="xs" variant="ghost" onClick={() => setDownloadError(null)}>
+                Dismiss
+              </Button>
+            }
+          >
+            {downloadError}
+          </Callout>
+        )}
+
+        {refreshError && (
+          <Callout tone="error" title="Could Not Refresh Readiness Check">
+            {refreshError}
+          </Callout>
+        )}
+
+        {!preflight.can_export && (
+          <Callout
+            tone="error"
+            title={
+              <span className="inline-flex items-center gap-1.5">
+                Complete Required Steps Before Exporting PDF or Excel
+                <HelpTooltip glossaryKey="exportReadinessGate" />
+              </span>
+            }
+          >
+            {preflight.checks
+              .filter((c) => c.category === 'HARD_BLOCKER' && c.status === 'FAIL')
+              .map((c) => `${c.title}: ${c.detail} (${c.remediation})`)
+              .join(' | ')}
+          </Callout>
+        )}
+
+        {preflight.requires_not_field_verified_watermark && preflight.can_export && (
+          <Callout
+            tone="warn"
+            title={
+              <span className="inline-flex items-center gap-1.5">
+                Preliminary Engineering Watermark Active
+                <HelpTooltip glossaryKey="preliminaryDisclaimer" />
+              </span>
+            }
+          >
+            Field verification is below 100%, so every page of the exported PDF carries the
+            diagonal note <code>{preflight.watermark_text}</code>. This prevents satellite
+            estimates from being mistaken for inspected home meters.
+          </Callout>
+        )}
+
+        {/* Summary KPI Strip */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatTile
+            label="Export Readiness"
+            value={preflight.can_export ? 'Ready to Export' : 'Steps Needed'}
+            quality={preflight.can_export ? 'ESTIMATED' : 'ASSUMED'}
+            subtitle={`${preflight.hard_blockers_failed} required · ${preflight.soft_warnings_count} advisories`}
+          />
+          <StatTile
+            label="24-Section Report Outline"
+            value={
+              failChecksCount > 0
+                ? `${populatedCount}/24 Populated`
+                : `${preflight.sections.length}/24 Ready`
+            }
+            quality={failChecksCount > 0 && populatedCount === 0 ? 'UNSET' : 'ESTIMATED'}
+            subtitle={
+              failChecksCount > 0
+                ? `Complete Steps 1–5 to fill remaining ${explicitNoDataCount} sections`
+                : `${populatedCount} data-backed · ${explicitNoDataCount} marked "No data yet"`
+            }
+          />
+          <StatTile
+            label="Verification Fingerprint"
+            value={`${preflight.snapshot_hash.slice(0, 12)}…`}
+            quality="ESTIMATED"
+            subtitle={`Saved v${preflight.project_version} · ${formatScenarioLabel(preflight.active_scenario_key)}`}
+          />
+          <StatTile
+            label="Downloaded Files Log"
+            value={String(exportLog?.total_exports ?? 0)}
+            unit="files"
+            quality="ESTIMATED"
+            subtitle="Permanent file verification history"
+          />
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-subtle border border-rule-subtle rounded-xs w-fit">
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === 'checks' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('checks')}
+          >
+            1. Readiness Checks ({preflight.checks.length})
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === 'sections' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('sections')}
+          >
+            2. 24 Report Sections ({preflight.sections.length})
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === 'exports' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('exports')}
+          >
+            3. Download History ({exportLog?.total_exports ?? 0})
+          </Button>
+        </div>
+
+        {activeTab === 'checks' && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-subtle border border-rule-subtle rounded-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-medium text-ink-2 mr-1">Filter:</span>
+                {(
+                  [
+                    { key: 'ALL', label: `All (${preflight.checks.length})` },
+                    { key: 'FAIL', label: `Action Needed (${failChecksCount})` },
+                    { key: 'WARN', label: `Advisories (${warnChecksCount})` },
+                    { key: 'PASS', label: `Passed (${passChecksCount})` },
+                  ] as const
+                ).map((opt) => (
+                  <Button
+                    key={opt.key}
+                    type="button"
+                    size="xs"
+                    variant={checkStatusFilter === opt.key ? 'primary' : 'secondary'}
+                    onClick={() => setCheckStatusFilter(opt.key)}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+              <span className="text-xs text-ink-3 tabular-nums">
+                Showing {filteredChecks.length} of {preflight.checks.length} checks
+              </span>
+            </div>
+
+            {filteredChecks.length === 0 ? (
+              <EmptyState
+                compact
+                title="No Checks Match Filter"
+                description={`No checks currently match "${checkStatusFilter}".`}
+                action={
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="secondary"
+                    onClick={() => setCheckStatusFilter('ALL')}
+                  >
+                    Show All Checks
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="table-scroll-container">
+                <table className="w-full text-left border-collapse text-body-sm">
+                  <thead>
+                    <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
+                      <th className="p-3">Rule</th>
+                      <th className="p-3">Priority</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3">What Was Checked</th>
+                      <th className="p-3">How to Fix</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rule-subtle">
+                    {filteredChecks.map((chk) => {
+                      const stepTarget = resolveStepNavigation(chk.check_code);
+                      return (
+                        <tr key={chk.check_code} className="hover:bg-subtle/60">
+                          <td className="p-3 font-mono font-semibold text-ink whitespace-nowrap text-xs">
+                            {chk.check_code}
+                          </td>
+                          <td className="p-3 text-xs text-ink-2 whitespace-nowrap">
+                            {chk.category === 'HARD_BLOCKER'
+                              ? 'Required for Export'
+                              : chk.category === 'SOFT_WARNING'
+                                ? 'Advisory'
+                                : chk.category}
+                          </td>
+                          <td className="p-3">
+                            <Badge
+                              variant={
+                                chk.status === 'PASS'
+                                  ? 'ok'
+                                  : chk.status === 'WARN'
+                                    ? 'warn'
+                                    : 'error'
+                              }
+                              size="sm"
+                            >
+                              {chk.status === 'PASS'
+                                ? 'Passed'
+                                : chk.status === 'WARN'
+                                  ? 'Advisory'
+                                  : 'Needed'}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-ink">
+                            <div className="font-medium text-xs">{chk.title}</div>
+                            <div className="text-xs text-ink-2 mt-0.5">{chk.detail}</div>
+                          </td>
+                          <td className="p-3 text-xs text-ink-2 space-y-1.5">
+                            <div>{chk.remediation}</div>
+                            {chk.status !== 'PASS' && onNavigateSection && (
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant={chk.status === 'FAIL' ? 'primary' : 'secondary'}
+                                rightIcon={ArrowRight}
+                                onClick={() => onNavigateSection(stepTarget.section)}
+                              >
+                                {stepTarget.label}
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'sections' && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end p-3 bg-subtle border border-rule-subtle rounded-xs">
+              <div className="sm:col-span-6">
+                <Input
+                  size="sm"
+                  label="Search 24 Report Sections"
+                  leftIcon={Search}
+                  placeholder="Section #, part, title, or note…"
+                  value={sectionSearch}
+                  onChange={(e) => setSectionSearch(e.target.value)}
+                />
+              </div>
+              <div className="sm:col-span-4">
+                <Select
+                  size="sm"
+                  label="Section Data Status"
+                  aria-label="Filter report sections by status"
+                  value={sectionFilter}
+                  onChange={(e) =>
+                    setSectionFilter(e.target.value as 'ALL' | 'POPULATED' | 'NO_DATA')
+                  }
+                  options={[
+                    {
+                      value: 'ALL',
+                      label: `All Sections (${preflight.sections.length})`,
+                    },
+                    {
+                      value: 'POPULATED',
+                      label: `Data Ready (${populatedCount})`,
+                    },
+                    {
+                      value: 'NO_DATA',
+                      label: `No Data Yet (${explicitNoDataCount})`,
+                    },
+                  ]}
+                />
+              </div>
+              <div className="sm:col-span-2 flex items-center justify-end gap-2">
+                {(sectionSearch || sectionFilter !== 'ALL') && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setSectionSearch('');
+                      setSectionFilter('ALL');
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {filteredSections.length === 0 ? (
+              <EmptyState
+                compact
+                title="No Report Sections Match Filters"
+                description="Clear your search text or status filter to see all 24 sections."
+                action={
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="secondary"
+                    onClick={() => {
+                      setSectionSearch('');
+                      setSectionFilter('ALL');
+                    }}
+                  >
+                    Reset Filters
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="table-scroll-container max-h-[380px]">
+                <table className="w-full text-left border-collapse text-body-sm">
+                  <thead className="sticky top-0 bg-subtle border-b border-rule text-xs font-semibold text-ink-2 z-10">
+                    <tr>
+                      <th className="p-3">Sec #</th>
+                      <th className="p-3">Report Part</th>
+                      <th className="p-3">Section Title</th>
+                      <th className="p-3">Data Status</th>
+                      <th className="p-3">Data &amp; Disclaimer Note</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rule-subtle">
+                    {filteredSections.map((sec) => (
+                      <tr key={sec.section_key} className="hover:bg-subtle/60">
+                        <td className="p-3 font-mono font-semibold text-ink whitespace-nowrap text-xs">
+                          Sec {sec.section_number}
+                        </td>
+                        <td className="p-3 text-xs text-ink-2 whitespace-nowrap">
+                          {sec.group}
+                        </td>
+                        <td className="p-3 font-medium text-ink text-xs">{sec.title}</td>
+                        <td className="p-3 whitespace-nowrap">
+                          <Badge
+                            variant={sec.is_populated ? 'ok' : 'warn'}
+                            size="sm"
+                          >
+                            {sec.is_populated ? 'Data Ready' : 'No Data Yet'}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-xs text-ink-2">{sec.data_status_note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'exports' && (
+          <div>
+            {!exportLog || exportLog.items.length === 0 ? (
+              <EmptyState
+                compact
+                icon={FileText}
+                title="No Downloads Recorded Yet"
+                description="Use the buttons above to download your PDF report, Excel cost workbook, or GIS map package."
+              />
+            ) : (
+              <div className="table-scroll-container">
+                <table className="w-full text-left border-collapse text-body-sm">
+                  <thead>
+                    <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
+                      <th className="p-3">File Type</th>
+                      <th className="p-3">Filename</th>
+                      <th className="p-3">Plan Option</th>
+                      <th className="p-3 text-right">Size (KB)</th>
+                      <th className="p-3">File Checksum</th>
+                      <th className="p-3">Version Checksum</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rule-subtle font-mono text-xs tabular-nums">
+                    {exportLog.items.map((exp) => (
+                      <tr key={exp.id} className="hover:bg-subtle/60">
+                        <td className="p-3 font-semibold text-ink">{exp.export_kind}</td>
+                        <td className="p-3 text-ink">{exp.filename}</td>
+                        <td className="p-3 font-sans text-ink-2">
+                          {formatScenarioLabel(exp.scenario_key)}
+                        </td>
+                        <td className="p-3 text-right text-ink">
+                          {(exp.file_size_bytes / 1024).toFixed(1)} KB
+                        </td>
+                        <td className="p-3 text-ink-2" title={exp.file_sha256}>
+                          {exp.file_sha256.slice(0, 16)}…
+                        </td>
+                        <td className="p-3 text-ink-2" title={exp.snapshot_hash}>
+                          {exp.snapshot_hash.slice(0, 16)}…
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Panel>
   );
 };
 
