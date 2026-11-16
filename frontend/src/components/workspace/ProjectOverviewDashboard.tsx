@@ -31,7 +31,11 @@ import {
 } from 'lucide-react';
 import type { WorkspaceSectionKey } from '../layout/navigationConfig';
 import type { ProjectDto } from '../../pages/ProjectsPage';
-import type { ProjectLayerDto } from './DataManagementPanel';
+import {
+  classifyLayerHonesty,
+  computeMapDataReadiness,
+  type ProjectLayerDto,
+} from '../../lib/mapDataReadiness';
 import type { ClusterListResponseDto, VerificationLedgerDto } from './SettlementAssessmentPanel';
 import type {
   InfrastructureListDto,
@@ -45,11 +49,9 @@ import type {
 } from './CostAndScenarioComparisonPanel';
 import type { PreFlightReportDto, ProjectExportListDto } from './DprExportCenterPanel';
 import type { JobStatusDto } from '../ui/JobProgress';
-import type { LayerSourceClass } from '../map/symbology';
 import {
   Badge,
   ClassificationBadge,
-  LayerSourceBadge,
 } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Callout } from '../ui/Callout';
@@ -57,6 +59,15 @@ import { EmptyState } from '../ui/EmptyState';
 import { Icon } from '../ui/Icon';
 import { Panel } from '../ui/Panel';
 import { QualityTag } from '../ui/QualityTag';
+import { HelpTooltip } from '../ui/Tooltip';
+import {
+  formatBoundarySourceLabel,
+  formatJobStatusLabel,
+  formatJobTypeLabel,
+  formatModalityLabel,
+  formatScenarioLabel,
+  formatSchemeLabel,
+} from '../../lib/beginnerGlossary';
 
 export interface ProjectOverviewDashboardProps {
   project: ProjectDto;
@@ -80,20 +91,13 @@ export interface ProjectOverviewDashboardProps {
 }
 
 const CANONICAL_LAYER_LABELS: Record<string, string> = {
-  buildings: 'Building Footprints (Google-MS-OSM Open Buildings)',
-  dem_slope: 'Copernicus DEM GLO-30 Elevation & Slope',
-  landcover: 'ESA WorldCover 10 m Land Use / Canopy',
-  solar_resource: 'NASA POWER Solar GHI & Tilt Climatology',
-  nightlights: 'NASA VIIRS VNP46A4 Nighttime Radiance',
-  osm_features: 'OpenStreetMap Roads, Waterways & Barriers',
+  buildings: 'Building Footprints',
+  dem_slope: 'Terrain Slope & Elevation',
+  landcover: 'Land Cover (Trees, Crops & Water)',
+  solar_resource: 'Solar Sunlight Resource',
+  nightlights: 'Nighttime Lights',
+  osm_features: 'Roads, Waterways & Amenities',
 };
-
-function inferLayerSourceType(layer: ProjectLayerDto): LayerSourceClass {
-  const ck = (layer.cache_key ?? '').toLowerCase();
-  if (ck.includes('ref_pack') || ck.includes('reference')) return 'REFERENCE_DEMO';
-  if (ck.includes('synthetic')) return 'SYNTHETIC_PLACEHOLDER';
-  return 'PROJECT';
-}
 
 export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> = ({
   project,
@@ -102,10 +106,10 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
   verificationLedger,
   infrastructure,
   gapAnalysis,
-  demand,
-  scenariosState,
+  demand: rawDemand,
+  scenariosState: rawScenariosState,
   ratesState,
-  comparisonState,
+  comparisonState: rawComparisonState,
   preflightState,
   exportLogState,
   jobsState = [],
@@ -114,6 +118,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
   onOpenFullMap,
 }) => {
   // ── 1. Derived API-Grounded Metrics (Zero Fabricated Numbers) ──
+  const mapReadiness = computeMapDataReadiness(layers);
   const readyLayers = layers.filter((l) => l.status === 'READY');
   const buildingsLayer = layers.find((l) => l.layer_key === 'buildings' && l.status === 'READY');
   const solarLayer = layers.find((l) => l.layer_key === 'solar_resource' && l.status === 'READY');
@@ -121,15 +126,29 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
     (l) => l.layer_key === 'nightlights' && l.status === 'READY',
   );
 
+  const clusterItems = React.useMemo(
+    () => settlements?.items ?? [],
+    [settlements?.items],
+  );
+  const totalClustersCount = clusterItems.length;
+
   const detectedStructuresCount =
     buildingsLayer && typeof buildingsLayer.feature_count === 'number'
       ? buildingsLayer.feature_count
-      : settlements?.census_reconciliation?.satellite_detected_buildings ?? null;
+      : totalClustersCount > 0 ||
+          readyLayers.length > 0 ||
+          (settlements?.census_reconciliation?.satellite_detected_buildings ?? 0) > 0
+        ? settlements?.census_reconciliation?.satellite_detected_buildings ?? null
+        : null;
 
   const residentialStructuresCount =
     buildingsLayer && typeof buildingsLayer.summary_metrics?.residential_count === 'number'
       ? Number(buildingsLayer.summary_metrics.residential_count)
-      : settlements?.census_reconciliation?.satellite_residential_buildings ?? null;
+      : totalClustersCount > 0 ||
+          readyLayers.length > 0 ||
+          (settlements?.census_reconciliation?.satellite_residential_buildings ?? 0) > 0
+        ? settlements?.census_reconciliation?.satellite_residential_buildings ?? null
+        : null;
 
   const worstMonthGhi =
     solarLayer && typeof solarLayer.summary_metrics?.worst_ghi_kwh_m2_day === 'number'
@@ -137,8 +156,15 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
       : null;
 
   const meanAnnualGhi =
-    solarLayer && typeof solarLayer.summary_metrics?.mean_ghi_kwh_m2_day === 'number'
-      ? Number(solarLayer.summary_metrics.mean_ghi_kwh_m2_day)
+    solarLayer &&
+    typeof (
+      solarLayer.summary_metrics?.annual_mean_ghi_kwh_m2_day ??
+      solarLayer.summary_metrics?.mean_ghi_kwh_m2_day
+    ) === 'number'
+      ? Number(
+          solarLayer.summary_metrics?.annual_mean_ghi_kwh_m2_day ??
+            solarLayer.summary_metrics?.mean_ghi_kwh_m2_day,
+        )
       : null;
 
   const optimalTiltDeg =
@@ -146,11 +172,17 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
       ? Number(solarLayer.summary_metrics.optimal_tilt_deg)
       : null;
 
-  const clusterItems = React.useMemo(
-    () => settlements?.items ?? [],
-    [settlements?.items],
-  );
-  const totalClustersCount = clusterItems.length;
+  // Empty projects receive zeroed placeholder demand/scenario/comparison payloads from API;
+  // withhold them until clusters exist or non-zero outputs are present.
+  const demand =
+    rawDemand &&
+    (totalClustersCount > 0 ||
+      rawDemand.total_households > 0 ||
+      rawDemand.peak_kva_horizon > 0 ||
+      rawDemand.total_connected_kw > 0)
+      ? rawDemand
+      : null;
+
   const totalEstimatedHouseholds =
     demand?.total_households ??
     (clusterItems.length > 0
@@ -161,8 +193,24 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
     settlements && clusterItems.length > 0 ? settlements.verification_coverage_pct : null;
   const verifiedClustersCount = verificationLedger?.verified_clusters ?? 0;
 
-  const activeScenario = scenariosState?.active_scenario ?? null;
-  const comparisonScenarios = comparisonState?.scenarios ?? [];
+  const rawActiveScenario = rawScenariosState?.active_scenario ?? null;
+  const activeScenario =
+    rawActiveScenario &&
+    (totalClustersCount > 0 ||
+      rawActiveScenario.total_ht_length_m > 0 ||
+      rawActiveScenario.total_lt_length_m > 0 ||
+      rawActiveScenario.total_solar_kwp > 0 ||
+      rawActiveScenario.total_dt_count > 0)
+      ? rawActiveScenario
+      : null;
+
+  const rawComparisonScenarios = rawComparisonState?.scenarios ?? [];
+  const hasSubstantiveComparison =
+    totalClustersCount > 0 ||
+    rawComparisonScenarios.some(
+      (s) => s.total_capex_lakhs > 0 || s.npc_lakhs > 0 || s.has_unset_rates || s.totals_withheld,
+    );
+  const comparisonScenarios = hasSubstantiveComparison ? rawComparisonScenarios : [];
   const activeScenarioComparison =
     comparisonScenarios.find((s) => s.is_active_baseline) ?? comparisonScenarios[0] ?? null;
 
@@ -174,15 +222,26 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
       POTENTIALLY_UNSERVED: { clusters: 0, households: 0 },
       UNKNOWN: { clusters: 0, households: 0 },
     };
-    for (const c of clusterItems) {
-      const cls = c.verified_class ?? c.proxy_class;
-      if (cls in counts) {
-        counts[cls as keyof typeof counts].clusters += 1;
-        counts[cls as keyof typeof counts].households += c.est_households;
-      } else {
-        counts.UNKNOWN.clusters += 1;
-        counts.UNKNOWN.households += c.est_households;
+    const normalizeClass = (rawCls: string | null | undefined): keyof typeof counts => {
+      switch (rawCls) {
+        case 'LIKELY_ELECTRIFIED':
+        case 'ELECTRIFIED':
+        case 'GRID_CONNECTED':
+          return 'LIKELY_ELECTRIFIED';
+        case 'POTENTIALLY_UNDERSERVED':
+        case 'UNDERSERVED':
+          return 'POTENTIALLY_UNDERSERVED';
+        case 'POTENTIALLY_UNSERVED':
+        case 'UNSERVED':
+          return 'POTENTIALLY_UNSERVED';
+        default:
+          return 'UNKNOWN';
       }
+    };
+    for (const c of clusterItems) {
+      const cls = normalizeClass(c.verified_class ?? c.proxy_class);
+      counts[cls].clusters += 1;
+      counts[cls].households += c.est_households;
     }
     return counts;
   }, [clusterItems]);
@@ -198,68 +257,68 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
   } => {
     if (readyLayers.length === 0) {
       return {
-        stepLabel: 'STAGE 1 · DATA ACQUISITION',
-        title: 'Ingest Open Geospatial & Satellite Layers',
+        stepLabel: 'STEP 1 · STUDY DATA',
+        title: 'Fetch Free Map & Satellite Data for Your Area',
         detail:
-          'No geospatial layers are marked READY yet. Run the 6-layer data acquisition pipeline to fetch building footprints, Copernicus DEM, ESA WorldCover, NASA POWER GHI, and VIIRS nightlights.',
-        buttonLabel: 'Open 1. Data & Layers',
+          'No map or satellite layers have been loaded yet. Run the free open-data step to download building footprints, elevation slope, tree cover, sunlight, and night-light layers.',
+        buttonLabel: 'Open Step 1 · Data & Layers',
         targetSection: 'data',
         tone: 'warn',
       };
     }
     if (totalClustersCount === 0) {
       return {
-        stepLabel: 'STAGE 2 · HABITATION CLUSTERING',
-        title: 'Run Metric DBSCAN Habitation Clustering & Census Reconciliation',
+        stepLabel: 'STEP 2 · HAMLETS & HOUSES',
+        title: 'Group Detected Houses into Hamlets & Check Counts',
         detail:
-          'Building footprints are available, but habitation clusters have not been delineated yet. Execute DBSCAN clustering in metric UTM coordinates.',
-        buttonLabel: 'Open 2. Villages & Habitations',
+          'Building footprints are loaded, but hamlets (habitation clusters) have not been grouped yet. Group nearby roofs and compare counts with local Census records.',
+        buttonLabel: 'Open Step 2 · Villages & Habitations',
         targetSection: 'settlements',
         tone: 'warn',
       };
     }
     if (!infrastructure?.has_existing_infra) {
       return {
-        stepLabel: 'STAGE 3 · EXISTING GRID & DEMAND',
-        title: 'Register Existing 11 kV / LT Grid Assets or Place Assumed Tie-In Point',
+        stepLabel: 'STEP 3 · EXISTING GRID & DEMAND',
+        title: 'Add Nearby Power Lines or Mark a Connection Point',
         detail:
-          'Existing electrical infrastructure is currently UNSET. Upload utility GIS feeder files or place an explicit USER_ASSUMED 11 kV tie-in point to unlock feeder distance & modality screening.',
-        buttonLabel: 'Open 3. Grid & Demand',
+          'No existing power lines or connection points are saved yet. Upload local utility files or click the map to mark a proposed 11 kV connection pole so distances can be measured.',
+        buttonLabel: 'Open Step 3 · Grid & Demand',
         targetSection: 'infrastructure',
         tone: 'warn',
       };
     }
     if (!activeScenario) {
       return {
-        stepLabel: 'STAGE 4 · NETWORK ENGINEERING',
-        title: 'Synthesize Preliminary HT/LT & Off-Grid Network Scenarios',
+        stepLabel: 'STEP 4 · NETWORK DESIGN',
+        title: 'Design Power Lines, Transformers & Solar Options',
         detail:
-          'Habitations and grid tie-ins are ready. Run the network engineering engine to size distribution transformers, route feeders, and verify CEA voltage regulation.',
-        buttonLabel: 'Open 4. Network Design',
+          'Hamlets and connection points are ready. Run the network designer to choose grid or solar options, size transformers, and check safe voltage levels.',
+        buttonLabel: 'Open Step 4 · Network Design',
         targetSection: 'network',
         tone: 'info',
       };
     }
     if (ratesState && ratesState.unset_count > 0) {
       return {
-        stepLabel: 'STAGE 5 · SCHEDULE OF RATES',
-        title: `Resolve ${ratesState.unset_count} UNSET Unit Rate(s) Blocking DPR Export`,
-        detail: `Required BOQ item code(s) (${ratesState.unset_item_codes.join(', ')}) have UNSET unit rates. Populate or import verified Schedule of Rates values to unlock final DPR compilation.`,
-        buttonLabel: 'Open 5. Cost & Scenarios',
+        stepLabel: 'STEP 5 · COSTS & RATES',
+        title: `Enter ${ratesState.unset_count} Missing Unit Price(s) Before Export`,
+        detail: `Some equipment items (${ratesState.unset_item_codes.join(', ')}) do not have a unit cost yet. Fill in or upload unit rates before downloading your final report.`,
+        buttonLabel: 'Open Step 5 · Costs & Scenarios',
         targetSection: 'cost',
         tone: 'warn',
       };
     }
     return {
-      stepLabel: 'STAGE 6 · DPR COMPILATION & EXPORT',
+      stepLabel: 'STEP 6 · FINAL CHECK & REPORT',
       title: preflightState?.can_export
-        ? 'Pre-Flight Audit Passed — Ready to Generate 24-Section DPR Package'
-        : 'Review Pre-Flight Audit & Compile 24-Section DPR',
+        ? 'All Checks Passed — Ready to Download Project Report & Cost Sheet'
+        : 'Review Final Checklist & Generate Project Report',
       detail:
         verificationCoveragePct !== null && verificationCoveragePct < 100
-          ? `Engineering scenarios and BOQ rates are complete. Axis-2 field verification coverage is ${verificationCoveragePct.toFixed(1)}% — exports will carry the mandatory PRELIMINARY ENGINEERING — NOT FIELD VERIFIED watermark.`
-          : 'All engineering stages, Schedule of Rates, and field verification checks are ready for 24-section PDF DPR and formula-driven Excel BOQ generation.',
-      buttonLabel: 'Open 6. DPR & Exports',
+          ? `Technical design and unit costs are ready. Ground checks currently cover ${verificationCoveragePct.toFixed(1)}% of hamlets — downloads will carry a "Preliminary — Not Field Verified" notice.`
+          : 'All planning steps, unit costs, and field checks are complete for downloading the 24-section PDF report and Excel cost workbook.',
+      buttonLabel: 'Open Step 6 · Final Check & Report',
       targetSection: 'reports',
       tone: preflightState?.can_export ? 'ok' : 'info',
     };
@@ -273,6 +332,11 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
     verificationCoveragePct,
   ]);
 
+  const populatedDprSectionsCount =
+    preflightState?.sections.filter((s) => s.is_populated).length ?? 0;
+  const hasAnySubstantiveData =
+    readyLayers.length > 0 && totalClustersCount > 0;
+
   // Workflow Stage Shortcut Cards
   const stageCards: Array<{
     key: WorkspaceSectionKey;
@@ -285,69 +349,80 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
   }> = [
     {
       key: 'map',
-      step: 'GIS WORKSPACE',
+      step: 'GIS MAP',
       title: 'Interactive GIS Map',
       metricLabel: project.aoi
-        ? `${project.aoi.area_km2.toFixed(2)} km² · EPSG:${project.metric_epsg}`
-        : 'AOI Not Defined',
-      statusText: project.aoi ? 'AOI VALIDATED' : 'AOI UNSET',
+        ? `${project.aoi.area_km2.toFixed(2)} km² study area`
+        : 'Study area not defined',
+      statusText: project.aoi ? 'Area Ready' : 'Needs Area',
       statusTone: project.aoi ? 'primary' : 'warn',
       icon: MapIcon,
     },
     {
       key: 'data',
-      step: 'STAGE 1',
-      title: 'Data & Layers',
+      step: 'STEP 1',
+      title: 'Study Area & Data',
       metricLabel:
         layers.length > 0
-          ? `${readyLayers.length}/${layers.length} Layers READY`
-          : 'No layers acquired yet',
-      statusText: readyLayers.length > 0 ? `${readyLayers.length} READY` : 'PENDING',
-      statusTone: readyLayers.length > 0 ? 'ok' : 'warn',
+          ? `${mapReadiness.usableCount} of ${mapReadiness.totalCount} layers usable`
+          : 'No data fetched yet',
+      statusText: mapReadiness.label,
+      statusTone: mapReadiness.badgeVariant,
       icon: Database,
     },
     {
       key: 'settlements',
-      step: 'STAGE 2',
+      step: 'STEP 2',
       title: 'Villages & Habitations',
       metricLabel:
         totalClustersCount > 0
-          ? `${totalClustersCount} Clusters · ${totalEstimatedHouseholds ?? 0} Est. HH`
-          : 'No clusters generated',
+          ? `${totalClustersCount} Hamlets · ${totalEstimatedHouseholds ?? 0} Est. Homes`
+          : 'No hamlets grouped yet',
       statusText:
-        verificationCoveragePct !== null
-          ? `${verificationCoveragePct.toFixed(0)}% VERIFIED`
-          : 'UNCLUSTERED',
-      statusTone: totalClustersCount > 0 ? 'ok' : 'warn',
+        verificationCoveragePct === null
+          ? 'Not Run'
+          : verificationCoveragePct >= 100
+            ? 'Field Confirmed'
+            : verificationCoveragePct > 0
+              ? `${verificationCoveragePct.toFixed(0)}% Confirmed`
+              : 'Needs Ground Check',
+      statusTone:
+        totalClustersCount === 0
+          ? 'warn'
+          : (verificationCoveragePct ?? 0) >= 100
+            ? 'ok'
+            : (verificationCoveragePct ?? 0) > 0
+              ? 'primary'
+              : 'warn',
       icon: Home,
     },
     {
       key: 'infrastructure',
-      step: 'STAGE 3',
+      step: 'STEP 3',
       title: 'Grid & Demand',
       metricLabel: demand
-        ? `Horizon Peak: ${demand.peak_kva_horizon.toFixed(1)} kVA`
-        : 'Demand not computed',
+        ? `Future Peak Load: ${demand.peak_kva_horizon.toFixed(1)} kVA`
+        : 'Load not estimated yet',
       statusText: infrastructure?.has_existing_infra
-        ? `${infrastructure.items.length} ASSETS`
-        : 'INFRA UNSET',
+        ? `${infrastructure.items.length} Grid Point(s)`
+        : 'No Grid Added',
       statusTone: infrastructure?.has_existing_infra ? 'ok' : 'warn',
       icon: Zap,
     },
     {
       key: 'network',
-      step: 'STAGE 4',
+      step: 'STEP 4',
       title: 'Network Design',
       metricLabel: activeScenario
-        ? `HT ${(activeScenario.total_ht_length_m / 1000).toFixed(2)} km · LT ${(
+        ? `Main 11 kV: ${(activeScenario.total_ht_length_m / 1000).toFixed(2)} km · Street LT: ${(
             activeScenario.total_lt_length_m / 1000
           ).toFixed(2)} km`
-        : 'No scenario synthesized',
+        : 'No routes designed yet',
       statusText: activeScenario
         ? activeScenario.vdrop_compliance_ok
-          ? 'CEA COMPLIANT'
-          : 'VDROP WARN'
-        : 'PENDING',
+          ? 'Voltage OK'
+          : 'Voltage Drop Alert'
+        : 'Pending',
       statusTone: activeScenario
         ? activeScenario.vdrop_compliance_ok
           ? 'ok'
@@ -357,31 +432,44 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
     },
     {
       key: 'cost',
-      step: 'STAGE 5',
-      title: 'Cost & Scenarios',
+      step: 'STEP 5',
+      title: 'Costs & Scenarios',
       metricLabel: activeScenarioComparison
-        ? `CAPEX ₹${activeScenarioComparison.total_capex_lakhs.toFixed(2)} L · NPC ₹${activeScenarioComparison.npc_lakhs.toFixed(2)} L`
-        : 'BOQ not computed',
-      statusText: !ratesState
-        ? 'PENDING'
-        : ratesState.unset_count === 0
-          ? 'RATES OK'
-          : `${ratesState.unset_count} UNSET`,
-      statusTone: !ratesState ? 'neutral' : ratesState.unset_count === 0 ? 'ok' : 'error',
+        ? activeScenarioComparison.has_unset_rates || activeScenarioComparison.totals_withheld
+          ? 'Totals paused — prices needed'
+          : `Upfront ₹${activeScenarioComparison.total_capex_lakhs.toFixed(2)} L · Lifetime ₹${activeScenarioComparison.npc_lakhs.toFixed(2)} L`
+        : 'No cost estimate yet',
+      statusText: !ratesState || ratesState.items.length === 0
+        ? 'Pending'
+        : ratesState.unset_count > 0
+          ? `${ratesState.unset_count} Missing`
+          : activeScenarioComparison
+            ? 'Prices Set'
+            : 'Default Rates',
+      statusTone:
+        !ratesState || ratesState.items.length === 0
+          ? 'neutral'
+          : ratesState.unset_count > 0
+            ? 'error'
+            : activeScenarioComparison
+              ? 'ok'
+              : 'neutral',
       icon: BarChart3,
     },
     {
       key: 'reports',
-      step: 'STAGE 6',
-      title: 'DPR & Exports',
-      metricLabel: preflightState
-        ? `${preflightState.sections.filter((s) => s.is_populated).length}/24 Sections Populated`
-        : 'Audit not run',
+      step: 'STEP 6',
+      title: 'Final Check & Report',
+      metricLabel: !preflightState
+        ? 'Checklist not run yet'
+        : !hasAnySubstantiveData
+          ? 'Complete Steps 1–5 first'
+          : `${populatedDprSectionsCount}/24 Sections Ready`,
       statusText: !preflightState
-        ? 'PENDING'
+        ? 'Pending'
         : preflightState.can_export
-          ? 'EXPORT READY'
-          : 'BLOCKED',
+          ? 'Ready to Export'
+          : 'Not Ready',
       statusTone: !preflightState
         ? 'neutral'
         : preflightState.can_export
@@ -407,10 +495,10 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
       items.push({
         id: `ver-${rec.id}`,
         kind: 'VERIFICATION',
-        title: `Cluster ${rec.cluster_label} — ${rec.evidence_type.replace(/_/g, ' ')}`,
-        subtitle: `Verified by ${rec.verifier_name}${rec.note ? ` · "${rec.note}"` : ''}`,
+        title: `Hamlet ${rec.cluster_label} — ${rec.evidence_type.replace(/_/g, ' ')}`,
+        subtitle: `Checked by ${rec.verifier_name}${rec.note ? ` · "${rec.note}"` : ''}`,
         timestamp: rec.created_at || rec.observed_on,
-        badgeText: 'AXIS-2 VERIFIED',
+        badgeText: 'Field Verified',
         badgeTone: 'ok',
       });
     }
@@ -420,9 +508,9 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
         id: `exp-${exp.id}`,
         kind: 'EXPORT',
         title: `${exp.export_kind} — ${exp.filename}`,
-        subtitle: `SHA-256: ${exp.file_sha256.slice(0, 16)}… · ${(exp.file_size_bytes / 1024).toFixed(1)} KB`,
+        subtitle: `Verification ID: ${exp.file_sha256.slice(0, 12)}… · ${(exp.file_size_bytes / 1024).toFixed(1)} KB`,
         timestamp: exp.created_at,
-        badgeText: exp.preflight_passed ? 'AUDITED EXPORT' : 'PRELIMINARY',
+        badgeText: exp.preflight_passed ? 'Final Export' : 'Preliminary',
         badgeTone: 'primary',
       });
     }
@@ -431,10 +519,10 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
       items.push({
         id: `job-${job.id}`,
         kind: 'JOB',
-        title: `Background Job: ${job.job_type}`,
-        subtitle: job.stage ?? `Status: ${job.status} (${job.progress}%)`,
+        title: formatJobTypeLabel(job.job_type),
+        subtitle: job.stage ?? `${formatJobStatusLabel(job.status)} (${job.progress}%)`,
         timestamp: job.updated_at || job.created_at,
-        badgeText: job.status,
+        badgeText: formatJobStatusLabel(job.status),
         badgeTone:
           job.status === 'SUCCEEDED'
             ? 'ok'
@@ -476,18 +564,19 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 <div className="flex items-center gap-2 text-xs text-ink-2">
                   <Icon icon={Compass} size="sm" className="text-accent" />
                   <span className="font-semibold text-ink">
-                    Spatial Study Area — {project.aoi ? `${project.aoi.area_km2.toFixed(2)} km²` : 'AOI Pending'}
+                    Study Area — {project.aoi ? `${project.aoi.area_km2.toFixed(2)} km²` : 'Boundary Needed'}
                   </span>
                   <span className="font-mono text-2xs px-2 py-0.5 rounded-full bg-subtle text-ink-3">
-                    EPSG:{project.metric_epsg}
+                    Grid EPSG:{project.metric_epsg}
                   </span>
+                  <HelpTooltip glossaryKey="crsEpsgUtm" label="About map grid projection" />
                 </div>
                 <button
                   type="button"
                   onClick={launchFullMap}
                   className="text-xs font-semibold text-accent hover:text-accent-hover transition-colors"
                 >
-                  Expand Full GIS Workstation →
+                  Open Full GIS Map →
                 </button>
               </div>
               <div className="flex-1 rounded-xl overflow-hidden shadow-overlay border border-rule/80 bg-sheet">
@@ -497,20 +586,23 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 <EmptyState
                   compact
                   icon={Compass}
-                  title="Area of Interest (AOI) Not Configured"
-                  description="Define a village boundary or custom polygon in the AOI Setup Wizard to enable metric UTM calculations."
+                  title="Study Boundary Not Configured"
+                  description="Define a village boundary or draw an area in New Project Setup to enable measurements."
                 />
               )}
             </div>
           ) : (
             <Panel
-              overline="Geographic & Administrative Summary"
-              title="Area of Interest (AOI) & Spatial Reference"
-              subtitle="All metric distances (m), areas (km²), and clustering radii (ε) are computed in the project's dynamic local UTM projection."
+              overline="Geographic & Scheme Summary"
+              title="Study Area Boundary & Spatial Grid"
+              subtitle="All distances (m), areas (km²), and hamlet sizes are measured using a flat local meter grid."
               actions={
-                <Badge variant="primary" mono>
-                  EPSG:{project.metric_epsg}
-                </Badge>
+                <div className="flex items-center gap-1.5">
+                  <Badge variant="primary" mono>
+                    EPSG:{project.metric_epsg}
+                  </Badge>
+                  <HelpTooltip glossaryKey="crsEpsgUtm" label="About map coordinate grid" />
+                </div>
               }
             >
               {project.aoi ? (
@@ -521,33 +613,34 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                         State / District / Block
                       </dt>
                       <dd className="text-body-sm font-semibold text-ink mt-1">
-                        {project.target_state ?? 'Odisha'} · {project.target_district ?? 'Koraput'} ·{' '}
-                        {project.target_block ?? 'Nandapur'}
+                        {[project.target_state, project.target_district, project.target_block]
+                          .filter(Boolean)
+                          .join(' · ') || 'Study Boundary Defined'}
                       </dd>
                     </div>
                     <div className="bg-subtle/60 rounded-sm p-3.5">
                       <dt className="text-xs font-medium text-ink-3">
-                        Target Scheme &amp; Horizon
+                        Funding Scheme &amp; Lifespan
                       </dt>
                       <dd className="text-body-sm font-semibold text-ink mt-1">
-                        {project.scheme} ({project.horizon_years} yrs @{' '}
+                        {formatSchemeLabel(project.scheme)} ({project.horizon_years} yrs @{' '}
                         {(project.discount_rate * 100).toFixed(1)}%)
                       </dd>
                     </div>
                     <div className="bg-subtle/60 rounded-sm p-3.5">
                       <dt className="text-xs font-medium text-ink-3">
-                        Validated Metric Area
+                        Study Area Size &amp; Source
                       </dt>
                       <dd className="text-body-sm font-mono font-semibold text-ink mt-1">
-                        {project.aoi.area_km2.toFixed(2)} km² ({project.aoi.boundary_source})
+                        {project.aoi.area_km2.toFixed(2)} km² ({formatBoundarySourceLabel(project.aoi.boundary_source)})
                       </dd>
                     </div>
                     <div className="bg-subtle/60 rounded-sm p-3.5">
                       <dt className="text-xs font-medium text-ink-3">
-                        LGD / Census 2011 Codes
+                        Village &amp; Census Codes
                       </dt>
                       <dd className="text-body-sm font-mono font-semibold text-ink mt-1">
-                        LGD: {project.aoi.lgd_code ?? 'Unlinked'} · C2011:{' '}
+                        Village: {project.aoi.lgd_code ?? 'Unlinked'} · Census:{' '}
                         {project.aoi.census2011_code ??
                           settlements?.census_reconciliation?.census2011_code ??
                           'Unlinked'}
@@ -557,7 +650,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
 
                   {buildingsLayer?.bbox && buildingsLayer.bbox.length === 4 && (
                     <div className="bg-subtle/40 border border-rule-subtle rounded-sm px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-2">
-                      <span className="text-ink-3 font-medium">WGS 84 Bounding Box:</span>
+                      <span className="text-ink-3 font-medium">Map Bounding Box (Lat/Lon):</span>
                       <span className="font-mono">
                         [{buildingsLayer.bbox[0]?.toFixed(4)}°E, {buildingsLayer.bbox[1]?.toFixed(4)}
                         °N] → [{buildingsLayer.bbox[2]?.toFixed(4)}°E,{' '}
@@ -568,15 +661,16 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
 
                   <div className="bg-subtle/40 border border-rule-subtle rounded-sm p-3.5 flex items-center justify-between gap-3 text-xs">
                     <div>
-                      <span className="font-semibold text-ink text-body-sm">
-                        Solar &amp; Nighttime Illumination Context
+                      <span className="font-semibold text-ink text-body-sm inline-flex items-center gap-1.5">
+                        Sunlight &amp; Nighttime Satellite Context
+                        <HelpTooltip glossaryKey="ghiSolarIrradiance" label="About solar irradiance" />
                       </span>
                       <p className="text-xs text-ink-2 mt-1">
                         {worstMonthGhi !== null
-                          ? `Worst-month GHI: ${worstMonthGhi.toFixed(2)} kWh/m²/day · Annual mean: ${
+                          ? `Cloudiest month sunlight: ${worstMonthGhi.toFixed(2)} kWh/m²/day · Yearly avg: ${
                               meanAnnualGhi?.toFixed(2) ?? '—'
-                            } kWh/m²/day · Tilt: ${optimalTiltDeg?.toFixed(0) ?? '19'}°`
-                          : 'Solar climatology layer not yet ingested.'}
+                            } kWh/m²/day · Panel tilt: ${optimalTiltDeg?.toFixed(0) ?? '19'}°`
+                          : 'Sunlight data not yet loaded (run Step 1).'}
                       </p>
                     </div>
                     <QualityTag kind={worstMonthGhi !== null ? 'ESTIMATED' : 'UNSET'} />
@@ -585,8 +679,8 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
               ) : (
                 <EmptyState
                   icon={Compass}
-                  title="Area of Interest (AOI) Not Configured"
-                  description="Define a village boundary or custom polygon in the AOI Setup Wizard to enable metric UTM calculations."
+                  title="Study Boundary Not Configured"
+                  description="Pick a village or draw a boundary in New Project Setup to enable measurements."
                 />
               )}
             </Panel>
@@ -620,8 +714,8 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 </Badge>
                 <span className="text-xs font-medium text-ink-3">Recommended next step</span>
               </div>
-              <Badge variant="navy" mono>
-                {project.scheme}
+              <Badge variant="navy">
+                {formatSchemeLabel(project.scheme).split(' (')[0]}
               </Badge>
             </div>
             <div>
@@ -650,65 +744,76 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             </div>
           </div>
 
-          {/* Open Editorial Key Indicators Matrix (No 6 Identical Box Borders) */}
+          {/* Open Editorial Key Indicators Matrix */}
           <div className="bg-sheet border border-rule/80 rounded-lg shadow-card p-5 flex-1 flex flex-col justify-between gap-4">
             <div className="grid grid-cols-2 gap-x-5 gap-y-4">
               <div className="space-y-1">
                 <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-medium text-ink-3">Detected Structures</span>
-                  <QualityTag kind={detectedStructuresCount !== null ? 'VERIFIED' : 'UNSET'} />
+                  <span className="text-xs font-medium text-ink-3 inline-flex items-center gap-1">
+                    Detected Houses
+                    <HelpTooltip glossaryKey="buildingFootprints" label="About detected houses" />
+                  </span>
+                  <QualityTag kind={detectedStructuresCount !== null ? 'ESTIMATED' : 'UNSET'} />
                 </div>
                 <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
                   {detectedStructuresCount !== null
                     ? detectedStructuresCount.toLocaleString()
-                    : 'Not available'}
+                    : 'Not loaded'}
                 </div>
                 <div className="text-2xs text-ink-3">
                   {residentialStructuresCount !== null
                     ? `${residentialStructuresCount.toLocaleString()} residential`
-                    : 'Run Step 1 acquisition'}
+                    : 'Run Step 1 first'}
                 </div>
               </div>
 
               <div className="space-y-1">
                 <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-medium text-ink-3">Habitation Clusters</span>
+                  <span className="text-xs font-medium text-ink-3">
+                    Hamlet Groups
+                  </span>
                   <QualityTag kind={totalClustersCount > 0 ? 'ESTIMATED' : 'UNSET'} />
                 </div>
                 <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
-                  {totalClustersCount > 0 ? `${totalClustersCount} clusters` : 'Not available'}
+                  {totalClustersCount > 0 ? `${totalClustersCount} hamlets` : 'Not grouped'}
                 </div>
                 <div className="text-2xs text-ink-3">
                   {totalEstimatedHouseholds !== null
-                    ? `${totalEstimatedHouseholds.toLocaleString()} est. HH · ${verifiedClustersCount} verified`
-                    : 'Run Step 2 DBSCAN'}
+                    ? `${totalEstimatedHouseholds.toLocaleString()} est. homes · ${verifiedClustersCount} verified`
+                    : 'Run Step 2 first'}
                 </div>
               </div>
 
               <div className="space-y-1 pt-3 border-t border-rule-subtle">
                 <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-medium text-ink-3">Peak Demand</span>
+                  <span className="text-xs font-medium text-ink-3 inline-flex items-center gap-1">
+                    Peak Load
+                    <HelpTooltip glossaryKey="loadFactorPowerFactor" label="About peak electricity load" />
+                  </span>
                   <QualityTag kind={demand ? 'ESTIMATED' : 'UNSET'} />
                 </div>
                 <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
-                  {demand ? `${demand.peak_kva_horizon.toFixed(2)} kVA` : 'Not available'}
+                  {demand ? `${demand.peak_kva_horizon.toFixed(2)} kVA` : 'Not estimated'}
                 </div>
                 <div className="text-2xs text-ink-3">
                   {demand
-                    ? `${demand.total_connected_kw.toFixed(1)} kW connected`
-                    : 'Requires clusters'}
+                    ? `${demand.total_connected_kw.toFixed(1)} kW total appliances`
+                    : 'Needs hamlets'}
                 </div>
               </div>
 
               <div className="space-y-1 pt-3 border-t border-rule-subtle">
                 <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-medium text-ink-3">Terrain Feeder Gap</span>
+                  <span className="text-xs font-medium text-ink-3 inline-flex items-center gap-1">
+                    Distance to Grid
+                    <HelpTooltip glossaryKey="terrainCostSurface" label="About terrain feeder distance" />
+                  </span>
                   <QualityTag
                     kind={
                       gapAnalysis?.has_existing_infra
                         ? gapAnalysis.assumed_assets_count > 0
                           ? 'ASSUMED'
-                          : 'VERIFIED'
+                          : 'ESTIMATED'
                         : 'UNSET'
                     }
                   />
@@ -716,22 +821,26 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
                   {gapAnalysis?.has_existing_infra && gapAnalysis.mean_d_terrain_m !== null
                     ? `${(gapAnalysis.mean_d_terrain_m / 1000).toFixed(2)} km`
-                    : 'UNSET'}
+                    : 'Not added'}
                 </div>
                 <div className="text-2xs text-ink-3">
                   {gapAnalysis?.has_existing_infra && gapAnalysis.max_d_terrain_m !== null
-                    ? `Max gap ${(gapAnalysis.max_d_terrain_m / 1000).toFixed(2)} km`
-                    : 'Grid tie-in required'}
+                    ? `Farthest hamlet ${(gapAnalysis.max_d_terrain_m / 1000).toFixed(2)} km`
+                    : 'Add connection point in Step 3'}
                 </div>
               </div>
 
               <div className="space-y-1 pt-3 border-t border-rule-subtle">
                 <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-medium text-ink-3">Scenario CAPEX</span>
+                  <span className="text-xs font-medium text-ink-3 inline-flex items-center gap-1">
+                    Estimated Build Cost
+                    <HelpTooltip glossaryKey="capexOpexNpvLcoe" label="About CAPEX and unit prices" />
+                  </span>
                   <QualityTag
                     kind={
                       activeScenarioComparison
-                        ? activeScenarioComparison.has_unset_rates
+                        ? activeScenarioComparison.has_unset_rates ||
+                          activeScenarioComparison.totals_withheld
                           ? 'UNSET'
                           : 'ESTIMATED'
                         : 'UNSET'
@@ -740,30 +849,53 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 </div>
                 <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
                   {activeScenarioComparison
-                    ? `₹${activeScenarioComparison.total_capex_lakhs.toFixed(2)} L`
-                    : 'Not available'}
+                    ? activeScenarioComparison.has_unset_rates ||
+                      activeScenarioComparison.totals_withheld
+                      ? 'Prices Needed'
+                      : `₹${activeScenarioComparison.total_capex_lakhs.toFixed(2)} L`
+                    : 'Not computed'}
                 </div>
                 <div className="text-2xs text-ink-3">
                   {activeScenarioComparison
-                    ? `Utility net ₹${(activeScenarioComparison.net_utility_capex_inr / 100000).toFixed(2)} L`
-                    : 'Run Step 4 & Step 5'}
+                    ? activeScenarioComparison.has_unset_rates ||
+                      activeScenarioComparison.totals_withheld
+                      ? 'Enter missing item prices in Step 5'
+                      : `Utility net ₹${(activeScenarioComparison.net_utility_capex_inr / 100000).toFixed(2)} L`
+                    : 'Run Steps 4 & 5'}
                 </div>
               </div>
 
               <div className="space-y-1 pt-3 border-t border-rule-subtle">
                 <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-medium text-ink-3">Lifecycle NPC</span>
-                  <QualityTag kind={activeScenarioComparison ? 'ESTIMATED' : 'UNSET'} />
+                  <span className="text-xs font-medium text-ink-3">
+                    {project.horizon_years}-Yr Total Cost
+                  </span>
+                  <QualityTag
+                    kind={
+                      activeScenarioComparison
+                        ? activeScenarioComparison.has_unset_rates ||
+                          activeScenarioComparison.totals_withheld
+                          ? 'UNSET'
+                          : 'ESTIMATED'
+                        : 'UNSET'
+                    }
+                  />
                 </div>
                 <div className="text-xl font-bold tracking-tight tabular-nums text-ink">
                   {activeScenarioComparison
-                    ? `₹${activeScenarioComparison.npc_lakhs.toFixed(2)} L`
-                    : 'Not available'}
+                    ? activeScenarioComparison.has_unset_rates ||
+                      activeScenarioComparison.totals_withheld
+                      ? 'Prices Needed'
+                      : `₹${activeScenarioComparison.npc_lakhs.toFixed(2)} L`
+                    : 'Not computed'}
                 </div>
                 <div className="text-2xs text-ink-3">
                   {activeScenarioComparison
-                    ? `LCOE ₹${activeScenarioComparison.lcoe_inr_kwh.toFixed(2)}/kWh`
-                    : 'Requires cost synthesis'}
+                    ? activeScenarioComparison.has_unset_rates ||
+                      activeScenarioComparison.totals_withheld
+                      ? 'Unit cost waiting on Step 5 rates'
+                      : `Avg ₹${activeScenarioComparison.lcoe_inr_kwh.toFixed(2)}/kWh`
+                    : 'Needs cost step'}
                 </div>
               </div>
             </div>
@@ -771,15 +903,15 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             {project.aoi && (
               <div className="pt-3 border-t border-rule-subtle flex flex-wrap items-center justify-between gap-2 text-2xs text-ink-3">
                 <span>
-                  LGD: {project.aoi.lgd_code ?? 'Unlinked'} · C2011:{' '}
+                  Village Code: {project.aoi.lgd_code ?? 'Unlinked'} · Census:{' '}
                   {project.aoi.census2011_code ??
                     settlements?.census_reconciliation?.census2011_code ??
                     'Unlinked'}
                 </span>
                 <span>
                   {worstMonthGhi !== null
-                    ? `Solar low: ${worstMonthGhi.toFixed(2)} kWh/m²/d`
-                    : 'Solar climatology pending'}
+                    ? `Cloudiest month sun: ${worstMonthGhi.toFixed(2)} kWh/m²/d`
+                    : 'Sunlight data pending'}
                 </span>
               </div>
             )}
@@ -787,9 +919,9 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
         </div>
       </div>
 
-      {/* 2. Connected 6-Stage Engineering Pipeline Rail */}
+      {/* 2. Connected 6-Step Planning Pipeline */}
       <div
-        aria-label="Engineering Workflow Stage Shortcuts"
+        aria-label="Planning Workflow Steps"
         className="bg-sheet border border-rule/80 rounded-lg shadow-card overflow-hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-rule-subtle"
       >
         {workflowStagesOnly.map((card) => (
@@ -818,18 +950,24 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
         ))}
       </div>
 
-      {/* 3. Four-Dimension Electrification Epistemic Matrix */}
+      {/* 3. Four-Dimension Electrification Check */}
       <div>
         <Panel
-          overline="Four-Dimension Electrification Assessment"
-          title="Strict Epistemic Separation of Rural Electrification Dimensions"
-          subtitle="Satellites cannot see electricity meters or daily supply hours. ElectriMap strictly separates household coverage, supply availability, voltage quality, and infrastructure adequacy."
+          overline="Four Dimensions of Rural Electricity"
+          title="Why Satellite Clues Are Separate from Ground Reality"
+          subtitle="Satellites cannot see house wires, hours of daily power, or low voltage. ElectriMap tracks household coverage, hours of supply, voltage health, and poles separately."
           actions={
-            project.aoi && !heroMapSlot ? (
-              <Badge variant="primary" mono>
-                EPSG:{project.metric_epsg}
-              </Badge>
-            ) : undefined
+            <div className="flex items-center gap-1.5">
+              <HelpTooltip
+                glossaryKey="fourElectrificationDimensions"
+                label="Learn about the 4 dimensions of electrification"
+              />
+              {project.aoi && !heroMapSlot ? (
+                <Badge variant="primary" mono>
+                  EPSG:{project.metric_epsg}
+                </Badge>
+              ) : null}
+            </div>
           }
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -837,27 +975,36 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
               <div className="border border-rule-subtle rounded-sm p-4 bg-subtle/40 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-ink-2">
-                    Dimension A · Connection Coverage
+                    1. Home Connections
                   </span>
                   <QualityTag
                     kind={
-                      verificationCoveragePct !== null && verificationCoveragePct > 0
+                      verificationCoveragePct !== null && verificationCoveragePct >= 100
                         ? 'VERIFIED'
-                        : totalClustersCount > 0
-                          ? 'PROXY'
-                          : 'UNSET'
+                        : verificationCoveragePct !== null && verificationCoveragePct > 0
+                          ? 'ESTIMATED'
+                          : totalClustersCount > 0
+                            ? 'PROXY'
+                            : 'UNSET'
+                    }
+                    label={
+                      verificationCoveragePct !== null &&
+                      verificationCoveragePct > 0 &&
+                      verificationCoveragePct < 100
+                        ? 'Partially Verified'
+                        : undefined
                     }
                   />
                 </div>
                 <p className="text-body-sm font-semibold text-ink">
                   {totalClustersCount > 0
-                    ? `${proxyDistribution.LIKELY_ELECTRIFIED.clusters} Likely Electrified · ${proxyDistribution.POTENTIALLY_UNDERSERVED.clusters} Underserved · ${proxyDistribution.POTENTIALLY_UNSERVED.clusters} Unserved`
-                    : 'No habitation clusters assessed yet'}
+                    ? `${proxyDistribution.LIKELY_ELECTRIFIED.clusters} Likely Connected · ${proxyDistribution.POTENTIALLY_UNDERSERVED.clusters} Underserved · ${proxyDistribution.POTENTIALLY_UNSERVED.clusters} Off-Grid`
+                    : 'No hamlets grouped yet'}
                 </p>
                 <p className="text-xs text-ink-2 leading-relaxed">
                   {verificationCoveragePct !== null
-                    ? `Axis-2 Field Verification: ${verificationCoveragePct.toFixed(1)}% of households (${verifiedClustersCount}/${totalClustersCount} clusters verified in ledger).`
-                    : 'Run Step 2 clustering and record Gram Sabha / DISCOM ledger verifications.'}
+                    ? `Ground verification: ${verificationCoveragePct.toFixed(1)}% of homes checked (${verifiedClustersCount}/${totalClustersCount} hamlets confirmed).`
+                    : 'Run Step 2 hamlet grouping and record local village / utility confirmations.'}
                 </p>
               </div>
 
@@ -865,39 +1012,40 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
               <div className="border border-rule-subtle rounded-sm p-4 bg-subtle/40 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-ink-2">
-                    Dimension B · Supply Availability (Hrs/Day)
+                    2. Daily Supply Hours
                   </span>
                   <QualityTag kind={nightlightsLayer ? 'PROXY' : 'UNSET'} />
                 </div>
                 <p className="text-body-sm font-semibold text-ink">
                   {nightlightsLayer
-                    ? 'VIIRS Nighttime Radiance Proxy Active (Requires DISCOM Feeder Logs)'
-                    : 'Supply Hours Not Available from Satellite Observations'}
+                    ? 'Night-Light Clue Loaded (Needs Utility Supply Log)'
+                    : 'Supply Hours Not Visible from Space'}
                 </p>
                 <p className="text-xs text-ink-2 leading-relaxed">
-                  Daily supply duration (summer/winter hrs/day) and evening peak reliability cannot be measured from space; verify against 11 kV feeder outage registers.
+                  Satellites cannot measure how many hours per day homes get electricity — verify against local feeder logs or village surveys.
                 </p>
               </div>
 
               {/* Dimension C */}
               <div className="border border-rule-subtle rounded-sm p-4 bg-subtle/40 space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-ink-2">
-                    Dimension C · Voltage Regulation &amp; Quality
+                  <span className="text-xs font-semibold text-ink-2 inline-flex items-center gap-1">
+                    3. Voltage Stability
+                    <HelpTooltip glossaryKey="voltageRegulation" label="About safe voltage limits" />
                   </span>
                   <QualityTag kind={activeScenario ? 'ESTIMATED' : 'UNSET'} />
                 </div>
                 <p className="text-body-sm font-semibold text-ink">
                   {activeScenario
-                    ? `Max HT Drop: ${activeScenario.max_ht_vdrop_pct.toFixed(2)}% · Max LT Drop: ${activeScenario.max_lt_vdrop_pct.toFixed(2)}%`
-                    : 'Voltage Drop Analysis Pending Network Synthesis'}
+                    ? `Main Line Drop: ${activeScenario.max_ht_vdrop_pct.toFixed(2)}% · Street Drop: ${activeScenario.max_lt_vdrop_pct.toFixed(2)}%`
+                    : 'Voltage Drop Checked in Step 4'}
                 </p>
                 <p className="text-xs text-ink-2 leading-relaxed">
                   {activeScenario
                     ? activeScenario.vdrop_compliance_ok
-                      ? 'Complies with CEA (Measures relating to Safety and Electric Supply) Regulations (±6% HT / ±6% LT limit).'
-                      : 'Exceeds CEA voltage regulation threshold — inspect feeder reconductoring or DT split in Stage 4.'
-                    : 'Run Stage 4 Network Design to evaluate 11 kV ACSR Rabbit and 415 V LT AB cable voltage regulation.'}
+                      ? 'Meets national CEA safe-voltage rules (≤ 5% main 11 kV / ≤ 6% street wires).'
+                      : 'Exceeds safe voltage drop — shorten street runs or split transformers in Step 4.'
+                    : 'Run Step 4 Network Design to check if wires keep lights and pumps running reliably.'}
                 </p>
               </div>
 
@@ -905,29 +1053,29 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
               <div className="border border-rule-subtle rounded-sm p-4 bg-subtle/40 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-ink-2">
-                    Dimension D · Infrastructure Adequacy
+                    4. Grid Lines &amp; Transformers
                   </span>
                   <QualityTag
                     kind={
                       infrastructure?.has_existing_infra
                         ? gapAnalysis?.assumed_assets_count
                           ? 'ASSUMED'
-                          : 'VERIFIED'
+                          : 'ESTIMATED'
                         : 'UNSET'
                     }
                   />
                 </div>
                 <p className="text-body-sm font-semibold text-ink">
                   {activeScenario
-                    ? `${activeScenario.total_dt_count} DTs (${activeScenario.total_dt_capacity_kva.toFixed(0)} kVA) · PV ${activeScenario.total_solar_kwp.toFixed(1)} kWp · BESS ${activeScenario.total_bess_kwh.toFixed(0)} kWh`
+                    ? `${activeScenario.total_dt_count} Transformers (${activeScenario.total_dt_capacity_kva.toFixed(0)} kVA) · ${activeScenario.total_solar_kwp.toFixed(1)} kWp Solar`
                     : infrastructure?.has_existing_infra
-                      ? `${infrastructure.items.length} Existing Grid Asset(s) Registered`
-                      : 'Existing Distribution Infrastructure UNSET'}
+                      ? `${infrastructure.items.length} Existing Grid Point(s) Added`
+                      : 'Existing Grid Not Added Yet'}
                 </p>
                 <p className="text-xs text-ink-2 leading-relaxed">
                   {infrastructure?.has_existing_infra
-                    ? `Existing assets: ${gapAnalysis?.verified_assets_count ?? 0} uploaded/verified, ${gapAnalysis?.assumed_assets_count ?? 0} user-assumed tie-ins.`
-                    : 'Upload DISCOM 11 kV / DT GIS layers or place an assumed tie-in point in Stage 3.'}
+                    ? `Added equipment: ${gapAnalysis?.verified_assets_count ?? 0} uploaded/verified, ${gapAnalysis?.assumed_assets_count ?? 0} user-marked tie-in points.`
+                    : 'Upload utility line maps or place a connection point on the map in Step 3.'}
                 </p>
               </div>
             </div>
@@ -939,9 +1087,14 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
         {/* Chart 1: Village & Settlement Electrification Breakdown + Census 2011 Reconciliation */}
         <div className="lg:col-span-6">
           <Panel
-            overline="Chart 1 · Habitation & Census Reconciliation"
-            title="Settlement Electrification Status & Axis-2 Verification Breakdown"
-            subtitle="Two-axis epistemic classification across delineated habitation clusters and Census 2011 household reconciliation."
+            overline="Step 2 Summary · Village Homes & Census Match"
+            title={
+              <span className="inline-flex items-center gap-1.5">
+                <span>Village Electricity Status &amp; Census Check</span>
+                <HelpTooltip glossaryKey="censusReconciliation" />
+              </span>
+            }
+            subtitle="How village home clusters are estimated from satellite night lights and compared with Census 2011 records and field checks."
             actions={
               <Button
                 size="xs"
@@ -949,7 +1102,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 rightIcon={ArrowRight}
                 onClick={() => onNavigateSection('settlements')}
               >
-                Inspect Clusters
+                Inspect Villages
               </Button>
             }
           >
@@ -958,11 +1111,12 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 {/* Stacked Proportional Bar of Households by Classification */}
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
-                    <span className="font-semibold text-ink">
-                      Household Distribution by Electrification Classification
+                    <span className="font-semibold text-ink inline-flex items-center gap-1.5">
+                      <span>Estimated Homes by Electricity Status</span>
+                      <HelpTooltip glossaryKey="proxyClassification" />
                     </span>
                     <span className="font-mono text-ink-2 shrink-0 tabular-nums">
-                      {totalEstimatedHouseholds ?? 0} Total Est. HH ({totalClustersCount} Clusters)
+                      {totalEstimatedHouseholds ?? 0} Est. Homes ({totalClustersCount} Clusters)
                     </span>
                   </div>
                   <div
@@ -974,21 +1128,25 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                       [
                         {
                           key: 'LIKELY_ELECTRIFIED',
-                          color: 'bg-[#15803D]',
+                          label: 'Likely Electrified',
+                          color: 'bg-[#0072B2]',
                           hh: proxyDistribution.LIKELY_ELECTRIFIED.households,
                         },
                         {
                           key: 'POTENTIALLY_UNDERSERVED',
-                          color: 'bg-[#D97706]',
+                          label: 'Potentially Underserved',
+                          color: 'bg-[#E69F00]',
                           hh: proxyDistribution.POTENTIALLY_UNDERSERVED.households,
                         },
                         {
                           key: 'POTENTIALLY_UNSERVED',
-                          color: 'bg-[#DC2626]',
+                          label: 'Potentially Unserved',
+                          color: 'bg-[#D55E00]',
                           hh: proxyDistribution.POTENTIALLY_UNSERVED.households,
                         },
                         {
                           key: 'UNKNOWN',
+                          label: 'Needs Field Check',
                           color: 'bg-[#64748B]',
                           hh: proxyDistribution.UNKNOWN.households,
                         },
@@ -1004,7 +1162,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                           key={seg.key}
                           style={{ width: `${pct}%` }}
                           className={`${seg.color} h-full transition-all`}
-                          title={`${seg.key}: ${seg.hh} HH (${pct.toFixed(1)}%)`}
+                          title={`${seg.label}: ${seg.hh} homes (${pct.toFixed(1)}%)`}
                         />
                       );
                     })}
@@ -1016,17 +1174,17 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                       [
                         {
                           key: 'LIKELY_ELECTRIFIED' as const,
-                          dot: 'bg-[#15803D]',
+                          dot: 'bg-[#0072B2]',
                           data: proxyDistribution.LIKELY_ELECTRIFIED,
                         },
                         {
                           key: 'POTENTIALLY_UNDERSERVED' as const,
-                          dot: 'bg-[#D97706]',
+                          dot: 'bg-[#E69F00]',
                           data: proxyDistribution.POTENTIALLY_UNDERSERVED,
                         },
                         {
                           key: 'POTENTIALLY_UNSERVED' as const,
-                          dot: 'bg-[#DC2626]',
+                          dot: 'bg-[#D55E00]',
                           data: proxyDistribution.POTENTIALLY_UNSERVED,
                         },
                         {
@@ -1048,10 +1206,10 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                           <div className="flex items-center justify-between gap-2">
                             <span className="inline-flex items-center gap-1.5 text-ink font-semibold tabular-nums">
                               <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${row.dot}`} />
-                              {row.data.households} HH ({pct.toFixed(0)}%)
+                              {row.data.households} homes ({pct.toFixed(0)}%)
                             </span>
                             <span className="text-ink-2 tabular-nums">
-                              {row.data.clusters} cl
+                              {row.data.clusters} cluster{row.data.clusters === 1 ? '' : 's'}
                             </span>
                           </div>
                           <div>
@@ -1068,38 +1226,47 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                   <div className="border-t border-rule pt-3 space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-xs font-semibold text-ink">
-                        Census 2011 vs. Satellite Footprint Reconciliation (
-                        {settlements.census_reconciliation.village_name ?? 'AOI'})
+                        Census 2011 vs. Satellite Building Count (
+                        {settlements.census_reconciliation.village_name ?? 'Study Area'})
                       </span>
-                      <Badge
-                        variant={
-                          settlements.census_reconciliation.divergence_exceeds_30pct
-                            ? 'warn'
-                            : 'ok'
-                        }
-                      >
-                        {settlements.census_reconciliation.divergence_exceeds_30pct
-                          ? `DIVERGENCE ${(settlements.census_reconciliation.delta_pct ?? 0).toFixed(1)}% (>30%)`
-                          : `RECONCILED (${(settlements.census_reconciliation.delta_pct ?? 0).toFixed(1)}%)`}
-                      </Badge>
+                      {settlements.census_reconciliation.census_2011_households !== null &&
+                      settlements.census_reconciliation.census_2011_households !== undefined ? (
+                        <Badge
+                          variant={
+                            settlements.census_reconciliation.divergence_exceeds_30pct
+                              ? 'warn'
+                              : 'ok'
+                          }
+                        >
+                          {settlements.census_reconciliation.divergence_exceeds_30pct
+                            ? `Differs by ${(settlements.census_reconciliation.delta_pct ?? 0).toFixed(1)}% (>30%)`
+                            : `Matches within 30% (${(settlements.census_reconciliation.delta_pct ?? 0).toFixed(1)}% diff)`}
+                        </Badge>
+                      ) : (
+                        <Badge variant="neutral">No Census Baseline Linked</Badge>
+                      )}
                     </div>
                     <div className="grid grid-cols-3 gap-2.5 text-xs">
                       <div className="bg-subtle/50 rounded-sm p-3">
-                        <div className="text-xs text-ink-3">Census 2011 base</div>
+                        <div className="text-xs text-ink-3">Census 2011 count</div>
                         <div className="text-sm font-mono font-semibold text-ink mt-0.5">
-                          {settlements.census_reconciliation.census_2011_households} HH
+                          {settlements.census_reconciliation.census_2011_households !== null
+                            ? `${settlements.census_reconciliation.census_2011_households} homes`
+                            : 'Not linked'}
                         </div>
                       </div>
                       <div className="bg-subtle/50 rounded-sm p-3">
-                        <div className="text-xs text-ink-3">Projected baseline</div>
+                        <div className="text-xs text-ink-3">Projected today</div>
                         <div className="text-sm font-mono font-semibold text-ink mt-0.5">
-                          {settlements.census_reconciliation.projected_base_year_households} HH
+                          {settlements.census_reconciliation.projected_base_year_households !== null
+                            ? `${settlements.census_reconciliation.projected_base_year_households} homes`
+                            : 'Not linked'}
                         </div>
                       </div>
                       <div className="bg-subtle/50 rounded-sm p-3">
                         <div className="text-xs text-ink-3">Satellite estimate</div>
                         <div className="text-sm font-mono font-semibold text-accent mt-0.5">
-                          {settlements.census_reconciliation.satellite_estimated_households} HH
+                          {settlements.census_reconciliation.satellite_estimated_households} homes
                         </div>
                       </div>
                     </div>
@@ -1112,15 +1279,15 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             ) : (
               <EmptyState
                 icon={Home}
-                title="No Habitation Clusters Generated Yet"
-                description="Run DBSCAN clustering in Stage 2 (Villages & Habitations) to delineate settlement clusters and reconcile against Census 2011 household counts."
+                title="No Village Clusters Created Yet"
+                description="Run village grouping in Step 2 (Villages & Homes) to count homes in each cluster and compare against Census 2011 records."
                 action={
                   <Button
                     size="xs"
                     variant="primary"
                     onClick={() => onNavigateSection('settlements')}
                   >
-                    Go to Stage 2 · Villages & Habitations
+                    Go to Step 2 · Villages &amp; Homes
                   </Button>
                 }
               />
@@ -1131,9 +1298,14 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
         {/* Chart 2: 4-Scenario Economic Comparison Chart (CAPEX vs. 20-Year NPC & LCOE) */}
         <div className="lg:col-span-6">
           <Panel
-            overline="Chart 2 · Scenario Economics (₹ Lakhs)"
-            title="Multi-Scenario CAPEX vs. Lifecycle Net Present Cost (NPC)"
-            subtitle="Comparative evaluation of Grid Extension, Solar PV + LiFePO4 Mini-Grid, Standalone SHS, and Least-Cost Hybrid scenarios."
+            overline="Step 4 Summary · Cost Comparison (₹ Lakhs)"
+            title={
+              <span className="inline-flex items-center gap-1.5">
+                <span>Upfront Build Cost vs. Lifetime System Cost</span>
+                <HelpTooltip glossaryKey="capexOpexNpvLcoe" />
+              </span>
+            }
+            subtitle={`Compares Grid Extension, Solar Mini-Grid, Home Solar Systems, and Best-Mix options across build cost and ${project.horizon_years}-year total cost.`}
             actions={
               <Button
                 size="xs"
@@ -1141,77 +1313,83 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 rightIcon={ArrowRight}
                 onClick={() => onNavigateSection('cost')}
               >
-                Compare &amp; Pin
+                Compare &amp; Pick
               </Button>
             }
           >
             {comparisonScenarios.length > 0 ? (
               <div
                 role="img"
-                aria-label="Scenario CAPEX and Net Present Cost comparison bar chart"
+                aria-label="Scenario build cost and lifetime system cost comparison bar chart"
                 className="space-y-3"
               >
                 {comparisonScenarios.map((scen) => {
-                  const capexPct = Math.min(
-                    100,
-                    Math.max(4, (scen.total_capex_lakhs / maxScenarioNpc) * 100),
-                  );
-                  const npcPct = Math.min(
-                    100,
-                    Math.max(4, (scen.npc_lakhs / maxScenarioNpc) * 100),
-                  );
+                  const isWithheld = Boolean(scen.totals_withheld || scen.has_unset_rates);
+                  const capexPct = isWithheld
+                    ? 0
+                    : Math.min(100, Math.max(4, (scen.total_capex_lakhs / maxScenarioNpc) * 100));
+                  const npcPct = isWithheld
+                    ? 0
+                    : Math.min(100, Math.max(4, (scen.npc_lakhs / maxScenarioNpc) * 100));
                   return (
                     <div
                       key={scen.scenario_id}
                       className={`rounded-md border p-3 space-y-2 ${
                         scen.is_active_baseline
-                          ? 'bg-accent-soft/25 border-accent/40'
+                          ? 'bg-accent-tint/40 border-accent/40'
                           : 'bg-subtle/40 border-rule-subtle'
                       }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-ink">
-                            {scen.scenario_key}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-ink">
+                            {formatScenarioLabel(scen.scenario_key)}
                           </span>
                           {scen.is_active_baseline && (
-                            <Badge variant="primary">PINNED BASELINE</Badge>
+                            <Badge variant="primary">Selected Plan</Badge>
                           )}
                           <Badge variant={scen.vdrop_compliance_ok ? 'ok' : 'warn'}>
-                            {scen.vdrop_compliance_ok ? 'CEA OK' : 'VDROP WARN'}
+                            {scen.vdrop_compliance_ok ? 'Voltage OK' : 'Voltage Alert'}
                           </Badge>
                         </div>
                         <span className="font-mono text-[11px] text-ink-2">
-                          LCOE: <strong>₹{scen.lcoe_inr_kwh.toFixed(2)}/kWh</strong> ·{' '}
-                          {scen.avoided_co2_tonnes_yr.toFixed(1)} tCO₂/yr
+                          Avg. Cost:{' '}
+                          <strong>
+                            {isWithheld ? 'Prices Needed' : `₹${scen.lcoe_inr_kwh.toFixed(2)}/kWh`}
+                          </strong>{' '}
+                          · {scen.avoided_co2_tonnes_yr.toFixed(1)} t CO₂ saved/yr
                         </span>
                       </div>
 
                       {/* CAPEX Bar */}
                       <div className="grid grid-cols-12 items-center gap-2 text-[11px] font-mono">
-                        <span className="col-span-2 text-ink-3">CAPEX</span>
-                        <div className="col-span-7 h-2.5 bg-subtle rounded-full overflow-hidden border border-rule-subtle">
+                        <span className="col-span-3 sm:col-span-2 text-ink-3 font-sans">
+                          Build Cost
+                        </span>
+                        <div className="col-span-6 sm:col-span-7 h-2.5 bg-subtle rounded-full overflow-hidden border border-rule-subtle">
                           <div
                             style={{ width: `${capexPct}%` }}
                             className="h-full bg-accent rounded-full"
                           />
                         </div>
                         <span className="col-span-3 text-right font-semibold text-ink">
-                          ₹{scen.total_capex_lakhs.toFixed(2)} L
+                          {isWithheld ? 'Prices Needed' : `₹${scen.total_capex_lakhs.toFixed(2)} L`}
                         </span>
                       </div>
 
                       {/* Lifecycle NPC Bar */}
                       <div className="grid grid-cols-12 items-center gap-2 text-[11px] font-mono">
-                        <span className="col-span-2 text-ink-3">20Y NPC</span>
-                        <div className="col-span-7 h-2.5 bg-subtle rounded-full overflow-hidden border border-rule-subtle">
+                        <span className="col-span-3 sm:col-span-2 text-ink-3 font-sans">
+                          {project.horizon_years}Y Total
+                        </span>
+                        <div className="col-span-6 sm:col-span-7 h-2.5 bg-subtle rounded-full overflow-hidden border border-rule-subtle">
                           <div
                             style={{ width: `${npcPct}%` }}
                             className="h-full bg-navy-800 rounded-full"
                           />
                         </div>
                         <span className="col-span-3 text-right font-bold text-ink">
-                          ₹{scen.npc_lakhs.toFixed(2)} L
+                          {isWithheld ? 'Prices Needed' : `₹${scen.npc_lakhs.toFixed(2)} L`}
                         </span>
                       </div>
                     </div>
@@ -1221,15 +1399,15 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             ) : (
               <EmptyState
                 icon={BarChart3}
-                title="Scenario Cost Comparison Not Yet Computed"
-                description="Generate network scenarios in Stage 4 and review the Schedule of Rates in Stage 5 to compare CAPEX, 20-year NPC, and LCOE across all 4 electrification modalities."
+                title="Cost Comparison Not Ready Yet"
+                description={`Generate electricity plans in Step 4 and confirm equipment unit prices in Step 5 to compare upfront cost, ${project.horizon_years}-year cost, and per-unit electricity cost.`}
                 action={
                   <Button
                     size="xs"
                     variant="primary"
                     onClick={() => onNavigateSection('network')}
                   >
-                    Go to Stage 4 · Network Design
+                    Go to Step 4 · Network Plans
                   </Button>
                 }
               />
@@ -1240,12 +1418,17 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
         {/* Chart 3: 7-Category Consumer Load & Horizon Demand Forecast */}
         <div className="lg:col-span-6">
           <Panel
-            overline="Chart 3 · Consumer Load & Horizon Growth"
-            title="7-Category Connected Load & Diversified Demand Breakdown"
+            overline="Step 3 Summary · Electricity Demand"
+            title={
+              <span className="inline-flex items-center gap-1.5">
+                <span>Electricity Demand by Consumer Type</span>
+                <HelpTooltip glossaryKey="serviceLoadTier" />
+              </span>
+            }
             subtitle={
               demand
-                ? `Base Year: ${demand.peak_kva_base.toFixed(2)} kVA → Year-${demand.horizon_years} Horizon: ${demand.peak_kva_horizon.toFixed(2)} kVA (${(demand.annual_growth_rate * 100).toFixed(1)}%/yr growth)`
-                : 'Normative REC / CEA consumer category demand disaggregation.'
+                ? `Today: ${demand.peak_kva_base.toFixed(2)} kVA → Year-${demand.horizon_years} Forecast: ${demand.peak_kva_horizon.toFixed(2)} kVA (${(demand.annual_growth_rate * 100).toFixed(1)}%/yr growth)`
+                : 'Standard daily electricity demand across homes, shops, schools, health clinics, and farms.'
             }
             actions={
               <Button
@@ -1254,26 +1437,34 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 rightIcon={ArrowRight}
                 onClick={() => onNavigateSection('infrastructure')}
               >
-                Edit Load Norms
+                Edit Demand
               </Button>
             }
           >
             {demand && demand.category_totals.length > 0 ? (
               <div className="space-y-3">
                 {/* Base vs Horizon Peak kVA growth bar */}
-                <div className="bg-subtle/60 border border-rule-subtle rounded-sm p-3 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                <div className="bg-subtle/60 border border-rule-subtle rounded-sm p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div>
-                    <span className="text-ink-3">BASE PEAK:</span>{' '}
-                    <strong className="text-ink">{demand.peak_kva_base.toFixed(2)} kVA</strong> (
-                    {demand.energy_kwh_day_base.toFixed(1)} kWh/day)
+                    <span className="text-ink-3 font-medium">Peak Today:</span>{' '}
+                    <strong className="font-mono text-ink">
+                      {demand.peak_kva_base.toFixed(2)} kVA
+                    </strong>{' '}
+                    <span className="font-mono text-ink-2">
+                      ({demand.energy_kwh_day_base.toFixed(1)} kWh/day)
+                    </span>
                   </div>
                   <span className="text-ink-3">→</span>
                   <div>
-                    <span className="text-ink-3">YEAR-{demand.horizon_years} HORIZON:</span>{' '}
-                    <strong className="text-accent">
+                    <span className="text-ink-3 font-medium">
+                      Year-{demand.horizon_years} Forecast:
+                    </span>{' '}
+                    <strong className="font-mono text-accent">
                       {demand.peak_kva_horizon.toFixed(2)} kVA
                     </strong>{' '}
-                    ({demand.annual_energy_mwh_horizon.toFixed(2)} MWh/yr)
+                    <span className="font-mono text-ink-2">
+                      ({demand.annual_energy_mwh_horizon.toFixed(2)} MWh/yr)
+                    </span>
                   </div>
                 </div>
 
@@ -1293,7 +1484,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="font-medium text-ink truncate">{cat.label}</span>
                           <span className="font-mono text-[11px] text-ink-2 shrink-0">
-                            {cat.consumer_count} units ·{' '}
+                            {cat.consumer_count} connections ·{' '}
                             <strong>{cat.connected_kw.toFixed(2)} kW</strong> (
                             {cat.energy_kwh_day.toFixed(1)} kWh/d)
                           </span>
@@ -1312,15 +1503,15 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             ) : (
               <EmptyState
                 icon={Activity}
-                title="Consumer Load Forecast Not Available"
-                description="Complete habitation clustering (Stage 2) to compute the 7-category connected load and 10-year horizon kVA demand forecast."
+                title="Electricity Demand Not Calculated Yet"
+                description={`Find village clusters in Step 2 first so ElectriMap can estimate total electricity demand across homes and community facilities over ${project.horizon_years} years.`}
                 action={
                   <Button
                     size="xs"
                     variant="primary"
                     onClick={() => onNavigateSection('infrastructure')}
                   >
-                    Go to Stage 3 · Grid & Demand
+                    Go to Step 3 · Grid &amp; Demand
                   </Button>
                 }
               />
@@ -1331,9 +1522,14 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
         {/* Chart 4: Electrification Gap & Modality Split + Infrastructure Summary */}
         <div className="lg:col-span-6">
           <Panel
-            overline="Chart 4 · Feeder Gap & Modality Screening"
-            title="Terrain-Weighted Grid Distance & Modality Candidate Split"
-            subtitle="Comparison of Euclidean straight-line distance vs. slope/land-cover terrain-penalized distance to nearest 11 kV / LT infrastructure."
+            overline="Step 3 Summary · Distance to Power Grid"
+            title={
+              <span className="inline-flex items-center gap-1.5">
+                <span>Distance to Nearest Power Line &amp; Best Option</span>
+                <HelpTooltip glossaryKey="terrainCostSurface" />
+              </span>
+            }
+            subtitle="Straight-line distance compared with actual terrain distance (accounting for hills, forests, and rivers) to the nearest 11 kV power line."
             actions={
               <Button
                 size="xs"
@@ -1349,7 +1545,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-2.5 text-xs">
                   <div className="bg-subtle/50 rounded-sm p-3">
-                    <div className="text-xs text-ink-3">Mean straight dist</div>
+                    <div className="text-xs text-ink-3">Straight-line avg.</div>
                     <div className="text-sm font-mono font-semibold text-ink mt-0.5">
                       {gapAnalysis.mean_d_straight_m !== null
                         ? `${(gapAnalysis.mean_d_straight_m / 1000).toFixed(2)} km`
@@ -1357,7 +1553,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                     </div>
                   </div>
                   <div className="bg-subtle/50 rounded-sm p-3">
-                    <div className="text-xs text-ink-3">Mean terrain dist</div>
+                    <div className="text-xs text-ink-3">Terrain avg.</div>
                     <div className="text-sm font-mono font-semibold text-accent mt-0.5">
                       {gapAnalysis.mean_d_terrain_m !== null
                         ? `${(gapAnalysis.mean_d_terrain_m / 1000).toFixed(2)} km`
@@ -1365,7 +1561,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                     </div>
                   </div>
                   <div className="bg-subtle/50 rounded-sm p-3">
-                    <div className="text-xs text-ink-3">Max terrain gap</div>
+                    <div className="text-xs text-ink-3">Farthest village</div>
                     <div className="text-sm font-mono font-semibold text-warn mt-0.5">
                       {gapAnalysis.max_d_terrain_m !== null
                         ? `${(gapAnalysis.max_d_terrain_m / 1000).toFixed(2)} km`
@@ -1384,7 +1580,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                     <div className="text-xs text-ink-2">clusters</div>
                   </div>
                   <div className="border border-rule-subtle rounded-sm p-3 bg-subtle/30">
-                    <div className="text-xs text-ink-3">Augmentation</div>
+                    <div className="text-xs text-ink-3">Grid Upgrade</div>
                     <div className="text-base font-mono font-semibold text-ink mt-0.5">
                       {gapAnalysis.augmentation_candidates}
                     </div>
@@ -1398,7 +1594,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                     <div className="text-xs text-ink-2">clusters</div>
                   </div>
                   <div className="border border-rule-subtle rounded-sm p-3 bg-subtle/30">
-                    <div className="text-xs text-ink-3">Standalone SHS</div>
+                    <div className="text-xs text-ink-3">Home Solar</div>
                     <div className="text-base font-mono font-semibold text-ink mt-0.5">
                       {gapAnalysis.shs_candidates}
                     </div>
@@ -1410,7 +1606,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 {gapAnalysis.clusters.length > 0 && (
                   <div className="border-t border-rule-subtle pt-3 space-y-2">
                     <div className="text-xs font-medium text-ink-2">
-                      Habitation Modality Screening Register
+                      Suggested Electrification Option by Village Cluster
                     </div>
                     {gapAnalysis.clusters.slice(0, 4).map((cl) => (
                       <div
@@ -1424,10 +1620,12 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                         <div className="flex items-center gap-2 font-mono text-[11px]">
                           <span>
                             {cl.d_terrain_m !== null
-                              ? `${(cl.d_terrain_m / 1000).toFixed(2)} km eff.`
-                              : 'UNSET'}
+                              ? `${(cl.d_terrain_m / 1000).toFixed(2)} km terrain`
+                              : 'Not added'}
                           </span>
-                          <Badge variant="primary">{cl.recommended_modality}</Badge>
+                          <Badge variant="primary">
+                            {formatModalityLabel(cl.recommended_modality)}
+                          </Badge>
                         </div>
                       </div>
                     ))}
@@ -1438,12 +1636,11 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
               <div className="space-y-3">
                 <Callout
                   tone="warn"
-                  title="Existing Electrical Infrastructure UNSET — Distances Cannot Be Fabricated"
+                  title="No Existing Power Lines Added Yet — Distances Require a Starting Point"
                 >
-                  No existing 11 kV lines, substations, or distribution transformers are registered
-                  for this project. Upload utility GIS layers or place an explicit{' '}
-                  <code>USER_ASSUMED</code> 11 kV tie-in point on the map to compute feeder
-                  distances.
+                  No existing 11 kV power lines, substations, or transformers have been added for
+                  this area yet. Upload a utility map file or click on the map in Step 3 to place
+                  an assumed starting connection point before measuring distances.
                 </Callout>
                 <div className="flex items-center gap-2">
                   <Button
@@ -1451,7 +1648,7 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                     variant="primary"
                     onClick={() => onNavigateSection('infrastructure')}
                   >
-                    Configure Existing Grid / Place Tie-In
+                    Add Power Line or Starting Point
                   </Button>
                 </div>
               </div>
@@ -1462,12 +1659,22 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
 
       {/* 6. Data-Source Indicators & Recent Activity / Audit Trail (2-Column Grid) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left: Data-Source & Layer Provenance Indicators */}
+        {/* Left: Compact Data Availability Summary + Collapsed Technical Provenance */}
         <div className="lg:col-span-7">
           <Panel
-            overline="Data-Source & Provenance Registry"
-            title="Geospatial Layer Readiness & Open-Data Licences"
-            subtitle="Every satellite and vector dataset used in this project is tracked with explicit provider, spatial resolution, temporal vintage, and open licence metadata."
+            overline="Study Area Data"
+            title={
+              <span className="inline-flex items-center gap-1.5">
+                <span>Map Data Availability</span>
+                <HelpTooltip glossaryKey="dataSourceProvenance" />
+              </span>
+            }
+            subtitle={mapReadiness.summaryText}
+            badge={
+              <Badge variant={mapReadiness.badgeVariant} size="sm">
+                {mapReadiness.label}
+              </Badge>
+            }
             actions={
               <Button
                 size="xs"
@@ -1475,70 +1682,77 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
                 rightIcon={ArrowRight}
                 onClick={() => onNavigateSection('data')}
               >
-                Manage Layers
+                Manage Data
               </Button>
             }
           >
             {layers.length > 0 ? (
-              <div className="divide-y divide-rule-subtle border border-rule-subtle rounded-md overflow-hidden">
-                {layers.map((lyr) => {
-                  const sourceType = inferLayerSourceType(lyr);
-                  const displayTitle =
-                    CANONICAL_LAYER_LABELS[lyr.layer_key] ??
-                    lyr.dataset?.name ??
-                    lyr.layer_key;
-                  return (
-                    <div
-                      key={lyr.id}
-                      className="p-3 bg-sheet hover:bg-subtle/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs"
-                    >
-                      <div className="space-y-0.5 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
+              <div className="space-y-3">
+                <div className="divide-y divide-rule-subtle border border-rule-subtle rounded-md overflow-hidden">
+                  {layers.map((lyr) => {
+                    const honesty = classifyLayerHonesty(lyr);
+                    const displayTitle =
+                      CANONICAL_LAYER_LABELS[lyr.layer_key] ??
+                      lyr.dataset?.name ??
+                      lyr.layer_key;
+                    return (
+                      <div
+                        key={lyr.id}
+                        className="px-3 py-2.5 bg-sheet hover:bg-subtle/40 flex flex-wrap items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
                           <span className="font-semibold text-body-sm text-ink truncate">
                             {displayTitle}
                           </span>
-                          <LayerSourceBadge source={sourceType} />
+                          <QualityTag kind={honesty.qualityKind} label={honesty.originLabel} />
                         </div>
-                        <p className="text-xs text-ink-2">
+                        <div className="flex items-center gap-2 shrink-0">
+                          {typeof lyr.feature_count === 'number' && lyr.feature_count > 0 && (
+                            <span className="font-mono text-ink-3 tabular-nums">
+                              {lyr.feature_count.toLocaleString()} items
+                            </span>
+                          )}
+                          <Badge variant={honesty.badgeVariant} size="sm">
+                            {honesty.statusLabel}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <details className="border border-rule-subtle rounded-xs bg-paper/70 p-2.5 text-xs">
+                  <summary className="cursor-pointer font-semibold text-ink select-none">
+                    Data sources &amp; technical information ({layers.length} layers · CRS EPSG:{project.metric_epsg})
+                  </summary>
+                  <div className="mt-2 pt-2 border-t border-rule-subtle divide-y divide-rule-subtle text-[11px] text-ink-2">
+                    {layers.map((lyr) => (
+                      <div key={`${lyr.id}-tech`} className="py-1.5 flex flex-wrap justify-between gap-1">
+                        <span className="font-medium text-ink">
+                          {CANONICAL_LAYER_LABELS[lyr.layer_key] ?? lyr.layer_key}
+                        </span>
+                        <span>
                           {lyr.dataset
-                            ? `${lyr.dataset.provider} · ${lyr.dataset.spatial_resolution ?? 'Vector'} · ${lyr.dataset.temporal_coverage ?? 'Current'} · Licence: ${lyr.dataset.licence}`
-                            : `Cache key: ${lyr.cache_key ?? 'local'}`}
-                        </p>
+                            ? `${lyr.dataset.provider} · ${lyr.dataset.spatial_resolution ?? 'Vector'} · ${lyr.dataset.temporal_coverage ?? 'Current'} · ${lyr.dataset.licence}`
+                            : 'User-uploaded GeoJSON layer'}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0 text-xs">
-                        {typeof lyr.feature_count === 'number' && lyr.feature_count > 0 && (
-                          <span className="font-mono text-ink-2">
-                            {lyr.feature_count.toLocaleString()} features
-                          </span>
-                        )}
-                        <Badge
-                          variant={
-                            lyr.status === 'READY'
-                              ? 'ok'
-                              : lyr.status === 'FAILED'
-                                ? 'error'
-                                : 'warn'
-                          }
-                        >
-                          {lyr.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </div>
+                </details>
               </div>
             ) : (
               <EmptyState
                 icon={Layers}
-                title="No Geospatial Layers Acquired Yet"
-                description="Trigger the 6-layer open geospatial data acquisition job in Stage 1 to populate building footprints, DEM slope, land cover, solar GHI, and VIIRS nightlights."
+                title="No Map Data Fetched Yet"
+                description="Fetch the 6 free satellite and map layers in Step 1 to see buildings, ground slopes, tree cover, sunlight, and night-light brightness."
                 action={
                   <Button
                     size="xs"
                     variant="primary"
                     onClick={() => onNavigateSection('data')}
                   >
-                    Acquire Project Data Layers
+                    Go to Step 1 · Map Data
                   </Button>
                 }
               />
@@ -1549,9 +1763,9 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
         {/* Right: Recent Activity, Verification Ledger & SHA-256 Export Audit Feed */}
         <div className="lg:col-span-5">
           <Panel
-            overline="Recent Activity & Audit Trail"
-            title="Field Verifications, Jobs & SHA-256 Exports"
-            subtitle="Append-only record of Axis-2 field verifications, background processing jobs, and cryptographically hashed DPR exports."
+            overline="Activity Log"
+            title="Recent Checks, Jobs &amp; Saved Reports"
+            subtitle="Permanent log of field checks, background data tasks, and verified report exports."
             actions={
               <Button
                 size="xs"
@@ -1584,8 +1798,8 @@ export const ProjectOverviewDashboard: React.FC<ProjectOverviewDashboardProps> =
             ) : (
               <EmptyState
                 icon={ShieldCheck}
-                title="No Verification or Export Activity Recorded Yet"
-                description="Axis-2 field verification ledger entries and SHA-256 hashed DPR export records will appear here as planners verify clusters and compile reports."
+                title="No Checks or Report Downloads Yet"
+                description="Field survey entries and saved report download logs will appear here automatically as you progress through Steps 2 and 6."
               />
             )}
           </Panel>

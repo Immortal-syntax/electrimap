@@ -25,6 +25,7 @@ Implements Task M3-7:
   preliminary engineering watermark.
 """
 
+import html
 import io
 from datetime import UTC, datetime
 from typing import Any
@@ -46,7 +47,16 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
-from shapely.geometry import Polygon
+from shapely.geometry import (
+    LineString,
+    MultiLineString,
+    MultiPoint,
+    MultiPolygon,
+    Point,
+    Polygon,
+    shape,
+)
+from shapely.geometry.base import BaseGeometry
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -87,10 +97,19 @@ OKABE_ITO_PROXY_COLORS: dict[str, str] = {
 }
 
 
+def _format_utm_zone_label(metric_epsg: int) -> str:
+    """Format an EPSG UTM code (e.g., 32644 -> 'UTM Zone 44N') dynamically."""
+    if 32601 <= metric_epsg <= 32660:
+        return f"UTM Zone {metric_epsg - 32600}N"
+    if 32701 <= metric_epsg <= 32760:
+        return f"UTM Zone {metric_epsg - 32700}S"
+    return f"EPSG:{metric_epsg}"
+
+
 def _render_settlement_map_plate_png(
     *,
     project_name: str,
-    aoi_geom_wgs84: Polygon | None,
+    aoi_geom_wgs84: BaseGeometry | None,
     buildings: list[Building],
     clusters_geojson: dict[str, Any],
     metric_epsg: int = 32644,
@@ -105,15 +124,28 @@ def _render_settlement_map_plate_png(
 
     if aoi_geom_wgs84 is not None and not aoi_geom_wgs84.is_empty:
         aoi_utm = project_geometry(aoi_geom_wgs84, source_epsg=4326, target_epsg=metric_epsg)
-        if isinstance(aoi_utm, Polygon):
-            xs, ys = aoi_utm.exterior.xy
-            ax.plot(xs, ys, color="#0F172A", linewidth=1.8, linestyle="--", label="Project AOI")
+        aoi_polys = (
+            list(aoi_utm.geoms)
+            if isinstance(aoi_utm, MultiPolygon)
+            else ([aoi_utm] if isinstance(aoi_utm, Polygon) else [])
+        )
+        for idx_p, a_poly in enumerate(aoi_polys):
+            xs, ys = a_poly.exterior.xy
+            ax.plot(
+                xs,
+                ys,
+                color="#0F172A",
+                linewidth=1.8,
+                linestyle="--",
+                label="Project AOI" if idx_p == 0 else None,
+            )
             ax.fill(xs, ys, color="#E2E8F0", alpha=0.35)
             all_xs.extend(xs)
             all_ys.extend(ys)
 
-    # Plot cluster polygons colored by Axis-1 proxy class
-    for feat in clusters_geojson.get("features", []):
+    # Plot cluster polygons colored by Axis-1 proxy class (with anti-overlap label nudging)
+    placed_labels: list[tuple[float, float]] = []
+    for _idx_f, feat in enumerate(clusters_geojson.get("features", [])):
         props = feat.get("properties", {})
         geom_dict = feat.get("geometry", {})
         coords = geom_dict.get("coordinates", [])
@@ -131,25 +163,52 @@ def _render_settlement_map_plate_png(
                 ax.fill(c_xs, c_ys, color=fill_hex, alpha=0.28)
                 ax.plot(c_xs, c_ys, color=fill_hex, linewidth=line_w, linestyle=line_style)
                 cx, cy = poly_utm.centroid.x, poly_utm.centroid.y
+                all_xs.extend(c_xs)
+                all_ys.extend(c_ys)
+
+                lbl_x, lbl_y = cx, cy
+                for step_i in range(16):
+                    if step_i == 0:
+                        cand_x, cand_y = cx, cy
+                    else:
+                        ring = 1 + (step_i - 1) // 6
+                        ang_idx = (step_i - 1) % 6
+                        dx_opts = [0.0, 720.0, 720.0, 0.0, -720.0, -720.0]
+                        dy_opts = [380.0, 260.0, -260.0, -380.0, -260.0, 260.0]
+                        cand_x = cx + dx_opts[ang_idx] * ring
+                        cand_y = cy + dy_opts[ang_idx] * ring
+                    if all(
+                        ((cand_x - ox) ** 2 + (cand_y - oy) ** 2) ** 0.5 > 560.0
+                        for ox, oy in placed_labels
+                    ):
+                        lbl_x, lbl_y = cand_x, cand_y
+                        break
+                placed_labels.append((lbl_x, lbl_y))
+
                 label_txt = f"{props.get('label', 'CL')} ({props.get('est_households', 0)} HH)"
-                ax.text(
-                    cx,
-                    cy,
+                use_leader = abs(lbl_x - cx) > 10.0 or abs(lbl_y - cy) > 10.0
+                ax.annotate(
                     label_txt,
-                    fontsize=6.5,
+                    xy=(cx, cy),
+                    xytext=(lbl_x, lbl_y),
+                    fontsize=5.8,
                     fontweight="bold",
                     ha="center",
                     va="center",
                     color="#0F172A",
                     bbox={
-                        "boxstyle": "round,pad=0.2",
+                        "boxstyle": "round,pad=0.18",
                         "facecolor": "#FFFFFF",
                         "edgecolor": fill_hex,
-                        "alpha": 0.88,
+                        "alpha": 0.90,
                     },
+                    arrowprops=(
+                        {"arrowstyle": "-", "color": "#475569", "lw": 0.6}
+                        if use_leader
+                        else None
+                    ),
+                    zorder=6,
                 )
-                all_xs.extend(c_xs)
-                all_ys.extend(c_ys)
 
     # Plot building centroids in UTM
     bld_xs: list[float] = []
@@ -190,7 +249,7 @@ def _render_settlement_map_plate_png(
         ax.text(
             sb_x0 + 250.0,
             sb_y0 + span_y * 0.025,
-            "500 m (UTM Zone 44N)",
+            f"500 m ({_format_utm_zone_label(metric_epsg)})",
             fontsize=6.5,
             ha="center",
             color="#0F172A",
@@ -213,8 +272,8 @@ def _render_settlement_map_plate_png(
         )
 
     ax.set_title(
-        f"PLATE 1: HABITATION CLUSTERS & TWO-AXIS CLASSIFICATION — {project_name.upper()}",
-        fontsize=8.5,
+        f"PLATE 1: CLUSTERS & CLASSIFICATION — {project_name[:32].upper()}",
+        fontsize=7.6,
         fontweight="bold",
         color="#0F172A",
         pad=10,
@@ -248,11 +307,200 @@ def _render_settlement_map_plate_png(
     return buf.getvalue()
 
 
+def _render_network_map_plate_png(
+    *,
+    project_name: str,
+    aoi_geom_wgs84: BaseGeometry | None,
+    clusters_geojson: dict[str, Any],
+    network_geojson: dict[str, Any],
+    infra_assets: list[Any],
+    metric_epsg: int = 32644,
+    scenario_key: str = "HYBRID_OPTIMAL",
+) -> bytes:
+    """Render Cartographic Plate 2: proposed HT, LT MST, DTs, Mini-Grid & tie-ins."""
+    fig, ax = plt.subplots(figsize=(7.2, 5.0), dpi=180)
+    fig.patch.set_facecolor("#F8FAFC")
+    ax.set_facecolor("#F1F5F9")
+
+    all_xs: list[float] = []
+    all_ys: list[float] = []
+
+    if aoi_geom_wgs84 is not None and not aoi_geom_wgs84.is_empty:
+        aoi_utm = project_geometry(aoi_geom_wgs84, source_epsg=4326, target_epsg=metric_epsg)
+        aoi_polys = (
+            list(aoi_utm.geoms)
+            if isinstance(aoi_utm, MultiPolygon)
+            else ([aoi_utm] if isinstance(aoi_utm, Polygon) else [])
+        )
+        for a_poly in aoi_polys:
+            xs, ys = a_poly.exterior.xy
+            ax.plot(xs, ys, color="#0F172A", linewidth=1.6, linestyle="--")
+            ax.fill(xs, ys, color="#E2E8F0", alpha=0.28)
+            all_xs.extend(xs)
+            all_ys.extend(ys)
+
+    for feat in clusters_geojson.get("features", []):
+        geom_dict = feat.get("geometry")
+        if not geom_dict:
+            continue
+        c_utm = project_geometry(shape(geom_dict), source_epsg=4326, target_epsg=metric_epsg)
+        c_polys = (
+            list(c_utm.geoms)
+            if isinstance(c_utm, MultiPolygon)
+            else ([c_utm] if isinstance(c_utm, Polygon) else [])
+        )
+        for p in c_polys:
+            cxs, cys = p.exterior.xy
+            ax.fill(cxs, cys, color="#CBD5E1", alpha=0.40)
+            ax.plot(cxs, cys, color="#64748B", linewidth=0.9)
+            all_xs.extend(cxs)
+            all_ys.extend(cys)
+
+    # Plot existing tie-in / grid assets
+    for asset in infra_assets:
+        geom_raw = getattr(asset, "geom", None) or getattr(asset, "geojson_geometry", None)
+        if geom_raw is None:
+            continue
+        g_wgs = geom_raw if isinstance(geom_raw, BaseGeometry) else shape(geom_raw)
+        g_utm = project_geometry(g_wgs, source_epsg=4326, target_epsg=metric_epsg)
+        if isinstance(g_utm, Point):
+            ax.scatter([g_utm.x], [g_utm.y], marker="^", s=70, c="#7C2D12", zorder=6)
+            all_xs.append(g_utm.x)
+            all_ys.append(g_utm.y)
+        elif isinstance(g_utm, (LineString, MultiLineString)):
+            lines = list(g_utm.geoms) if isinstance(g_utm, MultiLineString) else [g_utm]
+            for ln in lines:
+                lxs, lys = ln.xy
+                ax.plot(lxs, lys, color="#7C2D12", linewidth=1.6, linestyle="-.", zorder=4)
+                all_xs.extend(lxs)
+                all_ys.extend(lys)
+
+    # Plot proposed scenario network layers
+    for feat in network_geojson.get("features", []):
+        props = feat.get("properties", {})
+        kind = str(props.get("feature_kind", ""))
+        geom_dict = feat.get("geometry")
+        if not geom_dict:
+            continue
+        g_utm = project_geometry(shape(geom_dict), source_epsg=4326, target_epsg=metric_epsg)
+        if kind == "HT_11KV_FEEDER":
+            lines = (
+                list(g_utm.geoms)
+                if isinstance(g_utm, MultiLineString)
+                else ([g_utm] if isinstance(g_utm, LineString) else [])
+            )
+            for ln in lines:
+                xs, ys = ln.xy
+                ax.plot(xs, ys, color="#B91C1C", linewidth=2.0, zorder=5)
+                all_xs.extend(xs)
+                all_ys.extend(ys)
+        elif kind == "LT_415V_MST":
+            lines = (
+                list(g_utm.geoms)
+                if isinstance(g_utm, MultiLineString)
+                else ([g_utm] if isinstance(g_utm, LineString) else [])
+            )
+            for ln in lines:
+                xs, ys = ln.xy
+                ax.plot(xs, ys, color="#0F766E", linewidth=1.1, zorder=4)
+                all_xs.extend(xs)
+                all_ys.extend(ys)
+        elif kind in {"DISTRIBUTION_TRANSFORMER", "MINIGRID_HUB"}:
+            pts = (
+                list(g_utm.geoms)
+                if isinstance(g_utm, MultiPoint)
+                else ([g_utm] if isinstance(g_utm, Point) else [])
+            )
+            for pt in pts:
+                marker = "s" if kind == "DISTRIBUTION_TRANSFORMER" else "o"
+                color_hex = "#1D4ED8" if kind == "DISTRIBUTION_TRANSFORMER" else "#D97706"
+                ax.scatter(
+                    [pt.x],
+                    [pt.y],
+                    marker=marker,
+                    s=36,
+                    c=color_hex,
+                    edgecolors="#FFFFFF",
+                    linewidths=0.7,
+                    zorder=6,
+                )
+                all_xs.append(pt.x)
+                all_ys.append(pt.y)
+
+    if all_xs and all_ys:
+        min_x, max_x = min(all_xs), max(all_xs)
+        min_y, max_y = min(all_ys), max(all_ys)
+        span_x = max(500.0, max_x - min_x)
+        span_y = max(500.0, max_y - min_y)
+        pad_x = span_x * 0.10
+        pad_y = span_y * 0.12
+        ax.set_xlim(min_x - pad_x, max_x + pad_x)
+        ax.set_ylim(min_y - pad_y, max_y + pad_y)
+        sb_x0 = min_x - pad_x * 0.5
+        sb_y0 = min_y - pad_y * 0.6
+        ax.plot([sb_x0, sb_x0 + 500.0], [sb_y0, sb_y0], color="#0F172A", linewidth=3.0)
+        ax.text(
+            sb_x0 + 250.0,
+            sb_y0 + span_y * 0.025,
+            f"500 m ({_format_utm_zone_label(metric_epsg)})",
+            fontsize=7,
+            fontweight="bold",
+            ha="center",
+            color="#0F172A",
+        )
+        nx, ny = max_x + pad_x * 0.45, max_y + pad_y * 0.45
+        ax.annotate(
+            "N",
+            xy=(nx, ny),
+            xytext=(nx, ny - span_y * 0.09),
+            ha="center",
+            va="center",
+            fontsize=9,
+            fontweight="bold",
+            arrowprops={"arrowstyle": "->", "lw": 1.6, "color": "#0F172A"},
+        )
+
+    ax.set_title(
+        f"PLATE 2: PROPOSED NETWORK ({scenario_key}) — {project_name[:28]}",
+        fontsize=7.6,
+        fontweight="bold",
+        color="#0F172A",
+        pad=8,
+    )
+    ax.set_xlabel(f"Easting (m) — EPSG:{metric_epsg}", fontsize=7, color="#334155")
+    ax.set_ylabel(f"Northing (m) — EPSG:{metric_epsg}", fontsize=7, color="#334155")
+    ax.tick_params(labelsize=6.5, colors="#475569")
+    ax.grid(True, linestyle=":", linewidth=0.5, color="#CBD5E1")
+
+    legend_handles = [
+        mpatches.Patch(color="#B91C1C", label="Proposed 11 kV HT Feeder"),
+        mpatches.Patch(color="#0F766E", label="Proposed 415 V LT MST"),
+        mpatches.Patch(color="#1D4ED8", label="Proposed DT Substation"),
+        mpatches.Patch(color="#D97706", label="Solar PV + BESS Mini-Grid"),
+        mpatches.Patch(color="#7C2D12", label="Existing Tie-In / HT Line"),
+    ]
+    ax.legend(
+        handles=legend_handles,
+        loc="lower right",
+        fontsize=5.8,
+        framealpha=0.92,
+        facecolor="#FFFFFF",
+        edgecolor="#CBD5E1",
+    )
+
+    buf = io.BytesIO()
+    fig.tight_layout()
+    fig.savefig(buf, format="png", dpi=180)
+    plt.close(fig)
+    return buf.getvalue()
+
+
 def _draw_page_frame_and_watermark(
     canvas: Canvas,
     doc: SimpleDocTemplate,
     *,
     watermark_text: str = "PRELIMINARY ENGINEERING — NOT FIELD VERIFIED",
+    skeleton_only: bool = False,
 ) -> None:
     """Draw institutional header, footer, and diagonal preliminary engineering watermark."""
     canvas.saveState()
@@ -273,10 +521,15 @@ def _draw_page_frame_and_watermark(
     canvas.line(16 * mm, height - 14 * mm, width - 16 * mm, height - 14 * mm)
     canvas.setFont("Helvetica-Bold", 7.5)
     canvas.setFillColor(colors.HexColor("#1E3A5F"))
+    header_label = (
+        "ELECTRIMAP DPR — STAGE 2 PRELIMINARY SETTLEMENT SKELETON (SECTIONS 1-5)"
+        if skeleton_only
+        else "ELECTRIMAP DPR — COMPLETE 24-SECTION PRELIMINARY DETAILED PROJECT REPORT"
+    )
     canvas.drawString(
         16 * mm,
         height - 12 * mm,
-        "ELECTRIMAP DPR — COMPLETE 24-SECTION PRELIMINARY DETAILED PROJECT REPORT",
+        header_label,
     )
     canvas.drawRightString(
         width - 16 * mm,
@@ -306,107 +559,149 @@ def _render_single_line_diagram_png(
     *,
     project_name: str,
     scenario: Any,
-) -> bytes:
-    """Render a vector-style Preliminary Single-Line Diagram (SLD) schematic as high-DPI PNG."""
-    fig, ax = plt.subplots(figsize=(7.2, 3.2), dpi=180)
+) -> tuple[bytes, int]:
+    """Render a multi-row wrapped Preliminary Single-Line Diagram (<=6 clusters/row)."""
+    clusters = list(scenario.clusters)
+    n_cl = max(1, len(clusters))
+    cols_per_row = min(6, n_cl)
+    n_rows = max(1, (n_cl + cols_per_row - 1) // cols_per_row)
+    row_h = 40.0
+    total_h = n_rows * row_h + 10.0
+
+    fig, ax = plt.subplots(figsize=(8.6, max(3.0, 2.35 * n_rows)), dpi=180)
     ax.set_facecolor("#FAF8F4")
     ax.set_xlim(0, 100)
-    ax.set_ylim(0, 50)
+    ax.set_ylim(0, total_h)
     ax.axis("off")
 
-    # Main 11 kV Header Bus at top (y = 42)
-    ax.plot([8, 92], [42, 42], color="#9B2C2C", linewidth=2.6, zorder=3)
-    ax.text(
-        8,
-        44.5,
-        f"11 kV 3-Ph 50 Hz Feeder Bus (ACSR Rabbit 50 mm²) — {project_name[:42]}",
-        fontsize=7.5,
-        fontweight="bold",
-        color="#9B2C2C",
+    has_grid = any(c.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"} for c in clusters)
+    header_txt = (
+        f"11 kV 3-Ph 50 Hz Bus (ACSR Rabbit) — {project_name[:28]}"
+        if has_grid
+        else f"OFF-GRID MINI-GRID & SHS — {project_name[:28]}"
     )
     ax.text(
-        92,
-        44.5,
-        "PRELIMINARY ENGINEERING — NOT FOR CONSTRUCTION",
-        fontsize=6.5,
+        4,
+        total_h - 4.2,
+        header_txt,
+        fontsize=7.0,
+        fontweight="bold",
+        color="#9B2C2C" if has_grid else "#B45309",
+    )
+    ax.text(
+        96,
+        total_h - 4.2,
+        "PRELIMINARY — NOT FOR CONSTRUCTION",
+        fontsize=5.8,
         fontweight="bold",
         color="#64748B",
         ha="right",
     )
 
-    clusters = list(scenario.clusters)[:5]
-    n_cl = max(1, len(clusters))
-    step_x = 80.0 / n_cl
+    step_x = 88.0 / cols_per_row
+    half_box = min(6.8, max(5.2, step_x * 0.43))
 
-    for idx, cl in enumerate(clusters):
-        cx = 10.0 + (idx + 0.5) * step_x
-        if cl.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"}:
-            # Drop from 11 kV bus to DT symbol
-            ax.plot([cx, cx], [42, 29], color="#9B2C2C", linewidth=1.5)
-            circle1 = mpatches.Circle(
-                (cx, 26.8), 2.2, fill=False, edgecolor="#1E3A5F", linewidth=1.4
+    for row_idx in range(n_rows):
+        row_clusters = clusters[row_idx * cols_per_row : (row_idx + 1) * cols_per_row]
+        y_top = total_h - 10.0 - row_idx * row_h
+        y_bus = y_top - 2.0
+        y_box_bot = y_top - 35.0
+        row_has_grid = any(
+            c.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"} for c in row_clusters
+        )
+        if row_has_grid:
+            ax.plot([5, 95], [y_bus, y_bus], color="#9B2C2C", linewidth=2.2, zorder=3)
+
+        for col_idx, cl in enumerate(row_clusters):
+            cx = 6.0 + (col_idx + 0.5) * step_x
+            if cl.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"}:
+                ax.plot([cx, cx], [y_bus, y_box_bot + 21.0], color="#9B2C2C", linewidth=1.3)
+                c1 = mpatches.Circle(
+                    (cx, y_box_bot + 19.0),
+                    1.8,
+                    fill=False,
+                    edgecolor="#1E3A5F",
+                    linewidth=1.3,
+                )
+                c2 = mpatches.Circle(
+                    (cx, y_box_bot + 16.5),
+                    1.8,
+                    fill=False,
+                    edgecolor="#0F766E",
+                    linewidth=1.3,
+                )
+                ax.add_patch(c1)
+                ax.add_patch(c2)
+                ax.plot(
+                    [cx, cx],
+                    [y_box_bot + 14.5, y_box_bot + 9.5],
+                    color="#0F766E",
+                    linewidth=1.3,
+                )
+                box_color = "#E0F2FE"
+                title_tag = f"{cl.dt_count}x DT ({cl.total_dt_rating_kva:.0f} kVA)"
+                sub_tag = f"HT {cl.ht_length_m:.0f}m | LT {cl.lt_total_length_m:.0f}m"
+                v_tag = f"dV: {cl.ht_drop_pct:.1f}%/{cl.lt_drop_pct:.1f}%"
+            elif cl.modality == "SOLAR_MINIGRID":
+                bus_half = min(5.6, half_box * 0.85)
+                ax.plot(
+                    [cx - bus_half, cx + bus_half],
+                    [y_box_bot + 22.0, y_box_bot + 22.0],
+                    color="#D97706",
+                    linewidth=2.0,
+                )
+                ax.text(
+                    cx,
+                    y_box_bot + 23.6,
+                    f"PV {cl.solar_pv_kwp:.1f} kWp + {cl.bess_capacity_kwh:.0f} kWh",
+                    fontsize=5.0,
+                    fontweight="bold",
+                    color="#B45309",
+                    ha="center",
+                )
+                ax.plot(
+                    [cx, cx],
+                    [y_box_bot + 22.0, y_box_bot + 9.5],
+                    color="#0F766E",
+                    linewidth=1.3,
+                )
+                box_color = "#FEF3C7"
+                title_tag = f"PCU {cl.inverter_kva:.0f} kVA MG"
+                sub_tag = f"LT {cl.lt_total_length_m:.0f}m ({cl.lt_poles_count}p)"
+                v_tag = f"LT dV: {cl.lt_drop_pct:.1f}%"
+            else:
+                box_color = "#F1F5F9"
+                title_tag = f"{cl.shs_kits_count}x Standalone SHS"
+                sub_tag = f"PV {cl.solar_pv_kwp:.2f} kWp | {cl.bess_capacity_kwh:.1f} kWh"
+                v_tag = "Off-Grid DC/AC"
+
+            rect = mpatches.FancyBboxPatch(
+                (cx - half_box, y_box_bot),
+                half_box * 2.0,
+                9.5,
+                boxstyle="round,pad=0.3",
+                facecolor=box_color,
+                edgecolor="#334155",
+                linewidth=0.85,
             )
-            circle2 = mpatches.Circle(
-                (cx, 24.2), 2.2, fill=False, edgecolor="#0F766E", linewidth=1.4
-            )
-            ax.add_patch(circle1)
-            ax.add_patch(circle2)
-            ax.plot([cx, cx], [22, 13], color="#0F766E", linewidth=1.5)
-            box_color = "#E0F2FE"
-            title_tag = f"{cl.dt_count}x DT ({cl.total_dt_rating_kva:.0f} kVA)"
-            sub_tag = f"HT {cl.ht_length_m:.0f}m | LT {cl.lt_total_length_m:.0f}m"
-            v_tag = f"dV: {cl.ht_drop_pct:.1f}%/{cl.lt_drop_pct:.1f}%"
-        elif cl.modality == "SOLAR_MINIGRID":
-            # Isolated Solar PV + BESS Mini-Grid bus
-            ax.plot([cx - 6, cx + 6], [34, 34], color="#D97706", linewidth=2.2)
+            ax.add_patch(rect)
             ax.text(
                 cx,
-                35.5,
-                f"PV {cl.solar_pv_kwp:.1f} kWp + BESS {cl.bess_capacity_kwh:.0f} kWh",
-                fontsize=5.8,
+                y_box_bot + 7.2,
+                f"{cl.cluster_label} ({cl.est_households} HH)",
+                fontsize=5.6,
                 fontweight="bold",
-                color="#B45309",
+                color="#0F172A",
                 ha="center",
             )
-            ax.plot([cx, cx], [34, 13], color="#0F766E", linewidth=1.5)
-            box_color = "#FEF3C7"
-            title_tag = f"PCU {cl.inverter_kva:.0f} kVA Mini-Grid"
-            sub_tag = f"415V LT {cl.lt_total_length_m:.0f}m ({cl.lt_poles_count}p)"
-            v_tag = f"LT dV: {cl.lt_drop_pct:.1f}%"
-        else:
-            # Standalone SHS
-            box_color = "#F1F5F9"
-            title_tag = f"{cl.shs_kits_count}x Standalone SHS"
-            sub_tag = f"PV {cl.solar_pv_kwp:.2f} kWp | {cl.bess_capacity_kwh:.1f} kWh"
-            v_tag = "Off-Grid DC/AC Kits"
-
-        rect = mpatches.FancyBboxPatch(
-            (cx - 7.8, 3.5),
-            15.6,
-            9.5,
-            boxstyle="round,pad=0.4",
-            facecolor=box_color,
-            edgecolor="#334155",
-            linewidth=0.9,
-        )
-        ax.add_patch(rect)
-        ax.text(
-            cx,
-            10.8,
-            f"{cl.cluster_label} ({cl.est_households} HH)",
-            fontsize=6.2,
-            fontweight="bold",
-            color="#0F172A",
-            ha="center",
-        )
-        ax.text(cx, 8.3, title_tag, fontsize=5.6, color="#1E293B", ha="center")
-        ax.text(cx, 6.2, sub_tag, fontsize=5.3, color="#334155", ha="center")
-        ax.text(cx, 4.3, v_tag, fontsize=5.3, color="#0F766E", ha="center")
+            ax.text(cx, y_box_bot + 4.9, title_tag, fontsize=4.9, color="#1E293B", ha="center")
+            ax.text(cx, y_box_bot + 2.8, sub_tag, fontsize=4.7, color="#334155", ha="center")
+            ax.text(cx, y_box_bot + 0.9, v_tag, fontsize=4.7, color="#0F766E", ha="center")
 
     out = io.BytesIO()
     fig.savefig(out, format="png", bbox_inches="tight", dpi=180)
     plt.close(fig)
-    return out.getvalue()
+    return out.getvalue(), n_rows
 
 
 def generate_preliminary_settlement_pdf(
@@ -414,18 +709,13 @@ def generate_preliminary_settlement_pdf(
     *,
     project_id: str,
     user: User,
+    skeleton_only: bool = False,
 ) -> bytes:
-    """Generate a PDF DPR covering Sections 1-14, UTM Map Plate, and Single-Line Diagram."""
+    """Generate the Preliminary DPR PDF (Sections 1-5 + Plate 1 when skeleton_only=True)."""
     proj = get_owned_project_or_404(db, project_id, user)
     settlements = get_project_settlement_state(db, project_id=proj.id, user=user)
     ledger = get_project_verification_ledger(db, project_id=proj.id, user=user)
     layers = list_project_layers_with_provenance(db, project_id=proj.id, user=user)
-    infra = list_project_infrastructure(db, project_id=proj.id, user=user)
-    gap = compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
-    settings_state = get_project_settings_state(db, project_id=proj.id, user=user)
-    demand = compute_and_persist_project_demand(db, project_id=proj.id, user=user)
-    scenarios_state = get_project_scenarios(db, project_id=proj.id, user=user)
-    active_scenario = scenarios_state.active_scenario
 
     aoi_row = db.execute(
         select(ProjectAoi).where(ProjectAoi.project_id == proj.id)
@@ -464,6 +754,31 @@ def generate_preliminary_settlement_pdf(
         leading=11,
         textColor=colors.HexColor("#1E293B"),
     )
+    cell_style = ParagraphStyle(
+        "DprCell",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=6.1,
+        leading=7.6,
+        textColor=colors.HexColor("#1E293B"),
+        wordWrap="CJK",
+    )
+    cell_bold_style = ParagraphStyle(
+        "DprCellBold",
+        parent=cell_style,
+        fontName="Helvetica-Bold",
+        textColor=colors.HexColor("#0F172A"),
+    )
+    cell_hdr_style = ParagraphStyle(
+        "DprCellHdr",
+        parent=cell_style,
+        fontName="Helvetica-Bold",
+        textColor=colors.white,
+    )
+
+    def _p(val: Any, *, bold: bool = False, header: bool = False) -> Paragraph:
+        st = cell_hdr_style if header else (cell_bold_style if bold else cell_style)
+        return Paragraph(html.escape(str(val if val is not None else "")), st)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -477,17 +792,17 @@ def generate_preliminary_settlement_pdf(
     )
 
     story: list[Any] = []
-    story.append(
-        Paragraph(
-            f"COMPLETE 24-SECTION PRELIMINARY DETAILED PROJECT REPORT: {proj.name.upper()}",
-            title_style,
-        )
+    report_heading = (
+        f"STAGE 2 PRELIMINARY SETTLEMENT SKELETON (SECTIONS 1-5): {proj.name.upper()}"
+        if skeleton_only
+        else f"COMPLETE 24-SECTION PRELIMINARY DETAILED PROJECT REPORT: {proj.name.upper()}"
     )
+    story.append(Paragraph(report_heading, title_style))
     story.append(
         Paragraph(
-            f"<b>State:</b> {proj.target_state or 'Odisha'} &nbsp;|&nbsp; "
-            f"<b>District:</b> {proj.target_district or 'Koraput'} &nbsp;|&nbsp; "
-            f"<b>Block:</b> {proj.target_block or 'Nandapur'} &nbsp;|&nbsp; "
+            f"<b>State:</b> {proj.target_state or 'UNSET'} &nbsp;|&nbsp; "
+            f"<b>District:</b> {proj.target_district or 'UNSET'} &nbsp;|&nbsp; "
+            f"<b>Block:</b> {proj.target_block or 'UNSET'} &nbsp;|&nbsp; "
             f"<b>Metric CRS:</b> EPSG:{proj.metric_epsg} &nbsp;|&nbsp; "
             f"<b>Planning Horizon:</b> {proj.base_year} (+{proj.horizon_years} yrs)",
             body_style,
@@ -515,9 +830,14 @@ def generate_preliminary_settlement_pdf(
     # Section 2: Administrative & Geographic Profile
     story.append(Paragraph("2. ADMINISTRATIVE & GEOGRAPHIC PROFILE", sec_style))
     area_km2 = round(aoi_row.area_km2, 3) if aoi_row else 0.0
-    lgd_code = aoi_row.lgd_code if aoi_row and aoi_row.lgd_code else "398712"
+    lgd_code = aoi_row.lgd_code if aoi_row and aoi_row.lgd_code else "UNSET"
     proj_base_hh = str(rec.projected_base_year_households or "N/A")
     census_2011_hh = str(rec.census_2011_households or "N/A")
+    delta_label = (
+        f"{rec.delta_pct:+.1f}%"
+        if rec.delta_pct is not None
+        else "N/A (No Census Match)"
+    )
     sec2_data = [
         [
             "Project Code / Version",
@@ -529,7 +849,7 @@ def generate_preliminary_settlement_pdf(
             "AOI Area (sq. km)",
             f"{area_km2:.2f} km²",
             "Census 2011 Code",
-            rec.census2011_code or "428914",
+            rec.census2011_code or "UNSET",
         ],
         [
             "Census 2011 Households",
@@ -541,7 +861,7 @@ def generate_preliminary_settlement_pdf(
             "Satellite Est. Households",
             str(rec.satellite_estimated_households),
             "Census Delta (%)",
-            f"{rec.delta_pct or 0.0:+.1f}%",
+            delta_label,
         ],
     ]
     t2 = Table(sec2_data, colWidths=[38 * mm, 48 * mm, 40 * mm, 50 * mm])
@@ -563,26 +883,35 @@ def generate_preliminary_settlement_pdf(
 
     # Section 3: Dataset Provenance Table
     story.append(Paragraph("3. GEOSPATIAL DATASET PROVENANCE REGISTER", sec_style))
-    prov_rows = [["Layer Key", "Source Dataset", "Vintage", "Resolution", "Licence"]]
+    prov_rows = [
+        [
+            _p("Layer Key", header=True),
+            _p("Source Dataset", header=True),
+            _p("Vintage", header=True),
+            _p("Resolution", header=True),
+            _p("Licence", header=True),
+        ]
+    ]
     for lyr in layers:
         ds = lyr.dataset
         prov_rows.append(
             [
-                lyr.layer_key,
-                ds.name[:34] if ds else lyr.layer_key,
-                ds.temporal_coverage[:16] if ds else "2024",
-                ds.spatial_resolution[:16] if ds else "-",
-                ds.licence[:18] if ds else "Open",
+                _p(lyr.layer_key),
+                _p(ds.name if ds else lyr.layer_key),
+                _p(ds.temporal_coverage if ds else "2024"),
+                _p(ds.spatial_resolution if ds else "-"),
+                _p(ds.licence if ds else "Open"),
             ]
         )
-    t3 = Table(prov_rows, colWidths=[26 * mm, 64 * mm, 24 * mm, 24 * mm, 38 * mm])
+    t3 = Table(prov_rows, colWidths=[24 * mm, 64 * mm, 24 * mm, 28 * mm, 36 * mm])
     t3.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                 ("PADDING", (0, 0), (-1, -1), 2.5),
             ]
@@ -593,38 +922,41 @@ def generate_preliminary_settlement_pdf(
     # Section 4: Habitation Cluster & Two-Axis Classification Inventory
     story.append(
         Paragraph(
-            "4. HABITATION CLUSTER INVENTORY & TWO-AXIS CLASSIFICATION",
+            "4. HABITATION CLUSTER INVENTORY &amp; TWO-AXIS CLASSIFICATION",
             sec_style,
         )
     )
     cl_rows = [
         [
-            "Cluster",
-            "Habitation Name",
-            "Bldgs",
-            "Est. HH",
-            "Axis-1 Proxy Class",
-            "Conf.",
-            "Axis-2 Verification",
-            "Slope / Canopy",
+            _p("Cluster", header=True),
+            _p("Habitation Name", header=True),
+            _p("Bldgs", header=True),
+            _p("Est. HH", header=True),
+            _p("Axis-1 Proxy Class", header=True),
+            _p("Conf.", header=True),
+            _p("Axis-2 Verification", header=True),
+            _p("Slope / Canopy", header=True),
         ]
     ]
     for c in settlements.items:
         cl_rows.append(
             [
-                c.label,
-                c.name[:24],
-                str(c.n_detected),
-                str(c.est_households),
-                c.proxy_class,
-                c.proxy_confidence,
-                f"{c.verification_state}" + (f" ({c.verified_class})" if c.verified_class else ""),
-                f"{c.slope_mean_deg:.1f}° / {c.canopy_share * 100:.0f}%",
+                _p(c.label, bold=True),
+                _p(c.name),
+                _p(str(c.n_detected)),
+                _p(str(c.est_households)),
+                _p(c.proxy_class),
+                _p(c.proxy_confidence),
+                _p(
+                    f"{c.verification_state}"
+                    + (f" ({c.verified_class})" if c.verified_class else "")
+                ),
+                _p(f"{c.slope_mean_deg:.1f}° / {c.canopy_share * 100:.0f}%"),
             ]
         )
     t4 = Table(
         cl_rows,
-        colWidths=[14 * mm, 38 * mm, 12 * mm, 14 * mm, 36 * mm, 12 * mm, 28 * mm, 22 * mm],
+        colWidths=[13 * mm, 34 * mm, 11 * mm, 12 * mm, 32 * mm, 11 * mm, 41 * mm, 22 * mm],
     )
     t4.setStyle(
         TableStyle(
@@ -632,7 +964,8 @@ def generate_preliminary_settlement_pdf(
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.2),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                 ("PADDING", (0, 0), (-1, -1), 2.5),
             ]
@@ -642,7 +975,7 @@ def generate_preliminary_settlement_pdf(
     story.append(Spacer(1, 1.5 * mm))
     story.append(
         Paragraph(
-            f"<b>Census 2011 Reconciliation Note:</b> {rec.reconciliation_note}",
+            f"<b>Census 2011 Reconciliation Note:</b> {html.escape(rec.reconciliation_note)}",
             body_style,
         )
     )
@@ -660,34 +993,35 @@ def generate_preliminary_settlement_pdf(
     else:
         v_rows = [
             [
-                "Cluster",
-                "Verifier",
-                "Observed On",
-                "Evidence Type",
-                "New State / Class",
-                "Audit Note",
+                _p("Cluster", header=True),
+                _p("Verifier", header=True),
+                _p("Observed On", header=True),
+                _p("Evidence Type", header=True),
+                _p("New State / Class", header=True),
+                _p("Audit Note", header=True),
             ]
         ]
-        for r in ledger.records[:8]:
+        for r in ledger.records:
             nv = r.new_value or {}
             v_rows.append(
                 [
-                    r.cluster_label or r.target_id[:6],
-                    r.verifier_name[:18],
-                    r.observed_on,
-                    r.evidence_type,
-                    f"{nv.get('verification_state', '')} / {nv.get('verified_class', '')}",
-                    r.note[:38],
+                    _p(r.cluster_label or r.target_id[:6], bold=True),
+                    _p(r.verifier_name),
+                    _p(r.observed_on),
+                    _p(r.evidence_type),
+                    _p(f"{nv.get('verification_state', '')} / {nv.get('verified_class', '')}"),
+                    _p(r.note),
                 ]
             )
-        t5 = Table(v_rows, colWidths=[16 * mm, 28 * mm, 20 * mm, 28 * mm, 38 * mm, 46 * mm])
+        t5 = Table(v_rows, colWidths=[15 * mm, 26 * mm, 20 * mm, 26 * mm, 41 * mm, 48 * mm])
         t5.setStyle(
             TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                    ("FONTSIZE", (0, 0), (-1, -1), 6.2),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                     ("PADDING", (0, 0), (-1, -1), 2.5),
                 ]
@@ -705,13 +1039,51 @@ def generate_preliminary_settlement_pdf(
     )
     map_png_bytes = _render_settlement_map_plate_png(
         project_name=proj.name,
-        aoi_geom_wgs84=aoi_row.geom if aoi_row and isinstance(aoi_row.geom, Polygon) else None,
+        aoi_geom_wgs84=(
+            aoi_row.geom
+            if aoi_row and isinstance(aoi_row.geom, (Polygon, MultiPolygon))
+            else None
+        ),
         buildings=list(buildings),
         clusters_geojson=settlements.geojson,
         metric_epsg=proj.metric_epsg,
     )
     img = Image(io.BytesIO(map_png_bytes), width=174 * mm, height=118 * mm)
     story.append(img)
+
+    if skeleton_only:
+        story.append(Spacer(1, 3 * mm))
+        story.append(
+            Paragraph(
+                "<b>Stage 2 Skeleton Scope Notice:</b> This preliminary document covers "
+                "Sections 1-5 and Cartographic Plate 1 for field survey and Gram Sabha "
+                "verification. Sections 6-24 (Infrastructure, Network Design, BOQ Costing, "
+                "and Pre-Flight Certificate) require completing Stages 3-6.",
+                body_style,
+            )
+        )
+
+        def _skeleton_page_callback(canvas: Canvas, doc_obj: SimpleDocTemplate) -> None:
+            _draw_page_frame_and_watermark(
+                canvas,
+                doc_obj,
+                watermark_text="PRELIMINARY — STAGE 2 FIELD SURVEY PENDING (SECTIONS 1-5)",
+                skeleton_only=True,
+            )
+
+        doc.build(
+            story,
+            onFirstPage=_skeleton_page_callback,
+            onLaterPages=_skeleton_page_callback,
+        )
+        return buf.getvalue()
+
+    infra = list_project_infrastructure(db, project_id=proj.id, user=user)
+    gap = compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
+    settings_state = get_project_settings_state(db, project_id=proj.id, user=user)
+    demand = compute_and_persist_project_demand(db, project_id=proj.id, user=user)
+    scenarios_state = get_project_scenarios(db, project_id=proj.id, user=user)
+    active_scenario = scenarios_state.active_scenario
 
     # Section 6: Existing Electrical Infrastructure Register
     story.append(
@@ -732,27 +1104,35 @@ def generate_preliminary_settlement_pdf(
         )
     else:
         inf_rows = [
-            ["Asset Type", "Name", "Voltage (kV)", "Provenance", "Quality Tag", "Source Note"]
+            [
+                _p("Asset Type", header=True),
+                _p("Name", header=True),
+                _p("Voltage (kV)", header=True),
+                _p("Provenance", header=True),
+                _p("Quality Tag", header=True),
+                _p("Source Note", header=True),
+            ]
         ]
-        for a in infra.items[:6]:
+        for a in infra.items:
             inf_rows.append(
                 [
-                    a.asset_type,
-                    a.name[:28],
-                    f"{a.voltage_kv or '-'} kV",
-                    a.provenance,
-                    a.quality_tag,
-                    a.source_note[:36],
+                    _p(a.asset_type),
+                    _p(a.name),
+                    _p(f"{a.voltage_kv or '-'} kV"),
+                    _p(a.provenance),
+                    _p(a.quality_tag),
+                    _p(a.source_note),
                 ]
             )
-        t6 = Table(inf_rows, colWidths=[22 * mm, 42 * mm, 20 * mm, 28 * mm, 22 * mm, 42 * mm])
+        t6 = Table(inf_rows, colWidths=[24 * mm, 38 * mm, 18 * mm, 28 * mm, 24 * mm, 44 * mm])
         t6.setStyle(
             TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                    ("FONTSIZE", (0, 0), (-1, -1), 6.2),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                     ("PADDING", (0, 0), (-1, -1), 2.5),
                 ]
@@ -763,31 +1143,31 @@ def generate_preliminary_settlement_pdf(
     # Section 7: Terrain-Weighted Distance & Obstacle Gap Matrix
     story.append(
         Paragraph(
-            "7. TERRAIN-WEIGHTED DISTANCE & OBSTACLE GAP ANALYSIS MATRIX",
+            "7. TERRAIN-WEIGHTED DISTANCE &amp; OBSTACLE GAP ANALYSIS MATRIX",
             sec_style,
         )
     )
     gap_rows = [
         [
-            "Cluster",
-            "Nearest Tie-In",
-            "d_straight (m)",
-            "Penalty",
-            "d_terrain (m)",
-            "Water Crossings",
-            "Recommended Modality",
+            _p("Cluster", header=True),
+            _p("Nearest Tie-In", header=True),
+            _p("d_straight (m)", header=True),
+            _p("Penalty", header=True),
+            _p("d_terrain (m)", header=True),
+            _p("Water Crossings", header=True),
+            _p("Recommended Modality", header=True),
         ]
     ]
     for g in gap.clusters:
         gap_rows.append(
             [
-                g.cluster_label,
-                (g.nearest_asset_name or "UNSET")[:24],
-                f"{g.d_straight_m:.0f} m" if g.d_straight_m is not None else "UNSET",
-                f"{g.terrain_penalty_factor:.2f}x",
-                f"{g.d_terrain_m:.0f} m" if g.d_terrain_m is not None else "UNSET",
-                str(g.water_crossings_count),
-                g.recommended_modality,
+                _p(g.cluster_label, bold=True),
+                _p(g.nearest_asset_name or "UNSET"),
+                _p(f"{g.d_straight_m:.0f} m" if g.d_straight_m is not None else "UNSET"),
+                _p(f"{g.terrain_penalty_factor:.2f}x"),
+                _p(f"{g.d_terrain_m:.0f} m" if g.d_terrain_m is not None else "UNSET"),
+                _p(str(g.water_crossings_count)),
+                _p(g.recommended_modality),
             ]
         )
     t7 = Table(
@@ -800,7 +1180,8 @@ def generate_preliminary_settlement_pdf(
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.2),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                 ("PADDING", (0, 0), (-1, -1), 2.5),
             ]
@@ -811,7 +1192,7 @@ def generate_preliminary_settlement_pdf(
     # Section 8: Assumptions Register Summary
     story.append(
         Paragraph(
-            f"8. PARAMETRIC PLANNING ASSUMPTIONS & NORMATIVE OVERRIDES SUMMARY "
+            f"8. PARAMETRIC PLANNING ASSUMPTIONS &amp; NORMATIVE OVERRIDES SUMMARY "
             f"({settings_state.user_edited_count} USER OVERRIDES)",
             sec_style,
         )
@@ -819,7 +1200,8 @@ def generate_preliminary_settlement_pdf(
     default_ref_count = len(settings_state.items) - settings_state.user_edited_count
     story.append(
         Paragraph(
-            f"Total tracked engineering & demand assumptions: <b>{len(settings_state.items)}</b> "
+            f"Total tracked engineering &amp; demand assumptions: "
+            f"<b>{len(settings_state.items)}</b> "
             f"(Default Reference: <b>{default_ref_count}</b>, "
             f"Planner Overrides: <b>{settings_state.user_edited_count}</b>). Full item-by-item "
             f"audit register is presented in Section 21.",
@@ -835,43 +1217,53 @@ def generate_preliminary_settlement_pdf(
             sec_style,
         )
     )
+    coinc_setting = next(
+        (s.value for s in settings_state.items if s.key == "cluster_coincidence_factor"),
+        0.65,
+    )
     dem_rows = [
         [
-            "Consumer Category",
-            "Consumers",
-            "Connected (kW)",
-            "Demand Factor",
-            "Max Demand (kW)",
-            "Daily Energy (kWh/d)",
-            "Annual Energy (MWh/yr)",
+            _p("Consumer Category (Base Yr)", header=True),
+            _p("Consumers", header=True),
+            _p("Connected (kW)", header=True),
+            _p("Demand Factor", header=True),
+            _p("Max Demand (kW)", header=True),
+            _p("Daily Energy (kWh/d)", header=True),
+            _p("Annual Energy (MWh/yr)", header=True),
         ]
     ]
     for cat in demand.category_totals:
         dem_rows.append(
             [
-                cat.label[:30],
-                str(cat.consumer_count),
-                f"{cat.connected_kw:.2f}",
-                f"{cat.demand_factor:.2f}",
-                f"{cat.max_demand_kw:.2f}",
-                f"{cat.energy_kwh_day:.1f}",
-                f"{cat.annual_energy_mwh:.2f}",
+                _p(cat.label),
+                _p(str(cat.consumer_count)),
+                _p(f"{cat.connected_kw:.2f}"),
+                _p(f"{cat.demand_factor:.2f}"),
+                _p(f"{cat.max_demand_kw:.2f}"),
+                _p(f"{cat.energy_kwh_day:.1f}"),
+                _p(f"{cat.annual_energy_mwh:.2f}"),
             ]
         )
     dem_rows.append(
         [
-            f"COINCIDENT BASE / HORIZON (+{demand.horizon_years}Y)",
-            f"{demand.total_households} HH",
-            f"{demand.total_connected_kw:.2f} kW",
-            "Coinc. 0.65",
-            f"{demand.peak_kva_base:.2f} -> {demand.peak_kva_horizon:.2f} kVA",
-            f"{demand.energy_kwh_day_base:.1f} -> {demand.energy_kwh_day_horizon:.1f}",
-            f"{demand.annual_energy_mwh_base:.2f} -> {demand.annual_energy_mwh_horizon:.2f}",
+            _p(f"COINCIDENT BASE -> HORIZON (+{demand.horizon_years}Y)", bold=True),
+            _p(f"{demand.total_households} HH", bold=True),
+            _p(f"{demand.total_connected_kw:.2f} kW", bold=True),
+            _p(f"Coinc. {coinc_setting:.2f}", bold=True),
+            _p(f"{demand.peak_kva_base:.2f} -> {demand.peak_kva_horizon:.2f} kVA", bold=True),
+            _p(
+                f"{demand.energy_kwh_day_base:.1f} -> {demand.energy_kwh_day_horizon:.1f}",
+                bold=True,
+            ),
+            _p(
+                f"{demand.annual_energy_mwh_base:.2f} -> {demand.annual_energy_mwh_horizon:.2f}",
+                bold=True,
+            ),
         ]
     )
     t9 = Table(
         dem_rows,
-        colWidths=[42 * mm, 18 * mm, 22 * mm, 20 * mm, 26 * mm, 24 * mm, 24 * mm],
+        colWidths=[38 * mm, 19 * mm, 20 * mm, 20 * mm, 27 * mm, 26 * mm, 26 * mm],
     )
     t9.setStyle(
         TableStyle(
@@ -900,39 +1292,47 @@ def generate_preliminary_settlement_pdf(
     )
     scen_summary_rows = [
         [
-            "Active Scenario",
-            active_scenario.name[:38],
-            "Voltage Drop Compliance",
-            "CEA COMPLIANT (<=5% HT, <=6% LT)"
-            if active_scenario.vdrop_compliance_ok
-            else "NON-COMPLIANT WARNING",
+            _p("Active Scenario", bold=True),
+            _p(active_scenario.name),
+            _p("Voltage Drop Compliance", bold=True),
+            _p(
+                "CEA COMPLIANT (<=5% HT, <=6% LT)"
+                if active_scenario.vdrop_compliance_ok
+                else "NON-COMPLIANT WARNING"
+            ),
         ],
         [
-            "11 kV HT Feeder Total",
-            f"{active_scenario.total_ht_length_m:.1f} m ({active_scenario.total_ht_poles} poles)",
-            "415 V LT Radial MST Total",
-            f"{active_scenario.total_lt_length_m:.1f} m ({active_scenario.total_lt_poles} poles)",
+            _p("11 kV HT Feeder Total", bold=True),
+            _p(
+                f"{active_scenario.total_ht_length_m:.1f} m "
+                f"({active_scenario.total_ht_poles} poles)"
+            ),
+            _p("415 V LT Radial MST Total", bold=True),
+            _p(
+                f"{active_scenario.total_lt_length_m:.1f} m "
+                f"({active_scenario.total_lt_poles} poles)"
+            ),
         ],
         [
-            "Distribution Transformers",
-            (
+            _p("Distribution Transformers", bold=True),
+            _p(
                 f"{active_scenario.total_dt_count} units "
                 f"({active_scenario.total_dt_capacity_kva:.0f} kVA)"
             ),
-            "Max Voltage Drop (HT / LT)",
-            (
+            _p("Max Voltage Drop (HT / LT)", bold=True),
+            _p(
                 f"{active_scenario.max_ht_vdrop_pct:.2f}% HT / "
                 f"{active_scenario.max_lt_vdrop_pct:.2f}% LT"
             ),
         ],
         [
-            "Off-Grid Solar PV + BESS",
-            (
+            _p("Off-Grid Solar PV + BESS", bold=True),
+            _p(
                 f"{active_scenario.total_solar_kwp:.2f} kWp PV / "
                 f"{active_scenario.total_bess_kwh:.1f} kWh BESS"
             ),
-            "Annual Technical Losses",
-            (
+            _p("Annual Technical Losses", bold=True),
+            _p(
                 f"{active_scenario.total_loss_mwh_yr:.3f} MWh/yr | "
                 f"{active_scenario.total_shs_kits} SHS Kits"
             ),
@@ -965,7 +1365,7 @@ def generate_preliminary_settlement_pdf(
         Paragraph(
             f"Total 11 kV HT route length: <b>{active_scenario.total_ht_length_m:.1f} m</b> "
             f"across <b>{active_scenario.total_ht_poles}</b> 9 m PSC/RSJ supports (50 mm² ACSR "
-            f"Rabbit, 65 m nominal span, 1.08x sag factor).",
+            f"Rabbit, 65 m nominal / 45 m steep-terrain span, 1.03x sag &amp; wastage factor).",
             body_style,
         )
     )
@@ -1072,6 +1472,31 @@ def generate_preliminary_settlement_pdf(
     )
     story.append(t13)
 
+    # Cartographic Plate 2: Proposed HT/LT/DT/Off-Grid Network Map
+    story.append(PageBreak())
+    story.append(
+        Paragraph(
+            f"CARTOGRAPHIC PLATE 2 — PRELIMINARY HT/LT NETWORK, DT &amp; OFF-GRID LAYOUT "
+            f"({html.escape(active_scenario.scenario_key)})",
+            sec_style,
+        )
+    )
+    plate2_bytes = _render_network_map_plate_png(
+        project_name=proj.name,
+        aoi_geom_wgs84=(
+            aoi_row.geom
+            if aoi_row and isinstance(aoi_row.geom, (Polygon, MultiPolygon))
+            else None
+        ),
+        clusters_geojson=settlements.geojson,
+        network_geojson=active_scenario.network_geojson,
+        infra_assets=infra.items,
+        metric_epsg=proj.metric_epsg,
+        scenario_key=active_scenario.scenario_key,
+    )
+    story.append(Image(io.BytesIO(plate2_bytes), width=174 * mm, height=116 * mm))
+    story.append(Spacer(1, 2 * mm))
+
     # Section 14: Preliminary Single-Line Diagram (SLD) Schematic
     story.append(
         Paragraph(
@@ -1079,11 +1504,12 @@ def generate_preliminary_settlement_pdf(
             sec_style,
         )
     )
-    sld_png_bytes = _render_single_line_diagram_png(
+    sld_png_bytes, n_sld_rows = _render_single_line_diagram_png(
         project_name=proj.name,
         scenario=active_scenario,
     )
-    sld_img = Image(io.BytesIO(sld_png_bytes), width=174 * mm, height=78 * mm)
+    sld_height_mm = min(140.0, 44.0 * n_sld_rows + 14.0) * mm
+    sld_img = Image(io.BytesIO(sld_png_bytes), width=174 * mm, height=sld_height_mm)
     story.append(sld_img)
 
     # Milestone M6 & M7: Pre-flight validation + Sections 15-24
@@ -1095,6 +1521,16 @@ def generate_preliminary_settlement_pdf(
         cl.cluster_label
         for cl in active_scenario.clusters
         if cl.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"} and cl.requires_tie_in
+    ]
+
+    synthetic_fallback_layers = [
+        lyr.layer_key
+        for lyr in layers
+        if lyr.layer_key != "nightlights"
+        and (
+            (lyr.summary_metrics or {}).get("is_synthetic_fallback") is True
+            or (lyr.dataset is not None and lyr.dataset.key == "synthetic_fallback")
+        )
     ]
 
     preflight = evaluate_dpr_preflight(
@@ -1115,7 +1551,20 @@ def generate_preliminary_settlement_pdf(
         total_capex_inr=comparison.active_scenario_boq.total_capex_inr,
         npc_inr=comparison.active_scenario_boq.economics.npc_inr,
         lcoe_inr_kwh=comparison.active_scenario_boq.economics.lcoe_inr_kwh,
+        synthetic_fallback_layers=synthetic_fallback_layers,
     )
+
+    if synthetic_fallback_layers:
+        raise AppError(
+            code="SYNTHETIC_FALLBACK_BLOCK_EXPORT",
+            message=(
+                "DPR export is blocked because synthetic fallback placeholder layers are "
+                f"active ({', '.join(synthetic_fallback_layers)}). Replace them with "
+                "uploaded GeoJSON/GeoTIFF files or validated regional extracts."
+            ),
+            status_code=422,
+            details={"synthetic_fallback_layers": synthetic_fallback_layers},
+        )
 
     if comparison.has_unset_rates:
         raise AppError(
@@ -1152,38 +1601,36 @@ def generate_preliminary_settlement_pdf(
     )
     sor_meta_rows = [
         [
-            "Active Rate Schedule",
-            rates_state.template_name[:46],
-            "Total Catalog Items",
-            (
+            _p("Active Rate Schedule", bold=True),
+            _p(rates_state.template_name),
+            _p("Total Catalog Items", bold=True),
+            _p(
                 f"{rates_state.total_items} items "
                 f"({rates_state.user_edited_count} user-edited, {rates_state.unset_count} UNSET)"
             ),
         ],
         [
-            "Tax & Overheads",
-            (
+            _p("Tax & Overheads", bold=True),
+            _p(
                 f"GST {active_boq.gst_pct:.1f}% | "
                 f"Contingency {active_boq.contingency_pct:.1f}% | "
                 f"PMC {active_boq.pmc_overhead_pct:.1f}%"
             ),
-            "Life-Cycle Parameters",
-            (
+            _p("Life-Cycle Parameters", bold=True),
+            _p(
                 f"Discount Rate {active_boq.discount_rate * 100.0:.1f}% | "
                 f"Horizon {active_boq.horizon_years} Yrs | "
                 f"Scheme Grant {active_boq.capital_subsidy_pct:.0f}%"
             ),
         ],
     ]
-    t15 = Table(sor_meta_rows, colWidths=[36 * mm, 52 * mm, 36 * mm, 52 * mm])
+    t15 = Table(sor_meta_rows, colWidths=[34 * mm, 54 * mm, 36 * mm, 52 * mm])
     t15.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F1F5F9")),
                 ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#F1F5F9")),
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                 ("PADDING", (0, 0), (-1, -1), 2.5),
             ]
@@ -1194,106 +1641,108 @@ def generate_preliminary_settlement_pdf(
     # Section 16: Itemized Bill of Quantities (BOQ) & Capital Cost Abstract
     story.append(
         Paragraph(
-            f"16. ITEMIZED BILL OF QUANTITIES (BOQ) & CAPITAL COST ABSTRACT "
-            f"({active_boq.scenario_key})",
+            f"16. ITEMIZED BILL OF QUANTITIES (BOQ) &amp; CAPITAL COST ABSTRACT "
+            f"({html.escape(active_boq.scenario_key)})",
             sec_style,
         )
     )
     boq_rows = [
         [
-            "Item Code",
-            "Description",
-            "Category",
-            "Qty",
-            "Unit",
-            "Rate (INR)",
-            "Source Tag",
-            "Amount (INR)",
+            _p("Item Code", header=True),
+            _p("Description", header=True),
+            _p("Category", header=True),
+            _p("Qty", header=True),
+            _p("Unit", header=True),
+            _p("Rate (INR)", header=True),
+            _p("Source Tag", header=True),
+            _p("Amount (INR)", header=True),
         ]
     ]
     for ln in active_boq.aggregated_lines:
         boq_rows.append(
             [
-                ln.item_code,
-                ln.description[:36],
-                ln.category,
-                f"{ln.quantity:.2f}",
-                ln.unit,
-                f"{ln.rate_inr:,.2f}" if ln.rate_inr is not None else "UNSET",
-                ln.rate_source_type[:18],
-                f"{ln.amount_inr:,.2f}",
+                _p(ln.item_code, bold=True),
+                _p(ln.description),
+                _p(ln.category),
+                _p(f"{ln.quantity:.2f}"),
+                _p(ln.unit),
+                _p(f"{ln.rate_inr:,.2f}" if ln.rate_inr is not None else "UNSET"),
+                _p(ln.rate_source_type),
+                _p(f"{ln.amount_inr:,.2f}"),
             ]
         )
     boq_rows.extend(
         [
             [
-                "SUB-A",
-                "Direct Equipment & Line Supply Subtotal",
-                "—",
-                "—",
-                "INR",
-                "—",
-                "COMPUTED",
-                f"{active_boq.base_equipment_inr:,.2f}",
+                _p("SUB-A", bold=True),
+                _p("Direct Equipment & Line Supply Subtotal"),
+                _p("—"),
+                _p("—"),
+                _p("INR"),
+                _p("—"),
+                _p("COMPUTED"),
+                _p(f"{active_boq.base_equipment_inr:,.2f}"),
             ],
             [
-                "SUB-B",
-                "Difficult Hilly/Forest Terrain Erection Premium",
-                "—",
-                "—",
-                "INR",
-                "—",
-                "COMPUTED",
-                f"{active_boq.terrain_premium_inr:,.2f}",
+                _p("SUB-B", bold=True),
+                _p("Difficult Hilly/Forest Terrain Erection Premium"),
+                _p("—"),
+                _p("—"),
+                _p("INR"),
+                _p("—"),
+                _p("COMPUTED"),
+                _p(f"{active_boq.terrain_premium_inr:,.2f}"),
             ],
             [
-                "SUB-C",
-                f"Goods & Services Tax (GST @ {active_boq.gst_pct:.1f}%)",
-                "—",
-                "—",
-                "INR",
-                "—",
-                "STATUTORY",
-                f"{active_boq.gst_amount_inr:,.2f}",
+                _p("SUB-C", bold=True),
+                _p(f"Goods & Services Tax (GST @ {active_boq.gst_pct:.1f}%)"),
+                _p("—"),
+                _p("—"),
+                _p("INR"),
+                _p("—"),
+                _p("STATUTORY"),
+                _p(f"{active_boq.gst_amount_inr:,.2f}"),
             ],
             [
-                "SUB-D",
-                (
+                _p("SUB-D", bold=True),
+                _p(
                     f"Contingency ({active_boq.contingency_pct:.1f}%) + "
                     f"PMC Overheads ({active_boq.pmc_overhead_pct:.1f}%)"
                 ),
-                "—",
-                "—",
-                "INR",
-                "—",
-                "NORMATIVE",
-                f"{(active_boq.contingency_amount_inr + active_boq.pmc_overhead_amount_inr):,.2f}",
+                _p("—"),
+                _p("—"),
+                _p("INR"),
+                _p("—"),
+                _p("NORMATIVE"),
+                _p(
+                    f"{active_boq.contingency_amount_inr + active_boq.pmc_overhead_amount_inr:,.2f}"
+                ),
             ],
             [
-                "TOTAL",
-                f"GRAND TOTAL CAPITAL OUTLAY (INR {active_boq.total_capex_lakhs:.2f} Lakhs)",
-                "—",
-                "—",
-                "INR",
-                "—",
-                "VERIFIED_SUM",
-                f"{active_boq.total_capex_inr:,.2f}",
+                _p("TOTAL", bold=True),
+                _p(
+                    f"GRAND TOTAL CAPITAL OUTLAY (INR {active_boq.total_capex_lakhs:.2f} Lakhs)",
+                    bold=True,
+                ),
+                _p("—"),
+                _p("—"),
+                _p("INR", bold=True),
+                _p("—"),
+                _p("VERIFIED_SUM", bold=True),
+                _p(f"{active_boq.total_capex_inr:,.2f}", bold=True),
             ],
         ]
     )
     t16 = Table(
         boq_rows,
-        colWidths=[22 * mm, 46 * mm, 22 * mm, 14 * mm, 12 * mm, 18 * mm, 20 * mm, 22 * mm],
+        colWidths=[21 * mm, 39 * mm, 24 * mm, 13 * mm, 12 * mm, 17 * mm, 28 * mm, 22 * mm],
     )
     t16.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E2E8F0")),
-                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.0),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                 ("PADDING", (0, 0), (-1, -1), 2.0),
             ]
@@ -1304,7 +1753,8 @@ def generate_preliminary_settlement_pdf(
     # Section 17: Multi-Scenario Financial Comparison & Life-Cycle Economics (NPC & LCOE)
     story.append(
         Paragraph(
-            "17. MULTI-SCENARIO FINANCIAL COMPARISON, 10-YR NPC & LCOE ABSTRACT",
+            f"17. MULTI-SCENARIO FINANCIAL COMPARISON, "
+            f"{active_boq.horizon_years}-YR NPC & LCOE ABSTRACT",
             sec_style,
         )
     )
@@ -1314,7 +1764,7 @@ def generate_preliminary_settlement_pdf(
             "Pinned",
             "CAPEX (INR)",
             "Net Outlay (INR)",
-            "10-Yr NPC (INR)",
+            f"{active_boq.horizon_years}-Yr NPC (INR)",
             "LCOE (INR/kWh)",
             "Cost / HH (INR)",
         ]
@@ -1352,37 +1802,37 @@ def generate_preliminary_settlement_pdf(
 
     hab_comp_rows = [
         [
-            "Cluster",
-            "Chosen Modality",
-            "Grid NPC (INR)",
-            "Mini-Grid NPC (INR)",
-            "SHS NPC (INR)",
-            "Least-Cost Option",
+            _p("Cluster", header=True),
+            _p("Chosen Modality", header=True),
+            _p("Grid NPC (INR)", header=True),
+            _p("Mini-Grid NPC (INR)", header=True),
+            _p("SHS NPC (INR)", header=True),
+            _p("Least-Cost Option", header=True),
         ]
     ]
     for h_row in comparison.habitation_comparisons:
         hab_comp_rows.append(
             [
-                f"{h_row.cluster_label} ({h_row.est_households} HH)",
-                h_row.active_modality,
-                f"{h_row.grid_npc_inr:,.0f}"
-                + (" (No Tie-In)" if h_row.grid_requires_tie_in else ""),
-                f"{h_row.minigrid_npc_inr:,.0f}",
-                f"{h_row.shs_npc_inr:,.0f}",
-                h_row.least_cost_npc_modality,
+                _p(f"{h_row.cluster_label} ({h_row.est_households} HH)", bold=True),
+                _p(h_row.active_modality),
+                _p(
+                    f"{h_row.grid_npc_inr:,.0f}"
+                    + (" (No Tie-In)" if h_row.grid_requires_tie_in else "")
+                ),
+                _p(f"{h_row.minigrid_npc_inr:,.0f}"),
+                _p(f"{h_row.shs_npc_inr:,.0f}"),
+                _p(h_row.least_cost_npc_modality, bold=True),
             ]
         )
     t17_hab = Table(
         hab_comp_rows,
-        colWidths=[28 * mm, 32 * mm, 30 * mm, 30 * mm, 26 * mm, 30 * mm],
+        colWidths=[26 * mm, 32 * mm, 32 * mm, 28 * mm, 26 * mm, 32 * mm],
     )
     t17_hab.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.2),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                 ("PADDING", (0, 0), (-1, -1), 2.2),
             ]
@@ -1445,19 +1895,29 @@ def generate_preliminary_settlement_pdf(
     # Section 19: Operations, Maintenance (O&M) & Asset Sustainability Framework
     story.append(
         Paragraph(
-            "19. OPERATIONS, MAINTENANCE (O&M) & ASSET SUSTAINABILITY FRAMEWORK",
+            "19. OPERATIONS, MAINTENANCE (O&amp;M) &amp; ASSET SUSTAINABILITY FRAMEWORK",
             sec_style,
+        )
+    )
+    bess_reserve_note = (
+        f"Off-grid LiFePO4 battery storage includes a scheduled Year-7 replacement reserve "
+        f"(PV: <b>INR {active_boq.economics.pv_battery_replacement_inr:,.2f}</b>). "
+        if active_boq.horizon_years >= 7
+        else (
+            f"No battery replacement reserve falls within the {active_boq.horizon_years}-Yr "
+            f"horizon (Year-7 threshold not reached; PV: <b>INR "
+            f"{active_boq.economics.pv_battery_replacement_inr:,.2f}</b>). "
         )
     )
     story.append(
         Paragraph(
-            f"Annualized O&M outlay for active scenario <b>{active_boq.scenario_key}</b> is "
-            f"<b>INR {active_boq.economics.annual_om_inr:,.2f}/yr</b> (10-Yr PV: <b>INR "
-            f"{active_boq.economics.pv_om_inr:,.2f}</b>). Off-grid LiFePO4 battery storage "
-            f"includes a scheduled Year-7 replacement reserve (PV: <b>INR "
-            f"{active_boq.economics.pv_battery_replacement_inr:,.2f}</b>). Village Energy "
-            f"Committees (VECs) and local SHG micro-enterprise operators oversee tariff "
-            f"collection and preventive module cleaning under a mandatory 5-year turnkey "
+            f"Annualized O&amp;M outlay for active scenario "
+            f"<b>{html.escape(active_boq.scenario_key)}</b> is "
+            f"<b>INR {active_boq.economics.annual_om_inr:,.2f}/yr</b> "
+            f"({active_boq.horizon_years}-Yr PV: <b>INR "
+            f"{active_boq.economics.pv_om_inr:,.2f}</b>). {bess_reserve_note}"
+            f"Village Energy Committees (VECs) and local SHG micro-enterprise operators oversee "
+            f"tariff collection and preventive module cleaning under a mandatory 5-year turnkey "
             f"vendor AMC.",
             body_style,
         )
@@ -1488,44 +1948,51 @@ def generate_preliminary_settlement_pdf(
     # Section 21: Complete Project Assumptions Register & Engineering Constants Audit
     story.append(
         Paragraph(
-            "21. COMPLETE PROJECT ASSUMPTIONS REGISTER & ENGINEERING CONSTANTS AUDIT",
+            "21. COMPLETE PROJECT ASSUMPTIONS REGISTER &amp; ENGINEERING CONSTANTS AUDIT",
             sec_style,
         )
     )
-    assump_rows = [["Key", "Parameter", "Value", "Unit", "Status", "Citation"]]
-    for s_item in settings_state.items[:6]:
+    assump_rows = [
+        [
+            _p("Key", header=True),
+            _p("Parameter", header=True),
+            _p("Value", header=True),
+            _p("Unit", header=True),
+            _p("Status", header=True),
+            _p("Citation", header=True),
+        ]
+    ]
+    for s_item in settings_state.items:
         assump_rows.append(
             [
-                s_item.key[:24],
-                s_item.label[:30],
-                f"{s_item.value:.2f}",
-                s_item.unit[:12],
-                "USER_EDITED" if s_item.is_user_edited else "DEFAULT_REF",
-                s_item.citation[:30],
+                _p(s_item.key, bold=True),
+                _p(s_item.label),
+                _p(f"{s_item.value:.2f}"),
+                _p(s_item.unit),
+                _p("USER_EDITED" if s_item.is_user_edited else "DEFAULT_REF"),
+                _p(s_item.citation),
             ]
         )
-    for c_item in eng_constants.items[:4]:
+    for c_item in eng_constants.items:
         assump_rows.append(
             [
-                c_item.key[:24],
-                c_item.description[:30],
-                f"{c_item.value}",
-                c_item.unit[:12],
-                c_item.status[:16],
-                c_item.citation[:30],
+                _p(c_item.key, bold=True),
+                _p(c_item.description),
+                _p(f"{c_item.value}"),
+                _p(c_item.unit),
+                _p(c_item.status),
+                _p(c_item.citation),
             ]
         )
     t21 = Table(
         assump_rows,
-        colWidths=[32 * mm, 42 * mm, 16 * mm, 16 * mm, 24 * mm, 46 * mm],
+        colWidths=[34 * mm, 42 * mm, 14 * mm, 16 * mm, 24 * mm, 46 * mm],
     )
     t21.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.0),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                 ("PADDING", (0, 0), (-1, -1), 2.0),
             ]
@@ -1582,22 +2049,32 @@ def generate_preliminary_settlement_pdf(
     )
     cert_rows = [
         [
-            "Pre-Flight Gate Status",
-            f"PASSED (0 Hard Blockers, {preflight.soft_warnings_count} Soft Warnings)",
-            "Verification Watermark",
-            preflight.watermark_text,
+            _p("Pre-Flight Gate Status", bold=True),
+            _p(
+                "PASSED (0 Hard Blockers, 0 Soft Warnings)"
+                if preflight.can_export and preflight.soft_warnings_count == 0
+                else (
+                    f"PASSED WITH WARNINGS (0 Hard Blockers, "
+                    f"{preflight.soft_warnings_count} Soft Warnings)"
+                    if preflight.can_export
+                    else f"FAILED ({preflight.hard_blockers_failed} Hard Blockers, "
+                    f"{preflight.soft_warnings_count} Soft Warnings)"
+                )
+            ),
+            _p("Verification Watermark", bold=True),
+            _p(preflight.watermark_text),
         ],
         [
-            "Project Snapshot SHA-256",
-            preflight.snapshot_hash[:32] + "...",
-            "Full Hash Digest (Tail)",
-            "..." + preflight.snapshot_hash[32:],
+            _p("Project Snapshot SHA-256", bold=True),
+            _p(preflight.snapshot_hash[:32] + "..."),
+            _p("Full Hash Digest (Tail)", bold=True),
+            _p("..." + preflight.snapshot_hash[32:]),
         ],
         [
-            "Prepared By (Planner)",
-            f"{user.display_name} ({user.email})",
-            "Field Survey Sign-Off",
-            "_______________________ (AE/JE DISCOM & Gram Sabha)",
+            _p("Prepared By (Planner)", bold=True),
+            _p(f"{user.display_name} ({user.email})"),
+            _p("Field Survey Sign-Off", bold=True),
+            _p("_______________________ (AE/JE DISCOM & Gram Sabha)"),
         ],
     ]
     t24 = Table(cert_rows, colWidths=[34 * mm, 54 * mm, 34 * mm, 54 * mm])
@@ -1606,11 +2083,9 @@ def generate_preliminary_settlement_pdf(
             [
                 ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F1F5F9")),
                 ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#F1F5F9")),
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.2),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
-                ("PADDING", (0, 0), (-1, -1), 2.2),
+                ("PADDING", (0, 0), (-1, -1), 2.5),
             ]
         )
     )

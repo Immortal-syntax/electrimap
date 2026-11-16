@@ -135,6 +135,7 @@ async def add_security_headers(
 ) -> Response:
     """Attach hardened HTTP security headers to every API response (Task M8-4)."""
     response = await call_next(request)
+    response.headers.setdefault("Cache-Control", "no-store")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")

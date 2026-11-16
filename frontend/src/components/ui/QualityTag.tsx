@@ -13,6 +13,15 @@
 // limitations under the License.
 
 import React from 'react'
+import {
+  Activity,
+  AlertTriangle,
+  Ban,
+  Check,
+  Pencil,
+  Radio,
+  type LucideIcon,
+} from 'lucide-react'
 
 export type QualityTagKind =
   | 'VERIFIED'
@@ -30,42 +39,42 @@ export interface QualityTagProps {
 
 const TAG_META: Record<
   QualityTagKind,
-  { defaultLabel: string; styleClass: string; prefixGlyph: string; title: string }
+  { defaultLabel: string; styleClass: string; Icon: LucideIcon; title: string }
 > = {
   VERIFIED: {
     defaultLabel: 'VERIFIED',
     styleClass: 'border border-solid border-ok-border bg-ok-bg text-ok font-semibold',
-    prefixGlyph: '✓ ',
+    Icon: Check,
     title: 'Ground or utility verified data',
   },
   ESTIMATED: {
     defaultLabel: 'ESTIMATED',
     styleClass: 'border border-dashed border-rule-strong bg-subtle text-ink-2',
-    prefixGlyph: '≈ ',
+    Icon: Activity,
     title: 'Engineering or remote-sensing estimate — requires field verification',
   },
   ASSUMED: {
     defaultLabel: 'ASSUMED',
     styleClass: 'border border-dashed border-warn-border bg-warn-bg text-warn italic',
-    prefixGlyph: '△ ',
+    Icon: AlertTriangle,
     title: 'Explicit planning assumption — must be confirmed on ground',
   },
   PROXY: {
     defaultLabel: 'PROXY',
     styleClass: 'border border-dotted border-rule-strong bg-subtle text-ink-2',
-    prefixGlyph: '◌ ',
+    Icon: Radio,
     title: 'Satellite / night-time lights proxy — cannot detect household meters',
   },
   USER_ENTERED: {
     defaultLabel: 'USER ENTERED',
     styleClass: 'border border-solid border-accent-border bg-accent-tint text-accent',
-    prefixGlyph: '✎ ',
+    Icon: Pencil,
     title: 'Entered or edited by planner in this session',
   },
   UNSET: {
     defaultLabel: 'UNSET',
     styleClass: 'border border-dotted border-error-border bg-error-bg text-error',
-    prefixGlyph: '⊘ ',
+    Icon: Ban,
     title: 'Parameter not yet configured — blocks DPR export',
   },
 }
@@ -76,16 +85,17 @@ export const QualityTag: React.FC<QualityTagProps> = ({
   className = '',
 }) => {
   const meta = TAG_META[kind] ?? TAG_META.ESTIMATED
+  const Icon = meta.Icon
+  const displayLabel = label ?? meta.defaultLabel
   return (
     <span
       title={meta.title}
+      aria-label={`${displayLabel} — ${meta.title}`}
       data-quality-kind={kind}
-      className={`inline-flex items-center px-2 py-0.5 text-2xs leading-tight tracking-wide font-mono rounded-full select-none ${meta.styleClass} ${className}`.trim()}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 text-2xs leading-tight tracking-wide font-sans font-medium whitespace-nowrap shrink-0 rounded-full select-none ${meta.styleClass} ${className}`.trim()}
     >
-      <span aria-hidden="true" className="mr-0.5">
-        {meta.prefixGlyph}
-      </span>
-      {label ?? meta.defaultLabel}
+      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+      {displayLabel}
     </span>
   )
 }

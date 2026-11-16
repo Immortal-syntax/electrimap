@@ -20,6 +20,7 @@ import type { StyleSpecification } from 'maplibre-gl';
 import { Button } from '../ui/Button';
 import { LayerSourceBadge, type ProxyElectrificationClass } from '../ui/Badge';
 import { QualityTag } from '../ui/QualityTag';
+import { HelpTooltip } from '../ui/Tooltip';
 import {
   GisFeatureInspectorDrawer,
   buildInspectedFeatureFromMapProperties,
@@ -29,6 +30,7 @@ import {
 } from './GisFeatureInspectorDrawer';
 import { GisSymbologyLegend } from './GisSymbologyLegend';
 import { RASTER_LEGEND_SPECS } from './symbology';
+import { DEMO_PROJECT_ID } from '../layout/navigationConfig';
 import {
   BasemapMode,
   DEFAULT_ELECTRIFICATION_GAPS_FC,
@@ -52,7 +54,21 @@ export type { BasemapMode, InspectedFeatureState };
 
 const KORAPUT_DEFAULT_CENTER: [number, number] = [82.73, 18.565];
 const KORAPUT_DEFAULT_ZOOM = 12.6;
+const INDIA_DEFAULT_CENTER: [number, number] = [78.9629, 20.5937];
+const INDIA_DEFAULT_ZOOM = 5.4;
+const MVT_BUILDING_FEATURE_THRESHOLD = 5000;
 const GLYPHS_URL = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
+
+function resolveMetricCrsLabel(metricEpsg?: number): string {
+  if (!metricEpsg || Number.isNaN(metricEpsg)) return 'UTM 44N (EPSG:32644)';
+  if (metricEpsg >= 32601 && metricEpsg <= 32660) {
+    return `UTM ${metricEpsg - 32600}N (EPSG:${metricEpsg})`;
+  }
+  if (metricEpsg >= 32701 && metricEpsg <= 32760) {
+    return `UTM ${metricEpsg - 32700}S (EPSG:${metricEpsg})`;
+  }
+  return `EPSG:${metricEpsg}`;
+}
 
 if (
   typeof maplibregl.setWorkerUrl === 'function' &&
@@ -62,6 +78,12 @@ if (
 }
 
 export interface MapCanvasProps {
+  /** Optional owning Project UUID (non-demo projects isolate Koraput fixtures & enable MVT) */
+  projectId?: string;
+  /** Optional local metric UTM EPSG code (e.g. 32644) for telemetry footer */
+  metricEpsg?: number;
+  /** Step 1 AOI Wizard mode hides non-AOI measurement & cluster inspection controls */
+  wizardMode?: boolean;
   /** Active AOI polygon/multipolygon GeoJSON geometry (`EPSG:4326`) */
   aoiGeometry?: GeoJSON.Geometry | null;
   /** Boundary source provenance (`HARMONISED`, `APPROXIMATE_BUFFER`, `USER_DRAWN`, `USER_UPLOAD`) */
@@ -265,13 +287,22 @@ function buildBasemapStyle(mode: BasemapMode): StyleSpecification {
   };
 }
 
-function buildSurveyGraticuleGeoJson(): GeoJSON.FeatureCollection {
+function buildSurveyGraticuleGeoJson(
+  bbox?: [number, number, number, number] | null,
+  fallbackDemo = true,
+): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = [];
-  const minLon = 82.6;
-  const maxLon = 82.84;
-  const minLat = 18.46;
-  const maxLat = 18.66;
-  const step = 0.01;
+  const rawMinLon = bbox ? bbox[0] : fallbackDemo ? 82.6 : 68.0;
+  const rawMinLat = bbox ? bbox[1] : fallbackDemo ? 18.46 : 8.0;
+  const rawMaxLon = bbox ? bbox[2] : fallbackDemo ? 82.84 : 96.0;
+  const rawMaxLat = bbox ? bbox[3] : fallbackDemo ? 18.66 : 36.0;
+  const span = Math.max(rawMaxLon - rawMinLon, rawMaxLat - rawMinLat, 0.02);
+  const step = span > 10 ? 2.0 : span > 1.0 ? 0.25 : span > 0.35 ? 0.05 : 0.01;
+  const pad = step * 2;
+  const minLon = Math.floor((rawMinLon - pad) / step) * step;
+  const maxLon = Math.ceil((rawMaxLon + pad) / step) * step;
+  const minLat = Math.floor((rawMinLat - pad) / step) * step;
+  const maxLat = Math.ceil((rawMaxLat + pad) / step) * step;
 
   for (let lon = minLon; lon <= maxLon + 1e-6; lon += step) {
     const roundedLon = Number(lon.toFixed(3));
@@ -303,8 +334,6 @@ function buildSurveyGraticuleGeoJson(): GeoJSON.FeatureCollection {
   }
   return { type: 'FeatureCollection', features };
 }
-
-const SURVEY_GRATICULE_FC = buildSurveyGraticuleGeoJson();
 
 function computeGeoJsonBbox(
   geojson: GeoJSON.Geometry | GeoJSON.FeatureCollection,
@@ -386,6 +415,9 @@ function setLayerVisibilitySafe(
 }
 
 export const MapCanvas: React.FC<MapCanvasProps> = ({
+  projectId,
+  metricEpsg,
+  wizardMode = false,
   aoiGeometry = null,
   boundarySource = 'HARMONISED',
   referenceBuildings = null,
@@ -414,24 +446,41 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   maxZoom = MAP_MAX_ZOOM,
   maxBounds = INDIA_MAX_BOUNDS,
 }) => {
+  const isDemoProject = !projectId || projectId === DEMO_PROJECT_ID;
+  const usesMvtBuildings = Boolean(
+    projectId &&
+      !wizardMode &&
+      (referenceBuildings?.features.length ?? 0) > MVT_BUILDING_FEATURE_THRESHOLD,
+  );
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const lastFittedBboxRef = useRef<string | null>(null);
   const lastRasterKeyRef = useRef<string | null>(null);
   const rasterLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const initialBbox = aoiGeometry ? computeGeoJsonBbox(aoiGeometry) : null;
   const [basemap, setBasemap] = useState<BasemapMode>('survey_paper');
-  const [cursorCoords, setCursorCoords] = useState<{ lon: number; lat: number }>({
-    lon: KORAPUT_DEFAULT_CENTER[0],
-    lat: KORAPUT_DEFAULT_CENTER[1],
-  });
-  const [zoomLevel, setZoomLevel] = useState<number>(KORAPUT_DEFAULT_ZOOM);
+  const [cursorCoords, setCursorCoords] = useState<{ lon: number; lat: number }>(() =>
+    initialBbox
+      ? {
+          lon: Number(((initialBbox[0] + initialBbox[2]) / 2).toFixed(5)),
+          lat: Number(((initialBbox[1] + initialBbox[3]) / 2).toFixed(5)),
+        }
+      : isDemoProject
+        ? { lon: KORAPUT_DEFAULT_CENTER[0], lat: KORAPUT_DEFAULT_CENTER[1] }
+        : { lon: INDIA_DEFAULT_CENTER[0], lat: INDIA_DEFAULT_CENTER[1] },
+  );
+  const [zoomLevel, setZoomLevel] = useState<number>(
+    initialBbox ? 11.5 : isDemoProject ? KORAPUT_DEFAULT_ZOOM : INDIA_DEFAULT_ZOOM,
+  );
   const [drawnVertices, setDrawnVertices] = useState<Array<[number, number]>>([]);
   const [tileWarning, setTileWarning] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   // Specialised Electricity GIS Layer Controls (Layers A through F)
   const [layerPanelOpen, setLayerPanelOpen] = useState<boolean>(
-    defaultLayerPanelOpen,
+    defaultLayerPanelOpen &&
+      (typeof window === 'undefined' || window.innerWidth >= 1024),
   );
   const [beginnerGuideOpen, setBeginnerGuideOpen] = useState<boolean>(false);
   const [layerAEnabled, setLayerAEnabled] = useState<boolean>(true); // Existing Electricity Infrastructure
@@ -506,7 +555,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const [settlementStatusFilter, setSettlementStatusFilter] = useState<
     'ALL' | ProxyElectrificationClass
   >('ALL');
-  const [includeReferencePack, setIncludeReferencePack] = useState<boolean>(true);
+  const [includeReferencePack, setIncludeReferencePack] = useState<boolean>(isDemoProject);
+  const effectiveRefPack = isDemoProject && includeReferencePack;
+
+  useEffect(() => {
+    setIncludeReferencePack(isDemoProject);
+  }, [isDemoProject]);
   const [vectorOpacity, setVectorOpacity] = useState<number>(0.9);
   const [expandedCanvas, setExpandedCanvas] = useState<boolean>(false);
   const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
@@ -524,6 +578,28 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     subtitle: string;
     badge: string;
   } | null>(null);
+  const [pendingTieInPoint, setPendingTieInPoint] = useState<{
+    lon: number;
+    lat: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!placeTieInModeActive) {
+      setPendingTieInPoint(null);
+    }
+  }, [placeTieInModeActive]);
+
+  useEffect(() => {
+    if (!beginnerGuideOpen && !pendingTieInPoint) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (pendingTieInPoint) setPendingTieInPoint(null);
+        else if (beginnerGuideOpen) setBeginnerGuideOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [beginnerGuideOpen, pendingTieInPoint]);
 
   const fitToActiveAoi = useCallback(
     (mapInstance?: maplibregl.Map | null) => {
@@ -535,7 +611,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           ? settlementClusters
           : referenceBuildings && referenceBuildings.features.length > 0
             ? referenceBuildings
-            : DEFAULT_VILLAGE_ELECTRIFICATION_FC);
+            : isDemoProject
+              ? DEFAULT_VILLAGE_ELECTRIFICATION_FC
+              : null);
       if (targetGeom) {
         const bbox = computeGeoJsonBbox(targetGeom);
         if (bbox) {
@@ -555,15 +633,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       }
       try {
         map.flyTo({
-          center: KORAPUT_DEFAULT_CENTER,
-          zoom: KORAPUT_DEFAULT_ZOOM,
+          center: isDemoProject ? KORAPUT_DEFAULT_CENTER : INDIA_DEFAULT_CENTER,
+          zoom: isDemoProject ? KORAPUT_DEFAULT_ZOOM : INDIA_DEFAULT_ZOOM,
           duration: 450,
         });
       } catch {
         // Ignore in headless tests
       }
     },
-    [aoiGeometry, settlementClusters, referenceBuildings],
+    [aoiGeometry, settlementClusters, referenceBuildings, isDemoProject],
   );
 
   // Merge OSM existing power infrastructure with any planner-added `infrastructureAssets`
@@ -587,7 +665,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       return true;
     };
 
-    const baseFeatures = includeReferencePack
+    const baseFeatures = effectiveRefPack
       ? DEFAULT_EXISTING_POWER_INFRA_FC.features.filter(matchesVoltageFilter)
       : [];
 
@@ -616,7 +694,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       type: 'FeatureCollection',
       features: [...baseFeatures, ...extraFeatures],
     };
-  }, [voltageFilter, infrastructureAssets, includeReferencePack]);
+  }, [voltageFilter, infrastructureAssets, effectiveRefPack]);
 
   const effectiveSettlementsFc = React.useMemo<GeoJSON.FeatureCollection>(() => {
     let rawFeatures: GeoJSON.Feature[] = [];
@@ -633,11 +711,11 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         (f) => f.geometry?.type === 'Point',
       );
       rawFeatures =
-        hasPoints || !includeReferencePack
+        hasPoints || !effectiveRefPack
           ? normalizedHulls
           : [...normalizedHulls, ...DEFAULT_SETTLEMENTS_FC.features];
     } else {
-      rawFeatures = includeReferencePack ? DEFAULT_SETTLEMENTS_FC.features : [];
+      rawFeatures = effectiveRefPack ? DEFAULT_SETTLEMENTS_FC.features : [];
     }
 
     const filteredFeatures =
@@ -653,13 +731,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       type: 'FeatureCollection',
       features: filteredFeatures,
     };
-  }, [settlementClusters, includeReferencePack, settlementStatusFilter]);
+  }, [settlementClusters, effectiveRefPack, settlementStatusFilter]);
 
   const effectiveGapsFc = React.useMemo<GeoJSON.FeatureCollection>(() => {
     if (gapCorridors && gapCorridors.features.length > 0) {
       return {
         type: 'FeatureCollection',
-        features: includeReferencePack
+        features: effectiveRefPack
           ? [
               ...gapCorridors.features,
               ...DEFAULT_ELECTRIFICATION_GAPS_FC.features,
@@ -669,11 +747,11 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     }
     return {
       type: 'FeatureCollection',
-      features: includeReferencePack
+      features: effectiveRefPack
         ? DEFAULT_ELECTRIFICATION_GAPS_FC.features
         : [],
     };
-  }, [gapCorridors, includeReferencePack]);
+  }, [gapCorridors, effectiveRefPack]);
 
   const effectiveProposedFc = React.useMemo<GeoJSON.FeatureCollection>(() => {
     const normalizedScenarioFeatures: GeoJSON.Feature[] = (
@@ -721,12 +799,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     return {
       type: 'FeatureCollection',
       features: [
-        ...(includeReferencePack ? DEFAULT_PROPOSED_NETWORK_FC.features : []),
+        ...(effectiveRefPack ? DEFAULT_PROPOSED_NETWORK_FC.features : []),
         ...normalizedScenarioFeatures,
         ...routeFeatures,
       ],
     };
-  }, [networkLayout, referenceRoutes, includeReferencePack]);
+  }, [networkLayout, referenceRoutes, effectiveRefPack]);
 
   const syncLayers = useCallback(
     (map: maplibregl.Map) => {
@@ -738,7 +816,11 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
       // 0. Engineering Survey Graticule
       try {
-        upsertGeoJsonSource(map, 'survey-graticule', SURVEY_GRATICULE_FC);
+        const graticuleFc = buildSurveyGraticuleGeoJson(
+          aoiGeometry ? computeGeoJsonBbox(aoiGeometry) : null,
+          isDemoProject,
+        );
+        upsertGeoJsonSource(map, 'survey-graticule', graticuleFc);
         if (!map.getLayer('survey-graticule-lines')) {
           map.addLayer({
             id: 'survey-graticule-lines',
@@ -779,6 +861,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 id: 'nasa-gibs-viirs-layer',
                 type: 'raster',
                 source: 'nasa-gibs-viirs',
+                minzoom: 0,
+                maxzoom: 8,
                 paint: { 'raster-opacity': viirsOpacity },
               },
               firstVectorLayerId,
@@ -801,9 +885,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
         const inferredRasterUrl =
           rasterOverlayUrl ??
-          (effectiveRasterOverlay === 'nightlights' && !viirsGlobalGibs
+          (isDemoProject && effectiveRasterOverlay === 'nightlights'
             ? `/api/v1/spikes/viirs-overlay?period=${viirsPeriod}`
-            : layerBEnabled && !viirsGlobalGibs
+            : isDemoProject && layerBEnabled
               ? `/api/v1/spikes/viirs-overlay?period=${viirsPeriod}`
               : null);
         const baseOverlayUrl =
@@ -919,24 +1003,34 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               source: 'viirs-radiance-source',
               paint: {
                 'circle-radius': [
-                  'match',
-                  ['get', 'cluster_code'],
-                  'CL-01',
-                  42,
-                  'CL-02',
-                  24,
-                  'CL-03',
-                  14,
+                  'interpolate',
+                  ['linear'],
+                  ['coalesce', ['get', periodRadField], ['get', 'lightscore_mean'], 0.05],
+                  0.05,
                   10,
+                  0.5,
+                  16,
+                  2.0,
+                  24,
+                  5.0,
+                  34,
+                  12.0,
+                  42,
                 ],
                 'circle-color': [
-                  'match',
-                  ['get', 'cluster_code'],
-                  'CL-01',
-                  '#FDE047',
-                  'CL-02',
-                  '#F59E0B',
-                  '#6D28D9',
+                  'interpolate',
+                  ['linear'],
+                  ['coalesce', ['get', periodRadField], ['get', 'lightscore_mean'], 0.05],
+                  0.05,
+                  '#3B0F70',
+                  0.5,
+                  '#8C2981',
+                  2.0,
+                  '#DE4968',
+                  5.0,
+                  '#FE9F6D',
+                  12.0,
+                  '#FCFDBF',
                 ],
                 'circle-blur': 0.75,
                 'circle-opacity': viirsOpacity * 0.65,
@@ -998,10 +1092,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
       // 2. Layer C: Village Electrification Status (Census 2011 DCHB + LGD) & Active AOI Boundary
       try {
+        const effectiveVillagesFc: GeoJSON.FeatureCollection =
+          effectiveRefPack
+            ? DEFAULT_VILLAGE_ELECTRIFICATION_FC
+            : { type: 'FeatureCollection', features: [] };
         upsertGeoJsonSource(
           map,
           'village-electrification',
-          DEFAULT_VILLAGE_ELECTRIFICATION_FC,
+          effectiveVillagesFc,
         );
         if (!map.getLayer('village-status-fill')) {
           map.addLayer({
@@ -1013,11 +1111,11 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 'match',
                 ['get', 'electrification_status'],
                 'ELECTRIFIED_GRID_CONNECTED',
-                '#1B6E3A',
+                '#0072B2',
                 'PARTIALLY_ELECTRIFIED_UNDERSERVED',
-                '#B35300',
+                '#E69F00',
                 'REPORTED_UNELECTRIFIED_HABITATION',
-                '#A61B1B',
+                '#D55E00',
                 '#52504A',
               ],
               'fill-opacity': 0.14,
@@ -1034,12 +1132,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 'ELECTRIFIED_GRID_CONNECTED',
                 '#1B6E3A',
                 'PARTIALLY_ELECTRIFIED_UNDERSERVED',
-                '#B35300',
+                '#E69F00',
                 'REPORTED_UNELECTRIFIED_HABITATION',
-                '#A61B1B',
-                '#52504A',
+                '#D55E00',
+                '#64748B',
               ],
               'line-width': 2.2,
+              'line-dasharray': [3, 2],
             },
           });
           map.addLayer({
@@ -1098,17 +1197,20 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             source: 'aoi-source',
             paint: {
               'fill-color':
-                boundarySource === 'APPROXIMATE_BUFFER' ? '#A35C00' : '#1E4D3B',
-              'fill-opacity': 0.08,
+                boundarySource === 'APPROXIMATE_BUFFER' ? '#D97706' : '#0F172A',
+              'fill-opacity': 0.08 * vectorOpacity,
             },
           });
+        } else {
+          map.setPaintProperty('aoi-fill', 'fill-opacity', 0.08 * vectorOpacity);
         }
         const outlineColor =
-          boundarySource === 'APPROXIMATE_BUFFER' ? '#A35C00' : '#1E4D3B';
+          boundarySource === 'APPROXIMATE_BUFFER' ? '#D97706' : '#0F172A';
         if (!map.getLayer('aoi-outline')) {
           const linePaint: maplibregl.LineLayerSpecification['paint'] = {
             'line-color': outlineColor,
             'line-width': 2.5,
+            'line-opacity': vectorOpacity,
           };
           if (boundarySource === 'APPROXIMATE_BUFFER') {
             linePaint['line-dasharray'] = [4, 3];
@@ -1121,6 +1223,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           });
         } else {
           map.setPaintProperty('aoi-outline', 'line-color', outlineColor);
+          map.setPaintProperty('aoi-outline', 'line-opacity', vectorOpacity);
         }
         setLayerVisibilitySafe(map, ['aoi-fill', 'aoi-outline'], layerCEnabled);
       } catch {
@@ -1170,7 +1273,30 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           Boolean(osmFeatures) && layerDEnabled,
         );
 
-        if (referenceBuildings) {
+        if (usesMvtBuildings && projectId) {
+          if (!map.getSource('buildings-mvt')) {
+            map.addSource('buildings-mvt', {
+              type: 'vector',
+              tiles: [`/api/v1/tiles/${projectId}/buildings/{z}/{x}/{y}.mvt`],
+              minzoom: 10,
+              maxzoom: 18,
+            });
+          }
+          if (!map.getLayer('buildings-mvt-fill')) {
+            map.addLayer({
+              id: 'buildings-mvt-fill',
+              type: 'fill',
+              source: 'buildings-mvt',
+              'source-layer': 'buildings',
+              paint: {
+                'fill-color': '#D97706',
+                'fill-opacity': 0.72 * vectorOpacity,
+                'fill-outline-color': '#78350F',
+              },
+            });
+          }
+        }
+        if (referenceBuildings && !usesMvtBuildings) {
           upsertGeoJsonSource(map, 'ref-buildings', referenceBuildings);
           if (!map.getLayer('ref-buildings-fill')) {
             map.addLayer({
@@ -1187,7 +1313,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   '#9E998E',
                   'NOISE',
                   '#C8C2B4',
-                  '#B35300',
+                  '#D97706',
                 ],
                 'fill-opacity': [
                   'case',
@@ -1195,7 +1321,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   0.25,
                   0.75,
                 ],
-                'fill-outline-color': '#5C3D1E',
+                'fill-outline-color': '#78350F',
               },
             });
           }
@@ -1203,7 +1329,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         setLayerVisibilitySafe(
           map,
           ['ref-buildings-fill'],
-          Boolean(referenceBuildings) && layerDEnabled,
+          Boolean(referenceBuildings) && !usesMvtBuildings && layerDEnabled,
+        );
+        setLayerVisibilitySafe(
+          map,
+          ['buildings-mvt-fill'],
+          usesMvtBuildings && layerDEnabled,
         );
 
         upsertGeoJsonSource(map, 'settlement-clusters', effectiveSettlementsFc);
@@ -1215,15 +1346,24 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             filter: ['==', ['geometry-type'], 'Polygon'],
             paint: {
               'fill-color': [
-                'match',
-                ['get', 'proxy_class'],
-                'LIKELY_ELECTRIFIED',
-                '#1B6E3A',
-                'POTENTIALLY_UNDERSERVED',
-                '#B35300',
-                'POTENTIALLY_UNSERVED',
-                '#A61B1B',
-                '#52504A',
+                'case',
+                [
+                  'in',
+                  ['get', 'verification_state'],
+                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                ],
+                '#009E73',
+                [
+                  'match',
+                  ['get', 'proxy_class'],
+                  'LIKELY_ELECTRIFIED',
+                  '#0072B2',
+                  'POTENTIALLY_UNDERSERVED',
+                  '#E69F00',
+                  'POTENTIALLY_UNSERVED',
+                  '#D55E00',
+                  '#64748B',
+                ],
               ],
               'fill-opacity': 0.16,
             },
@@ -1235,17 +1375,36 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             filter: ['==', ['geometry-type'], 'Polygon'],
             paint: {
               'line-color': [
-                'match',
-                ['get', 'proxy_class'],
-                'LIKELY_ELECTRIFIED',
-                '#1B6E3A',
-                'POTENTIALLY_UNDERSERVED',
-                '#B35300',
-                'POTENTIALLY_UNSERVED',
-                '#A61B1B',
-                '#52504A',
+                'case',
+                [
+                  'in',
+                  ['get', 'verification_state'],
+                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                ],
+                '#009E73',
+                [
+                  'match',
+                  ['get', 'proxy_class'],
+                  'LIKELY_ELECTRIFIED',
+                  '#0072B2',
+                  'POTENTIALLY_UNDERSERVED',
+                  '#E69F00',
+                  'POTENTIALLY_UNSERVED',
+                  '#D55E00',
+                  '#64748B',
+                ],
               ],
-              'line-width': 2.0,
+              'line-width': 2.2,
+              'line-dasharray': [
+                'case',
+                [
+                  'in',
+                  ['get', 'verification_state'],
+                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                ],
+                ['literal', [1]],
+                ['literal', [3, 2]],
+              ],
             },
           });
           map.addLayer({
@@ -1261,18 +1420,45 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 8,
               ],
               'circle-color': [
-                'match',
-                ['get', 'proxy_class'],
-                'LIKELY_ELECTRIFIED',
-                '#1B6E3A',
-                'POTENTIALLY_UNDERSERVED',
-                '#B35300',
-                'POTENTIALLY_UNSERVED',
-                '#A61B1B',
-                '#52504A',
+                'case',
+                [
+                  'in',
+                  ['get', 'verification_state'],
+                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                ],
+                '#009E73',
+                [
+                  'match',
+                  ['get', 'proxy_class'],
+                  'LIKELY_ELECTRIFIED',
+                  '#0072B2',
+                  'POTENTIALLY_UNDERSERVED',
+                  '#E69F00',
+                  'POTENTIALLY_UNSERVED',
+                  '#D55E00',
+                  '#64748B',
+                ],
               ],
-              'circle-stroke-color': '#FFFFFF',
-              'circle-stroke-width': 2.2,
+              'circle-stroke-color': [
+                'case',
+                [
+                  'in',
+                  ['get', 'verification_state'],
+                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                ],
+                '#0F172A',
+                '#FFFFFF',
+              ],
+              'circle-stroke-width': [
+                'case',
+                [
+                  'in',
+                  ['get', 'verification_state'],
+                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                ],
+                3.0,
+                1.8,
+              ],
             },
           });
           map.addLayer({
@@ -1698,6 +1884,20 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             Number((0.12 * vectorOpacity).toFixed(3)),
           );
         }
+        if (map.getLayer('ref-buildings-fill')) {
+          map.setPaintProperty(
+            'ref-buildings-fill',
+            'fill-opacity',
+            Number((0.75 * vectorOpacity).toFixed(3)),
+          );
+        }
+        if (map.getLayer('buildings-mvt-fill')) {
+          map.setPaintProperty(
+            'buildings-mvt-fill',
+            'fill-opacity',
+            Number((0.72 * vectorOpacity).toFixed(3)),
+          );
+        }
         if (map.getLayer('clusters-hull-fill')) {
           map.setPaintProperty(
             'clusters-hull-fill',
@@ -1705,12 +1905,22 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             Number((0.22 * vectorOpacity).toFixed(3)),
           );
         }
-        if (map.getLayer('clusters-centroid-circle')) {
-          map.setPaintProperty(
-            'clusters-centroid-circle',
-            'circle-opacity',
-            vectorOpacity,
-          );
+        for (const circleLayerId of [
+          'clusters-centroid-circle',
+          'layer-a-substations',
+          'layer-a-transformers',
+          'layer-a-towers-poles',
+          'network-dt-points',
+          'osm-points',
+        ]) {
+          if (map.getLayer(circleLayerId)) {
+            map.setPaintProperty(circleLayerId, 'circle-opacity', vectorOpacity);
+            map.setPaintProperty(
+              circleLayerId,
+              'circle-stroke-opacity',
+              vectorOpacity,
+            );
+          }
         }
         for (const lineLayerId of [
           'layer-a-33kv-lines',
@@ -1718,6 +1928,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           'network-ht-lines',
           'network-lt-lines',
           'gap-corridors-line',
+          'village-status-outline',
+          'clusters-hull-outline',
+          'osm-lines',
         ]) {
           if (map.getLayer(lineLayerId)) {
             map.setPaintProperty(lineLayerId, 'line-opacity', vectorOpacity);
@@ -1738,6 +1951,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       basemap,
       aoiGeometry,
       boundarySource,
+      projectId,
+      isDemoProject,
+      usesMvtBuildings,
+      effectiveRefPack,
       referenceBuildings,
       osmFeatures,
       effectiveSettlementsFc,
@@ -1802,11 +2019,23 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       return;
     }
 
+    const aoiBbox = aoiGeometry ? computeGeoJsonBbox(aoiGeometry) : null;
+    const initialCenter: [number, number] = aoiBbox
+      ? [(aoiBbox[0] + aoiBbox[2]) / 2, (aoiBbox[1] + aoiBbox[3]) / 2]
+      : isDemoProject
+        ? KORAPUT_DEFAULT_CENTER
+        : INDIA_DEFAULT_CENTER;
+    const initialZoom = aoiBbox
+      ? 11.5
+      : isDemoProject
+        ? KORAPUT_DEFAULT_ZOOM
+        : INDIA_DEFAULT_ZOOM;
+
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: buildBasemapStyle(basemap),
-      center: KORAPUT_DEFAULT_CENTER,
-      zoom: KORAPUT_DEFAULT_ZOOM,
+      center: initialCenter,
+      zoom: initialZoom,
       minZoom,
       maxZoom,
       maxBounds,
@@ -1834,6 +2063,17 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           lat: Number(e.lngLat.lat.toFixed(5)),
         });
       }
+      const canvasEl = map.getCanvas?.();
+      if (
+        interactionRef.current.placeTieInModeActive ||
+        interactionRef.current.drawModeActive ||
+        interactionRef.current.measureModeActive
+      ) {
+        if (canvasEl?.style) canvasEl.style.cursor = 'crosshair';
+        setHoveredFeatureHint(null);
+        return;
+      }
+
       try {
         const hoverLayers = [
           'layer-a-substations',
@@ -1846,6 +2086,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           'network-lt-lines',
           'clusters-centroid-circle',
           'clusters-hull-fill',
+          'ref-buildings-fill',
+          'buildings-mvt-fill',
           'viirs-radiance-glow-outer',
           'gap-corridors-line',
           'village-status-fill',
@@ -1855,7 +2097,6 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           const hits = map.queryRenderedFeatures(e.point, {
             layers: hoverLayers,
           });
-          const canvasEl = map.getCanvas?.();
           if (hits && hits.length > 0) {
             if (canvasEl?.style) canvasEl.style.cursor = 'pointer';
             const top = hits[0]!;
@@ -1865,6 +2106,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               p.name ??
                 p.cluster_code ??
                 p.gap_code ??
+                (lid === 'ref-buildings-fill' || lid === 'buildings-mvt-fill'
+                  ? `Structure ${String(p.id ?? '')}`.trim()
+                  : undefined) ??
                 (p.village_name ? `Village ${String(p.village_name)}` : 'GIS Feature'),
             );
             const subtitle = lid.startsWith('network-')
@@ -1875,16 +2119,20 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   ? p[interactionRef.current.viirsRadianceField] !== undefined
                     ? `VIIRS DNB: ${String(p[interactionRef.current.viirsRadianceField])} nW/cm²/sr · ${String(p.proxy_class ?? 'PROXY')}`
                     : `VIIRS DNB: Not sampled · ${String(p.proxy_class ?? 'PROXY')}`
-                  : lid.startsWith('clusters-')
-                    ? `${String(p.proxy_class ?? 'PROXY')} · ${String(p.estimated_households ?? p.est_households ?? '')} HH`
-                    : lid === 'village-status-fill'
-                      ? `LGD ${String(p.lgd_code ?? '')} · ${String(p.total_pop ?? '')} Pop`
-                      : String(p.gap_severity ?? 'GAP CORRIDOR');
+                  : lid === 'ref-buildings-fill' || lid === 'buildings-mvt-fill'
+                    ? `${p.area_m2 !== undefined ? `${Number(p.area_m2).toFixed(1)} m²` : 'Building'} · Structure Footprint`
+                    : lid.startsWith('clusters-')
+                      ? `${String(p.proxy_class ?? 'PROXY')} · ${String(p.estimated_households ?? p.est_households ?? '')} HH`
+                      : lid === 'village-status-fill'
+                        ? `LGD ${String(p.lgd_code ?? '')} · ${String(p.total_pop ?? '')} Pop`
+                        : String(p.gap_severity ?? 'GAP CORRIDOR');
             const badge = lid.startsWith('network-')
               ? 'PRELIMINARY'
               : lid === 'viirs-radiance-glow-outer'
                 ? 'VIIRS RADIANCE'
-                : String(p.provenance ?? p.verification_state ?? 'CLICK TO INSPECT');
+                : lid === 'ref-buildings-fill' || lid === 'buildings-mvt-fill'
+                  ? 'FOOTPRINT PROXY'
+                  : String(p.provenance ?? p.verification_state ?? 'CLICK TO INSPECT');
             setHoveredFeatureHint({ title, subtitle, badge });
           } else {
             if (canvasEl?.style) canvasEl.style.cursor = '';
@@ -1969,7 +2217,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       const lat = Number(e.lngLat.lat.toFixed(6));
 
       if (interactionRef.current.placeTieInModeActive) {
-        interactionRef.current.onPlaceTieInPoint?.(lon, lat);
+        setPendingTieInPoint({ lon, lat });
         return;
       }
 
@@ -2014,6 +2262,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         'viirs-radiance-glow-outer',
         'gap-corridors-line',
         'ref-buildings-fill',
+        'buildings-mvt-fill',
         'village-status-fill',
       ].filter((id) => Boolean(map.getLayer(id)));
 
@@ -2147,13 +2396,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     setTimeout(reSync, 60);
   };
 
-  // Combine static Koraput catalog with any dynamic project clusters
+  // Combine project clusters/infrastructure with static Koraput catalog (demo project only)
   const combinedSearchCatalog = React.useMemo<SearchableLocationItem[]>(() => {
     const dynamicItems: SearchableLocationItem[] = [];
     for (const feat of settlementClusters?.features ?? []) {
       const props = feat.properties ?? {};
       const id = String(props.id ?? '');
-      if (!id || !feat.geometry || KORAPUT_SEARCH_CATALOG.some((c) => c.id === id)) continue;
+      if (!id || !feat.geometry || (isDemoProject && KORAPUT_SEARCH_CATALOG.some((c) => c.id === id))) {
+        continue;
+      }
       const bbox = computeGeoJsonBbox(feat.geometry);
       if (!bbox) continue;
       dynamicItems.push({
@@ -2170,8 +2421,27 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         summary: `Project Cluster · ${String(props.estimated_households ?? props.building_count ?? 'N/A')} Est. HH · ${String(props.proxy_class ?? 'UNKNOWN')}`,
       });
     }
-    return [...dynamicItems, ...KORAPUT_SEARCH_CATALOG];
-  }, [settlementClusters]);
+    for (const feat of infrastructureAssets?.features ?? []) {
+      const props = feat.properties ?? {};
+      const id = String(props.id ?? '');
+      const cat = String(props.asset_type ?? props.infra_category ?? '').toUpperCase();
+      if (!id || !feat.geometry || (!cat.includes('SUBSTATION') && !cat.includes('TRANSFORMER') && !cat.includes('TIE_IN'))) {
+        continue;
+      }
+      const bbox = computeGeoJsonBbox(feat.geometry);
+      if (!bbox) continue;
+      dynamicItems.push({
+        id,
+        label: String(props.name ?? `${cat} Asset`),
+        category: 'SUBSTATION',
+        lon: Number(((bbox[0] + bbox[2]) / 2).toFixed(5)),
+        lat: Number(((bbox[1] + bbox[3]) / 2).toFixed(5)),
+        zoom: 15.0,
+        summary: `${cat} · ${String(props.provenance ?? 'PROJECT')}`,
+      });
+    }
+    return isDemoProject ? [...dynamicItems, ...KORAPUT_SEARCH_CATALOG] : dynamicItems;
+  }, [settlementClusters, infrastructureAssets, isDemoProject]);
 
   const handleSearchInput = (val: string) => {
     setSearchQuery(val);
@@ -2191,6 +2461,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const handleRunOpenStreetMapSearch = async () => {
     const q = searchQuery.trim();
     if (!q) return;
+    setSearchError(null);
     const localHits = combinedSearchCatalog.filter(
       (item) =>
         item.label.toLowerCase().includes(q.toLowerCase()) ||
@@ -2222,9 +2493,18 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           summary: 'OpenStreetMap Nominatim Geocoding Result (ODbL · Free)',
         }));
         setSearchResults(mapped);
+        if (mapped.length === 0) {
+          setSearchError(`No locations matched "${q}" in India (OSM Nominatim).`);
+        }
+      } else {
+        setSearchError(
+          `OSM Nominatim location search returned HTTP ${res.status}. Try panning manually or searching loaded assets.`,
+        );
       }
     } catch {
-      // Fallback smoothly offline
+      setSearchError(
+        'Offline or OSM Nominatim geocoding server unreachable; showing local workspace results only.',
+      );
     } finally {
       setSearchingExternal(false);
     }
@@ -2263,21 +2543,6 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     handleFlyToCoordinates(loc.lon, loc.lat, loc.zoom);
   };
 
-  const handleZoomStep = (delta: number) => {
-    const nextZoom = Math.min(
-      maxZoom,
-      Math.max(minZoom, Number((zoomLevel + delta).toFixed(1))),
-    );
-    setZoomLevel(nextZoom);
-    const map = mapRef.current;
-    if (!map) return;
-    try {
-      map.flyTo({ zoom: nextZoom, duration: 250 });
-    } catch {
-      // Ignore in headless tests
-    }
-  };
-
   const handleClearDraw = () => {
     setDrawnVertices([]);
     onDrawnPolygonChange?.(null, 0);
@@ -2285,15 +2550,6 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
   const measuredLengthMeters = computePolylineLengthMeters(measurePoints);
   const measuredAreaM2 = computePolygonAreaM2(measurePoints);
-
-  const activeLayerCount = [
-    layerAEnabled,
-    layerBEnabled,
-    layerCEnabled,
-    layerDEnabled,
-    layerEEnabled,
-    layerFEnabled,
-  ].filter(Boolean).length;
 
   const hasProjectInfra = Boolean(
     infrastructureAssets && infrastructureAssets.features.length > 0,
@@ -2304,6 +2560,22 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const hasProjectNetwork = Boolean(
     networkLayout && networkLayout.features.length > 0,
   );
+  const hasProjectBuildings = Boolean(
+    (referenceBuildings && referenceBuildings.features.length > 0) ||
+      usesMvtBuildings,
+  );
+  const hasProjectGaps = Boolean(
+    gapCorridors && gapCorridors.features.length > 0,
+  );
+
+  const activeLayerCount = [
+    layerAEnabled && (isDemoProject || hasProjectInfra),
+    layerBEnabled && (isDemoProject || Boolean(rasterOverlayUrl)),
+    layerCEnabled && (isDemoProject || Boolean(aoiGeometry) || hasProjectClusters),
+    layerDEnabled && (isDemoProject || hasProjectClusters || hasProjectBuildings),
+    layerEEnabled && (isDemoProject || hasProjectGaps),
+    layerFEnabled && (isDemoProject || hasProjectNetwork),
+  ].filter(Boolean).length;
 
   const effectiveHeightClass = expandedCanvas ? 'h-[720px]' : heightClass;
 
@@ -2377,11 +2649,11 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             </div>
 
             {/* Basemap Switcher (4 Free Options), Camera Controls & GIS Utilities */}
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 max-w-full">
               <div
                 role="group"
                 aria-label="Basemap switcher"
-                className="inline-flex rounded-sm border border-rule-subtle bg-paper p-0.5"
+                className="inline-flex flex-wrap max-w-full gap-0.5 rounded-sm border border-rule-subtle bg-paper p-0.5"
               >
                 {(
                   [
@@ -2394,6 +2666,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   <button
                     key={opt.id}
                     type="button"
+                    aria-pressed={basemap === opt.id}
                     onClick={() => handleBasemapChange(opt.id)}
                     className={`h-7 px-2.5 text-xs font-medium rounded-xs transition-colors whitespace-nowrap ${
                       basemap === opt.id
@@ -2406,75 +2679,57 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 ))}
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setMeasureModeActive((prev) => !prev);
-                  setMeasurePoints([]);
-                }}
-                className={`h-8 px-3 text-xs font-medium rounded-sm border transition-colors whitespace-nowrap ${
-                  measureModeActive
-                    ? 'bg-info text-white border-info shadow-xs'
-                    : 'bg-sheet text-ink-2 border-rule hover:text-ink hover:bg-paper'
-                }`}
-              >
-                {measureModeActive
-                  ? 'Measuring (Click Map)'
-                  : 'Measure Span / Area'}
-              </button>
+              {!wizardMode && (
+                <button
+                  type="button"
+                  aria-pressed={measureModeActive}
+                  onClick={() => {
+                    setMeasureModeActive((prev) => !prev);
+                    setMeasurePoints([]);
+                  }}
+                  className={`h-8 px-3 text-xs font-medium rounded-sm border transition-colors whitespace-nowrap ${
+                    measureModeActive
+                      ? 'bg-info text-white border-info shadow-xs'
+                      : 'bg-sheet text-ink-2 border-rule hover:text-ink hover:bg-paper'
+                  }`}
+                >
+                  {measureModeActive
+                    ? 'Measuring (Click Map)'
+                    : 'Measure Span / Area'}
+                </button>
+              )}
 
               <button
                 type="button"
+                aria-pressed={beginnerGuideOpen}
                 onClick={() => setBeginnerGuideOpen((prev) => !prev)}
                 className={`h-8 px-3 text-xs font-medium rounded-sm border transition-colors whitespace-nowrap ${
                   beginnerGuideOpen
                     ? 'bg-accent text-white border-accent shadow-xs'
                     : 'bg-sheet text-ink-2 border-rule hover:text-ink hover:bg-paper'
                 }`}
+                title="Open plain-language guide to map colors, symbols, and layers"
               >
-                ? Beginner Guide
+                ? Map Guide
               </button>
 
-              <div
-                role="group"
-                aria-label="Map camera and viewport controls"
-                className="inline-flex items-center rounded-sm border border-rule bg-sheet divide-x divide-rule-subtle h-8 overflow-hidden"
+              <button
+                type="button"
+                aria-pressed={expandedCanvas}
+                onClick={() => setExpandedCanvas((prev) => !prev)}
+                className="h-8 px-3 text-xs font-medium rounded-sm border border-rule bg-sheet text-ink-2 hover:text-ink hover:bg-paper whitespace-nowrap transition-colors"
+                title="Toggle expanded map canvas height"
               >
-                <button
-                  type="button"
-                  aria-label="Zoom in map"
-                  onClick={() => handleZoomStep(1.0)}
-                  className="h-full px-2.5 text-xs font-medium text-ink-2 hover:text-ink hover:bg-paper"
-                  title="Zoom in (+1 level)"
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  aria-label="Zoom out map"
-                  onClick={() => handleZoomStep(-1.0)}
-                  className="h-full px-2.5 text-xs font-medium text-ink-2 hover:text-ink hover:bg-paper"
-                  title="Zoom out (-1 level)"
-                >
-                  −
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setExpandedCanvas((prev) => !prev)}
-                  className="h-full px-2.5 text-xs font-medium text-ink-2 hover:text-ink hover:bg-paper whitespace-nowrap"
-                  title="Toggle expanded map canvas height"
-                >
-                  {expandedCanvas ? 'Standard Height' : 'Expand Map'}
-                </button>
-              </div>
+                {expandedCanvas ? 'Standard Height' : 'Expand Map'}
+              </button>
 
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => fitToActiveAoi()}
-                title="Zoom and center map on active Area of Interest"
+                title="Zoom and center map on the active village or study boundary"
               >
-                Fit AOI
+                Center on Study Area
               </Button>
 
               {drawModeActive && (
@@ -2498,104 +2753,75 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             </div>
           </div>
 
-          {/* Row 2: Single-Row Quick-Select & Feature Inspection Bar */}
-          <div
-            role="toolbar"
-            aria-label="Quick-jump geographic locations and features"
-            className="px-4 py-2 bg-paper/70 border-b border-rule-subtle flex items-center justify-between gap-2 text-xs"
-          >
-            <div className="flex items-center gap-1.5 flex-nowrap flex-1 min-w-0 overflow-x-auto py-0.5">
-              <span className="text-xs font-medium text-ink-2 whitespace-nowrap shrink-0 mr-1">
-                Inspect Location / Asset:
-              </span>
-              {KORAPUT_SEARCH_CATALOG.map((loc) => {
-                const isSelected = activeLocationId === loc.id;
-                const shortName = formatQuickJumpLabel(loc);
-                return (
-                  <button
-                    key={loc.id}
-                    type="button"
-                    onClick={() => handleSelectSearchLocation(loc)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
-                      isSelected
-                        ? 'bg-accent text-white border-accent font-semibold shadow-xs'
-                        : 'bg-sheet text-ink-2 border-rule-subtle hover:border-rule hover:text-ink'
-                    }`}
-                    title={`${loc.label} — ${loc.summary}`}
-                  >
-                    {shortName}
-                  </button>
-                );
-              })}
-            </div>
-            {inspectedFeature && (
-              <button
-                type="button"
-                onClick={() => {
-                  setInspectedFeature(null);
-                  setActiveLocationId(null);
-                }}
-                className="text-xs font-medium text-ink-2 underline hover:text-ink whitespace-nowrap shrink-0 pl-2 border-l border-rule-subtle"
-              >
-                Clear Selection
-              </button>
-            )}
-          </div>
-
-          {/* Beginner-Friendly Plain-English Guide Drawer */}
-          {beginnerGuideOpen && (
-            <div className="p-4 bg-paper/80 border-b border-rule-subtle text-xs space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-ink text-sm">
-                  Beginner Guide: How to Read the Electricity GIS Map
-                </span>
+          {/* Row 2: Compact Quick-Select & Feature Inspection Bar */}
+          {!wizardMode && (
+            <div
+              role="toolbar"
+              aria-label="Quick-jump geographic locations and features"
+              className="px-4 py-2 bg-paper/70 border-b border-rule-subtle flex flex-wrap items-center justify-between gap-2 text-xs"
+            >
+              <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+                <label
+                  htmlFor="map-quick-jump-select"
+                  className="text-xs font-medium text-ink-2 whitespace-nowrap shrink-0"
+                >
+                  Inspect Location / Asset:
+                </label>
+                <select
+                  id="map-quick-jump-select"
+                  aria-label="Inspect location or asset"
+                  value={activeLocationId ?? ''}
+                  onChange={(e) => {
+                    const chosen = combinedSearchCatalog.find(
+                      (loc) => loc.id === e.target.value,
+                    );
+                    if (chosen) handleSelectSearchLocation(chosen);
+                  }}
+                  className="h-8 w-full sm:w-auto sm:min-w-[260px] max-w-full px-2.5 text-xs bg-sheet border border-rule rounded-xs text-ink"
+                >
+                  <option value="">
+                    {combinedSearchCatalog.length > 0
+                      ? 'Select settlement, substation, or gap feature...'
+                      : 'No project clusters or grid assets loaded yet'}
+                  </option>
+                  {combinedSearchCatalog.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {formatQuickJumpLabel(loc)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {inspectedFeature && (
                 <button
                   type="button"
-                  onClick={() => setBeginnerGuideOpen(false)}
-                  className="text-ink-2 underline text-xs font-medium"
+                  onClick={() => {
+                    setInspectedFeature(null);
+                    setActiveLocationId(null);
+                  }}
+                  className="text-xs font-medium text-ink-2 underline hover:text-ink whitespace-nowrap shrink-0"
                 >
-                  Close Guide
+                  Clear Selection
                 </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-ink-2 leading-relaxed">
-                <div className="p-3 bg-sheet border border-rule-subtle rounded-md">
-                  <strong className="text-ink block mb-1">
-                    1. Existing vs. Proposed Lines
-                  </strong>
-                  <strong>Solid purple (33 kV)</strong> and{' '}
-                  <strong>solid dark-red (11 kV)</strong> lines show mapped existing
-                  grid lines from OpenStreetMap. <strong>Dashed red (11 kV)</strong>{' '}
-                  and <strong>dashed blue (415 V)</strong> lines show preliminary
-                  proposed routes — they are planning estimates, not installed
-                  lines.
-                </div>
-                <div className="p-3 bg-sheet border border-rule-subtle rounded-md">
-                  <strong className="text-ink block mb-1">
-                    2. What Nighttime Illumination (VIIRS) Means
-                  </strong>
-                  NASA VIIRS measures upward outdoor light at night in{' '}
-                  <code>nW/cm²/sr</code>. Bright areas indicate street or outdoor
-                  lighting.
-                  <strong>
-                    {' '}
-                    A dark pixel does NOT prove a village has no electricity
-                  </strong>{' '}
-                  — satellites cannot see indoor household bulbs, meters, or daytime
-                  solar systems.
-                </div>
-                <div className="p-3 bg-sheet border border-rule-subtle rounded-md">
-                  <strong className="text-ink block mb-1">
-                    3. Potential Electrification Gaps
-                  </strong>
-                  Amber/red dashed corridors highlight habitations (like Podapadar
-                  Tola &amp; Maliaguda PVTG) located far (&gt;1.5 km) from mapped 11
-                  kV transformers with low nighttime radiance. Click any symbol on
-                  the map or in the Quick-Select bar above to inspect its full data
-                  source and caveats.
-                </div>
-              </div>
+              )}
             </div>
           )}
+
+          {searchError && (
+            <div
+              role="alert"
+              className="px-4 py-1.5 bg-warn-tint border-b border-rule-subtle text-xs text-warn flex items-center justify-between gap-2"
+            >
+              <span>{searchError}</span>
+              <button
+                type="button"
+                onClick={() => setSearchError(null)}
+                className="underline font-medium shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
         </>
       )}
 
@@ -2725,7 +2951,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-2">
               <div className="flex items-center justify-between text-xs text-ink font-medium">
                 <span className="tabular-nums">
-                  Vector Layer Opacity: {Math.round(vectorOpacity * 100)}%
+                  Overlay Transparency: {Math.round(vectorOpacity * 100)}%
                 </span>
                 <input
                   type="range"
@@ -2738,17 +2964,20 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   className="w-24"
                 />
               </div>
-              <label className="flex items-center justify-between gap-2 text-xs text-ink-2 cursor-pointer pt-1.5 border-t border-rule-subtle">
-                <span className="flex items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    checked={includeReferencePack}
-                    onChange={(e) => setIncludeReferencePack(e.target.checked)}
-                  />
-                  <span>Include Koraput Reference Pack</span>
-                </span>
-                <LayerSourceBadge source="REFERENCE_DEMO" />
-              </label>
+              {isDemoProject && (
+                <label className="flex items-center justify-between gap-2 text-xs text-ink-2 cursor-pointer pt-1.5 border-t border-rule-subtle">
+                  <span className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      aria-label="Include Koraput Reference Pack layers"
+                      checked={includeReferencePack}
+                      onChange={(e) => setIncludeReferencePack(e.target.checked)}
+                    />
+                    <span>Include Koraput Reference Pack</span>
+                  </span>
+                  <LayerSourceBadge source="REFERENCE_DEMO" />
+                </label>
+              )}
             </div>
 
             {/* GROUP 1: Power Grid & Proposed Network (Layers A & F) */}
@@ -2763,14 +2992,18 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
                       type="checkbox"
+                      aria-label="Toggle Layer A Existing Electricity Infrastructure"
                       checked={layerAEnabled}
                       onChange={(e) => setLayerAEnabled(e.target.checked)}
                       className="mt-0.5"
                     />
-                    <span>Layer A · Existing Electricity Infrastructure</span>
+                    <span className="inline-flex items-center gap-1">
+                      <span>Layer A · Existing Electricity Infrastructure</span>
+                      <HelpTooltip glossaryKey="existingLinesDt" />
+                    </span>
                   </label>
                   <LayerSourceBadge
-                    source={hasProjectInfra ? 'PROJECT' : 'REFERENCE_DEMO'}
+                    source={hasProjectInfra ? 'PROJECT' : isDemoProject ? 'REFERENCE_DEMO' : 'PROJECT'}
                   />
                 </div>
                 <p className="text-xs text-ink-2 leading-relaxed">
@@ -2812,8 +3045,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                     </select>
                     {mergedLayerAInfra.features.length === 0 && (
                       <div className="p-2 bg-paper border border-dashed border-rule text-xs text-ink-2">
-                        No project infrastructure uploaded for this filter. Enable
-                        Koraput Reference Pack or place an Assumed 11 kV Tie-In.
+                        {isDemoProject
+                          ? 'No project infrastructure uploaded for this filter. Enable Koraput Reference Pack or place an Assumed 11 kV Tie-In.'
+                          : 'No project grid infrastructure mapped for this filter. Upload GIS infrastructure files or place an Assumed 11 kV Tie-In.'}
                       </div>
                     )}
                     <div className="text-xs text-warn leading-relaxed">
@@ -2830,6 +3064,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
                       type="checkbox"
+                      aria-label="Toggle Layer F Proposed Electricity Network"
                       checked={layerFEnabled}
                       onChange={(e) => setLayerFEnabled(e.target.checked)}
                       className="mt-0.5"
@@ -2837,7 +3072,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                     <span>Layer F · Proposed Electricity Network</span>
                   </label>
                   <LayerSourceBadge
-                    source={hasProjectNetwork ? 'PROJECT' : 'REFERENCE_DEMO'}
+                    source={hasProjectNetwork ? 'PROJECT' : isDemoProject ? 'REFERENCE_DEMO' : 'PROJECT'}
                   />
                 </div>
                 <p className="text-xs text-ink-2 leading-relaxed">
@@ -2859,49 +3094,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 )}
               </div>
 
-              {/* Satellite Optical Basemap Quick-Switch & Sensor Metadata */}
-              <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
-                <div className="flex items-center justify-between gap-1.5">
-                  <span className="font-semibold text-ink text-xs">
-                    Optical Satellite Basemap (Sentinel-2)
-                  </span>
-                  <QualityTag
-                    kind="ESTIMATED"
-                    label={basemap === 'satellite' ? 'ACTIVE · 10 m' : '10 m OPTICAL'}
-                  />
-                </div>
-                <p className="text-xs text-ink-2 leading-relaxed">
-                  EOX Sentinel-2 Cloudless 2020 Mosaic (10 m resolution ·{' '}
-                  <code>CC BY-NC-SA 4.0</code> · Copernicus Sentinel Data 2020).
-                </p>
-                {basemap !== 'satellite' ? (
-                  <button
-                    type="button"
-                    onClick={() => handleBasemapChange('satellite')}
-                    className="w-full h-8 px-2.5 text-xs font-medium bg-paper border border-rule-strong rounded-xs text-ink hover:bg-accent-tint transition-colors"
-                  >
-                    Switch to Sentinel-2 Satellite Basemap
-                  </button>
-                ) : (
-                  <div className="flex items-center justify-between text-xs font-medium text-ok bg-ok-tint px-2.5 py-1.5 rounded-xs border border-ok/30">
-                    <span>✓ Viewing 10 m Optical Satellite Imagery</span>
-                    <button
-                      type="button"
-                      onClick={() => handleBasemapChange('survey_paper')}
-                      className="underline text-ink-2 hover:text-ink"
-                    >
-                      Survey Sheet
-                    </button>
-                  </div>
-                )}
-              </div>
-
               {/* Layer B: Nighttime Illumination (NASA VIIRS Black Marble) */}
               <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
                 <div className="flex flex-wrap items-start justify-between gap-1.5">
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
                       type="checkbox"
+                      aria-label="Toggle Layer B NASA VIIRS Nighttime Illumination"
                       checked={layerBEnabled}
                       onChange={(e) => {
                         setLayerBEnabled(e.target.checked);
@@ -2917,7 +3116,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                       }}
                       className="mt-0.5"
                     />
-                    <span>Layer B · NASA VIIRS Nighttime Illumination</span>
+                    <span className="inline-flex items-center gap-1">
+                      <span>Layer B · NASA VIIRS Nighttime Illumination</span>
+                      <HelpTooltip glossaryKey="viirsNighttimeLight" />
+                    </span>
                   </label>
                   <LayerSourceBadge source="EXTERNAL_TILES" />
                 </div>
@@ -2928,54 +3130,6 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 </p>
                 {layerBEnabled && (
                   <div className="space-y-2 pt-2 border-t border-rule-subtle">
-                    <div>
-                      <label
-                        htmlFor="viirs-period-select"
-                        className="block text-xs font-medium text-ink-2 mb-1"
-                      >
-                        Observation Composite Date
-                      </label>
-                      <select
-                        id="viirs-period-select"
-                        value={viirsPeriod}
-                        onChange={(e) => {
-                          setViirsPeriod(
-                            e.target.value as ViirsObservationPeriod,
-                          );
-                          setTileWarning(null);
-                          if (!viirsGlobalGibs) {
-                            beginRasterLoad();
-                          }
-                        }}
-                        className="w-full h-8 px-2 text-xs bg-paper border border-rule rounded-xs text-ink"
-                      >
-                        {VIIRS_PERIOD_OPTIONS.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Observation Window, Resolution & Provenance Metadata Card */}
-                    <div className="p-2 bg-paper border border-rule-subtle rounded-xs space-y-1 text-xs text-ink-2">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-semibold text-ink">
-                          {activePeriodMeta.observationWindow}
-                        </span>
-                        <QualityTag
-                          kind="ASSUMED"
-                          label="SYNTHETIC_PLACEHOLDER"
-                        />
-                      </div>
-                      <div>Sensor: {activePeriodMeta.sensorResolution}</div>
-                      <div className="text-ink-3 leading-relaxed">
-                        Note: {activePeriodMeta.compositeNote}. Local AOI PNG is an
-                        illustrative pre-feasibility proxy — not live multi-year orbital
-                        imagery.
-                      </div>
-                    </div>
-
                     {/* Transparency Slider + Quick Preset Buttons */}
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between text-xs font-medium text-ink">
@@ -3018,34 +3172,6 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                       </div>
                     </div>
 
-                    {/* Independent Sub-Toggles for Settlement Radiance Halos & Global GIBS Tiles */}
-                    <div className="space-y-1.5 pt-1.5 border-t border-rule-subtle">
-                      <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={viirsHalosEnabled}
-                          onChange={(e) => setViirsHalosEnabled(e.target.checked)}
-                        />
-                        <span>
-                          Show Radiometric Settlement Glow Halos (nW/cm²/sr)
-                        </span>
-                      </label>
-                      <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={viirsGlobalGibs}
-                          onChange={(e) => {
-                            setViirsGlobalGibs(e.target.checked);
-                            setTileWarning(null);
-                            beginRasterLoad();
-                          }}
-                        />
-                        <span>
-                          Include Global NASA GIBS VIIRS_CityLights_2012 Tiles (2012 Mosaic · z ≤ 8)
-                        </span>
-                      </label>
-                    </div>
-
                     {/* Inline Brightness & Intensity Scale Legend */}
                     <div className="p-2 bg-paper border border-rule-subtle rounded-xs space-y-1.5">
                       <div className="flex items-center justify-between text-xs">
@@ -3054,21 +3180,37 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                         </span>
                         <span className="text-ink-3">Public Domain</span>
                       </div>
+                      <div
+                        aria-label="VIIRS Radiance Continuous Colorbar"
+                        className="h-2 w-full rounded-full border border-rule-subtle"
+                        style={{
+                          background: `linear-gradient(to right, ${RASTER_LEGEND_SPECS.nightlights.stops
+                            .map((s) => s.color)
+                            .join(', ')})`,
+                        }}
+                      />
                       <div className="space-y-1 text-xs text-ink-2">
                         {RASTER_LEGEND_SPECS.nightlights.stops.map((stop) => (
                           <div
                             key={stop.rangeText}
-                            className="flex items-center gap-1.5"
+                            className="space-y-0.5"
                             title={stop.interpretation}
                           >
-                            <span
-                              className="w-3 h-2.5 inline-block rounded-xs border border-rule shrink-0"
-                              style={{ backgroundColor: stop.color }}
-                            />
-                            <span className="font-mono tabular-nums font-semibold text-ink w-16 shrink-0">
-                              {stop.rangeText}
-                            </span>
-                            <span className="truncate">{stop.label}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="w-3 h-2.5 inline-block rounded-xs border border-rule shrink-0"
+                                style={{ backgroundColor: stop.color }}
+                              />
+                              <span className="font-mono tabular-nums font-semibold text-ink w-16 shrink-0">
+                                {stop.rangeText}
+                              </span>
+                              <span className="truncate font-medium text-ink-2">{stop.label}</span>
+                            </div>
+                            {stop.interpretation && (
+                              <div className="text-[11px] text-ink-3 pl-[4.75rem]">
+                                {stop.interpretation}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -3078,20 +3220,107 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                         not visible to nighttime satellites.
                       </div>
                     </div>
+
+                    <details className="pt-1.5 border-t border-rule-subtle">
+                      <summary className="text-xs font-medium text-ink-2 cursor-pointer select-none hover:text-ink">
+                        Advanced Night-Light Options
+                      </summary>
+                      <div className="space-y-2 pt-2">
+                        <div>
+                          <label
+                            htmlFor="viirs-period-select"
+                            className="block text-xs font-medium text-ink-2 mb-1"
+                          >
+                            Observation Composite Date
+                          </label>
+                          <select
+                            id="viirs-period-select"
+                            value={viirsPeriod}
+                            onChange={(e) => {
+                              setViirsPeriod(
+                                e.target.value as ViirsObservationPeriod,
+                              );
+                              setTileWarning(null);
+                              if (!viirsGlobalGibs) {
+                                beginRasterLoad();
+                              }
+                            }}
+                            className="w-full h-8 px-2 text-xs bg-paper border border-rule rounded-xs text-ink"
+                          >
+                            {VIIRS_PERIOD_OPTIONS.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Observation Window, Resolution & Provenance Metadata Card */}
+                        <div className="p-2 bg-paper border border-rule-subtle rounded-xs space-y-1 text-xs text-ink-2">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-ink">
+                              {activePeriodMeta.observationWindow}
+                            </span>
+                            <QualityTag
+                              kind="ASSUMED"
+                              label="Illustrative Preview"
+                            />
+                          </div>
+                          <div>Sensor: {activePeriodMeta.sensorResolution}</div>
+                          <div className="text-ink-3 leading-relaxed">
+                            Note: {activePeriodMeta.compositeNote}. Local study
+                            image is an illustrative pre-feasibility proxy — not
+                            live multi-year orbital imagery.
+                          </div>
+                        </div>
+
+                        {/* Independent Sub-Toggles for Settlement Radiance Halos & Global GIBS Tiles */}
+                        <div className="space-y-1.5 pt-1">
+                          <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              aria-label="Show Radiometric Settlement Glow Halos"
+                              checked={viirsHalosEnabled}
+                              onChange={(e) => setViirsHalosEnabled(e.target.checked)}
+                            />
+                            <span>
+                              Show Radiometric Settlement Glow Halos (nW/cm²/sr)
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              aria-label="Include Global NASA GIBS 2012 Tiles"
+                              checked={viirsGlobalGibs}
+                              onChange={(e) => {
+                                setViirsGlobalGibs(e.target.checked);
+                                setTileWarning(null);
+                                beginRasterLoad();
+                              }}
+                            />
+                            <span>
+                              Include Global NASA GIBS 2012 Nighttime Lights (z ≤ 8)
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    </details>
                   </div>
                 )}
               </div>
 
               {/* Environmental & Satellite Raster Overlay Selector (DEM Slope / ESA WorldCover / VIIRS) */}
               <div className="p-3 bg-sheet border border-rule-subtle rounded-md shadow-xs space-y-1.5">
-                <div className="flex items-center justify-between gap-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
                   <label
                     htmlFor="map-raster-overlay-select"
-                    className="font-semibold text-ink text-xs"
+                    className="font-semibold text-ink text-xs inline-flex items-center gap-1"
                   >
-                    Environmental &amp; Terrain Raster Overlay
+                    <span>Environmental &amp; Terrain Raster Overlay</span>
+                    <HelpTooltip glossaryKey="demSlope" />
+                    <HelpTooltip glossaryKey="worldCover" />
                   </label>
-                  <LayerSourceBadge source="PROJECT" />
+                  <QualityTag kind="ASSUMED" label="Illustrative Surface" />
                 </div>
                 <select
                   id="map-raster-overlay-select"
@@ -3157,25 +3386,29 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                         (effectiveRasterOverlay === 'dem_slope' ||
                           effectiveRasterOverlay === 'landcover') && (
                           <div className="p-1.5 bg-warn-tint border border-warn/30 rounded-xs text-warn leading-relaxed">
-                            Legend preview active. Open a Project Workspace AOI to render
-                            clipped {effectiveRasterOverlay} PNG pixels on the map.
+                            Legend preview active. Open a project study area in Step 1 to render
+                            clipped {effectiveRasterOverlay} imagery.
                           </div>
                         )}
                       <div className="space-y-1 pt-0.5">
                         {RASTER_LEGEND_SPECS[effectiveRasterOverlay].stops.map(
                           (st) => (
-                            <div
-                              key={st.rangeText}
-                              className="flex items-center gap-1.5 text-ink-2"
-                            >
-                              <span
-                                className="w-3 h-2.5 inline-block rounded-xs border border-rule shrink-0"
-                                style={{ backgroundColor: st.color }}
-                              />
-                              <span className="font-mono tabular-nums font-semibold text-ink w-16 shrink-0">
-                                {st.rangeText}
-                              </span>
-                              <span className="truncate">{st.label}</span>
+                            <div key={st.rangeText} className="space-y-0.5">
+                              <div className="flex items-center gap-1.5 text-ink-2">
+                                <span
+                                  className="w-3 h-2.5 inline-block rounded-xs border border-rule shrink-0"
+                                  style={{ backgroundColor: st.color }}
+                                />
+                                <span className="font-mono tabular-nums font-semibold text-ink w-16 shrink-0">
+                                  {st.rangeText}
+                                </span>
+                                <span className="truncate font-medium">{st.label}</span>
+                              </div>
+                              {st.interpretation && (
+                                <div className="text-[11px] text-ink-3 pl-[4.75rem]">
+                                  {st.interpretation}
+                                </div>
+                              )}
                             </div>
                           ),
                         )}
@@ -3208,16 +3441,19 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
                       type="checkbox"
+                      aria-label="Toggle Layer C Village Electrification Status"
                       checked={layerCEnabled}
                       onChange={(e) => setLayerCEnabled(e.target.checked)}
                       className="mt-0.5"
                     />
                     <span>Layer C · Village Electrification Status</span>
                   </label>
-                  <LayerSourceBadge source="REFERENCE_DEMO" />
+                  <LayerSourceBadge
+                    source={isDemoProject ? 'REFERENCE_DEMO' : 'PROJECT'}
+                  />
                 </div>
                 <p className="text-xs text-ink-2 leading-relaxed">
-                  Census 2011 DCHB domestic power availability hours &amp; LGD
+                  Census 2011 DCHB domestic power availability hours &amp; AOI
                   boundaries. Verified current household meter counts require
                   DISCOM consumer ledgers.
                 </p>
@@ -3229,20 +3465,37 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
                       type="checkbox"
+                      aria-label="Toggle Layer D Settlements Population and Footprints"
                       checked={layerDEnabled}
                       onChange={(e) => setLayerDEnabled(e.target.checked)}
                       className="mt-0.5"
                     />
                     <span>Layer D · Settlements, Population &amp; Footprints</span>
                   </label>
-                  <LayerSourceBadge
-                    source={hasProjectClusters ? 'PROJECT' : 'REFERENCE_DEMO'}
-                  />
+                  <div className="flex items-center gap-1">
+                    {usesMvtBuildings && (
+                      <QualityTag kind="ESTIMATED" label="MVT TILES" />
+                    )}
+                    <LayerSourceBadge
+                      source={hasProjectClusters ? 'PROJECT' : isDemoProject ? 'REFERENCE_DEMO' : 'PROJECT'}
+                    />
+                  </div>
                 </div>
                 <p className="text-xs text-ink-2 leading-relaxed">
-                  Habitation clusters (<code>CL-01</code> to <code>CL-04</code>
-                  ), 143 building footprints, ST population share, and rural
-                  schools/PHC ({effectiveSettlementsFc.features.length} shown).
+                  {isDemoProject ? (
+                    <>
+                      Habitation clusters (<code>CL-01</code> to <code>CL-04</code>
+                      ), 143 building footprints, ST population share, and rural
+                      schools/PHC ({effectiveSettlementsFc.features.length} shown).
+                    </>
+                  ) : (
+                    <>
+                      AOI building structures (
+                      {referenceBuildings?.features.length ?? 0}) &amp; DBSCAN
+                      habitation clusters ({effectiveSettlementsFc.features.length}{' '}
+                      shown).
+                    </>
+                  )}
                 </p>
                 {layerDEnabled && (
                   <div className="space-y-1.5 pt-1.5 border-t border-rule-subtle">
@@ -3250,7 +3503,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                       htmlFor="settlement-status-filter-select"
                       className="block text-xs font-medium text-ink-2"
                     >
-                      Filter by Electrification Proxy Status
+                      Filter by Estimated Electrification Status
                     </label>
                     <select
                       id="settlement-status-filter-select"
@@ -3264,19 +3517,19 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                       className="w-full h-8 px-2 text-xs bg-paper border border-rule rounded-xs text-ink"
                     >
                       <option value="ALL">
-                        All Habitation Clusters (All Proxy Classes)
+                        All Habitation Clusters (All Estimates)
                       </option>
                       <option value="LIKELY_ELECTRIFIED">
-                        Class: LIKELY_ELECTRIFIED (Grid &lt;500m + VIIRS)
+                        Likely Connected (Grid &lt;500m + Night Light)
                       </option>
                       <option value="POTENTIALLY_UNDERSERVED">
-                        Class: POTENTIALLY_UNDERSERVED (Partial Supply)
+                        Potentially Underserved (Partial Supply)
                       </option>
                       <option value="POTENTIALLY_UNSERVED">
-                        Class: POTENTIALLY_UNSERVED (&gt;1.5 km Gap)
+                        Potentially Unserved (&gt;1.5 km From Grid)
                       </option>
                       <option value="UNKNOWN">
-                        Class: UNKNOWN (Insufficient Proxy Evidence)
+                        Unknown (Insufficient Satellite Evidence)
                       </option>
                     </select>
                   </div>
@@ -3289,6 +3542,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                     <input
                       type="checkbox"
+                      aria-label="Toggle Layer E Potential Electrification Gaps"
                       checked={layerEEnabled}
                       onChange={(e) => setLayerEEnabled(e.target.checked)}
                       className="mt-0.5"
@@ -3299,7 +3553,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                     source={
                       gapCorridors && gapCorridors.features.length > 0
                         ? 'PROJECT'
-                        : 'REFERENCE_DEMO'
+                        : isDemoProject
+                          ? 'REFERENCE_DEMO'
+                          : 'PROJECT'
                     }
                   />
                 </div>
@@ -3376,8 +3632,22 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   type="button"
                   onClick={() => fitToActiveAoi()}
                   className="h-7 px-2.5 rounded-sm font-medium text-ink-2 hover:text-ink hover:bg-sheet/70 transition-colors"
+                  title="Zoom and center map on the active village or study boundary"
                 >
-                  Fit AOI
+                  Center on Study Area
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={beginnerGuideOpen}
+                  onClick={() => setBeginnerGuideOpen((prev) => !prev)}
+                  className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${
+                    beginnerGuideOpen
+                      ? 'bg-accent text-white shadow-xs'
+                      : 'text-ink-2 hover:text-ink hover:bg-sheet/70'
+                  }`}
+                  title="Open plain-language guide to map colors, symbols, and layers"
+                >
+                  ? Map Guide
                 </button>
               </div>
 
@@ -3395,14 +3665,134 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
           {/* Preliminary Engineering Watermark Banner */}
           <div
-            className={`pointer-events-none absolute left-3 z-10 bg-sheet/90 backdrop-blur-md border border-rule-subtle px-3 py-1 rounded-full shadow-xs max-w-[calc(100%-10rem)] ${
-              variant === 'overview' ? 'bottom-9' : 'top-3'
+            className={`pointer-events-none absolute left-3 z-10 bg-sheet/90 backdrop-blur-md border border-rule-subtle px-3 py-1 rounded-full shadow-xs max-w-[calc(100%-4.5rem)] ${
+              variant === 'overview' ? 'bottom-11' : 'top-3'
             }`}
           >
             <div className="text-2xs sm:text-xs text-warn font-semibold truncate">
               PRELIMINARY ENGINEERING ESTIMATE — FIELD SURVEY REQUIRED
             </div>
           </div>
+
+          {/* Interactive Tie-In Placement Guidance Banner */}
+          {placeTieInModeActive && !pendingTieInPoint && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="pointer-events-none absolute top-14 left-1/2 -translate-x-1/2 z-20 bg-info-tint/95 border border-info/40 text-info px-3.5 py-1.5 rounded-full shadow-control text-xs font-medium max-w-[92%] truncate"
+            >
+              Click anywhere on the map to mark your proposed 11 kV grid connection point
+            </div>
+          )}
+
+          {/* Two-Step Assumed 11 kV Tie-In Point Confirmation Card */}
+          {placeTieInModeActive && pendingTieInPoint && (
+            <div
+              role="dialog"
+              aria-label="Confirm Grid Connection Point"
+              className="absolute bottom-14 left-1/2 -translate-x-1/2 z-30 w-[min(24rem,calc(100%-1.5rem))] bg-sheet/95 backdrop-blur-md border border-accent rounded-lg shadow-overlay p-4 text-xs space-y-2.5"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-semibold text-ink">
+                    Confirm Grid Connection Point?
+                  </h4>
+                  <p className="text-ink-2 mt-0.5">
+                    Selected coordinates:{' '}
+                    <span className="font-mono text-ink font-semibold tabular-nums">
+                      {pendingTieInPoint.lat.toFixed(5)}°N, {pendingTieInPoint.lon.toFixed(5)}°E
+                    </span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Cancel connection point placement"
+                  onClick={() => setPendingTieInPoint(null)}
+                  className="text-ink-2 hover:text-ink px-1.5 py-0.5 rounded-xs border border-rule-subtle"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="text-ink-2 leading-relaxed">
+                This saves a planner-assumed starting pole (11 kV tie-in) used for preliminary line
+                routing until official utility GIS coordinates are uploaded.
+              </p>
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="secondary"
+                  onClick={() => setPendingTieInPoint(null)}
+                >
+                  Pick Different Spot
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="primary"
+                  onClick={() => {
+                    onPlaceTieInPoint?.(pendingTieInPoint.lon, pendingTieInPoint.lat);
+                    setPendingTieInPoint(null);
+                  }}
+                >
+                  Save Connection Point
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Floating Plain-English Map Guide Overlay */}
+          {beginnerGuideOpen && (
+            <div
+              role="dialog"
+              aria-label="How to Read the Electrification GIS Map"
+              className="absolute top-14 right-3 z-30 w-[min(23rem,calc(100%-1.5rem))] max-h-[76%] overflow-y-auto bg-sheet/95 backdrop-blur-md border border-rule-strong rounded-lg shadow-overlay p-4 text-xs space-y-2.5"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-rule-subtle pb-2">
+                <span className="font-semibold text-ink text-sm">
+                  Map Guide: Colors, Lines &amp; Symbols
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBeginnerGuideOpen(false)}
+                  aria-label="Close map guide"
+                  className="text-ink-2 hover:text-ink px-2 py-0.5 rounded-xs border border-rule-subtle text-xs font-medium"
+                >
+                  × Close
+                </button>
+              </div>
+              <div className="space-y-2 text-xs text-ink-2 leading-relaxed">
+                <div className="p-2.5 bg-paper/80 border border-rule-subtle rounded-md">
+                  <strong className="text-ink block mb-0.5">
+                    1. Existing vs. Proposed Lines
+                  </strong>
+                  <strong>Solid purple (33 kV)</strong> and{' '}
+                  <strong>solid dark-red (11 kV)</strong> lines show mapped existing
+                  grid lines. <strong>Dashed red (11 kV)</strong> and{' '}
+                  <strong>dashed blue (415 V)</strong> lines show preliminary
+                  proposed routes — planning estimates only, not installed lines.
+                </div>
+                <div className="p-2.5 bg-paper/80 border border-rule-subtle rounded-md">
+                  <strong className="text-ink block mb-0.5">
+                    2. What Nighttime Light (VIIRS) Means
+                  </strong>
+                  NASA VIIRS measures outdoor night brightness in{' '}
+                  <code>nW/cm²/sr</code>.{' '}
+                  <strong>A dark spot does NOT prove a village has no electricity</strong>{' '}
+                  — satellites cannot see indoor bulbs, meters, or daytime solar
+                  systems.
+                </div>
+                <div className="p-2.5 bg-paper/80 border border-rule-subtle rounded-md">
+                  <strong className="text-ink block mb-0.5">
+                    3. Hamlets &amp; Potential Gaps
+                  </strong>
+                  Colored dots group nearby detected roofs into hamlets; dashed
+                  amber/red corridors flag habitations far from mapped 11 kV lines.
+                  Click any symbol to inspect details and data sources.
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Interactive Map Hover Tooltip Pill */}
           {hoveredFeatureHint && !inspectedFeature && (
@@ -3443,12 +3833,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         lon={cursorCoords.lon}
         lat={cursorCoords.lat}
         zoom={zoomLevel}
+        metricCrsLabel={resolveMetricCrsLabel(metricEpsg)}
         activeLayerCount={activeLayerCount}
         totalLayerCount={6}
         activeBasemap={basemap}
         layerBEnabled={layerBEnabled}
         viirsPeriodLabel={activePeriodMeta.label}
         activeRasterOverlay={effectiveRasterOverlay}
+        showSettlementProxyPills={isDemoProject || hasProjectClusters}
       />
     </div>
   );

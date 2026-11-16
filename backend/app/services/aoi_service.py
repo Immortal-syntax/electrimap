@@ -212,6 +212,15 @@ def _upsert_project_aoi(
         aoi_row.original_crs = original_crs
         aoi_row.warnings = warnings
         aoi_row.updated_at = datetime.now(UTC)
+        from app.services.invalidation import invalidate_downstream_from_stage
+
+        invalidate_downstream_from_stage(
+            db,
+            project_id=proj.id,
+            stage="aoi",
+            drop_clusters=True,
+            bump_version=False,
+        )
 
     proj.metric_epsg = metric_epsg
     if proj.status == "DRAFT":

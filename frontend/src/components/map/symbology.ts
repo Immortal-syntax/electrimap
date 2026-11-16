@@ -50,8 +50,8 @@ export const LAYER_SOURCE_META: Record<LayerSourceClass, LayerSourceMetadata> = 
   },
   SYNTHETIC_PLACEHOLDER: {
     code: 'SYNTHETIC_PLACEHOLDER',
-    shortLabel: 'SYNTHETIC',
-    fullLabel: 'Synthetic Illustrative Layer',
+    shortLabel: 'ILLUSTRATIVE · SYNTHETIC',
+    fullLabel: 'Illustrative Reference Layer (Synthetic)',
     description: 'Algorithmically generated visualization layer; not ground-truth measurement.',
     isFieldVerified: false,
   },
@@ -90,11 +90,11 @@ export const GIS_SYMBOLOGY = {
     tieInUserAssumed: '#D97706',
   },
   settlements: {
-    FIELD_VERIFIED_ELECTRIFIED: '#15803D',
-    LIKELY_ELECTRIFIED: '#1B6E3A',
-    POTENTIALLY_UNDERSERVED: '#B35300',
-    POTENTIALLY_UNSERVED: '#A61B1B',
-    UNKNOWN: '#475569',
+    FIELD_VERIFIED_ELECTRIFIED: '#009E73',
+    LIKELY_ELECTRIFIED: '#0072B2',
+    POTENTIALLY_UNDERSERVED: '#E69F00',
+    POTENTIALLY_UNSERVED: '#D55E00',
+    UNKNOWN: '#64748B',
   },
   electrificationGap: {
     fill: '#E11D48',
@@ -129,8 +129,9 @@ export const SLD_PALETTE = {
   ruleStroke: '#CBD5E1',
   ht11kvStroke: '#B91C1C',
   ltBackboneStroke: '#0284C7',
-  ltCompliantStroke: '#047857',
-  ltNonCompliantStroke: '#B91C1C',
+  ltCompliantStroke: '#009E73',
+  ltNonCompliantStroke: '#D55E00',
+  vdropViolationStroke: '#D55E00',
   dtStroke: '#D97706',
   dtCoreStroke: '#B45309',
   tieInBusFill: '#0F172A',
@@ -404,9 +405,9 @@ export const RASTER_LEGEND_SPECS: Record<
     id: 'nightlights',
     title: 'Nighttime Illumination (VIIRS DNB Scale · Proxy)',
     sensorAndVintage:
-      'NASA GIBS VIIRS_CityLights_2012 (2012 WMTS, z ≤ 8) · Local AOI PNG = SYNTHETIC_PLACEHOLDER',
+      'NASA GIBS VIIRS_CityLights_2012 (2012 WMTS, z ≤ 8) · Local AOI Surface (Illustrative Reference)',
     spatialResolution:
-      'GIBS 2012 (~500 m · z ≤ 8) · Local AOI Proxy Surface (SYNTHETIC_PLACEHOLDER)',
+      'GIBS 2012 (~500 m · z ≤ 8) · Local AOI Proxy Surface (Illustrative Reference)',
     license: 'Public Domain (NASA GIBS 2012) · Illustrative AOI Surface',
     unitLabel: 'nW/cm²/sr',
     stops: [
@@ -547,22 +548,22 @@ export const SATELLITE_SOURCES_ATTRIBUTION: SatelliteSourceAttributionItem[] = [
   },
   {
     id: 'nasa-viirs-dnb',
-    name: 'NASA GIBS VIIRS Nighttime Lights + Local AOI Radiance Proxy',
+    name: 'NASA GIBS VIIRS Nighttime Lights',
     sensorOrProduct:
-      'NASA GIBS VIIRS_CityLights_2012 WMTS + Backend Analytic AOI Surface',
+      'NASA GIBS VIIRS_CityLights_2012 WMTS + Local VIIRS VNP46A4 Composite',
     vintage:
-      '2012 Global GIBS Mosaic (Authentic WMTS) · Local Multi-Scenario PNG = SYNTHETIC_PLACEHOLDER',
+      '2012 Global GIBS Basemap (WMTS) · Local GeoTIFF unavailable offline unless uploaded',
     resolution:
-      '~500 m GIBS global tiles (z ≤ 8) · Koraput points = REFERENCE_DEMO',
-    license: 'Public Domain (NASA Earthdata GIBS) · Illustrative Local Proxy',
+      '~500 m GIBS global tiles (z ≤ 8)',
+    license: 'Public Domain (NASA Earthdata GIBS)',
     roleInElectrimap:
-      'Indirect outdoor luminance cue (nW/cm²/sr). Only NASA GIBS 2012 tiles serve live satellite imagery; local AOI scenario PNGs and Koraput multi-year figures are pre-feasibility placeholder/demo series.',
+      'Indirect outdoor luminance cue (nW/cm²/sr) only; does not detect indoor meters or daytime solar.',
   },
   {
     id: 'copernicus-dem-30',
     name: 'Copernicus DEM GLO-30 Elevation & Slope',
     sensorOrProduct: 'TanDEM-X SAR Digital Surface Model',
-    vintage: '2021 Global Release (Analytic AOI fallback when GeoTIFF uncached)',
+    vintage: '2021 Release (Bundled 30 m GeoTIFF in sample archive; synthetic fallback outside)',
     resolution: '30 m (1 arc-sec)',
     license: 'Copernicus Open Access License',
     roleInElectrimap:
@@ -572,7 +573,7 @@ export const SATELLITE_SOURCES_ATTRIBUTION: SatelliteSourceAttributionItem[] = [
     id: 'esa-worldcover-10m',
     name: 'ESA WorldCover 10 m Land Cover',
     sensorOrProduct: 'Sentinel-1 SAR + Sentinel-2 Optical Composite v200',
-    vintage: '2021 Baseline (Analytic AOI fallback when GeoTIFF uncached)',
+    vintage: '2021 Baseline (Bundled GeoTIFF in sample archive; synthetic fallback outside)',
     resolution: '10 m categorical raster',
     license: 'CC BY 4.0 (ESA WorldCover)',
     roleInElectrimap:

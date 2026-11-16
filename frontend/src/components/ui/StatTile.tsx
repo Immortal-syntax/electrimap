@@ -26,7 +26,7 @@ export interface StatTileProps {
   value: string | number
   unit?: string
   quality: QualityTagKind
-  subtitle?: string
+  subtitle?: React.ReactNode
   source?: LayerSourceClass
   icon?: LucideIcon
   tone?: StatTileTone
@@ -66,11 +66,11 @@ export const StatTile: React.FC<StatTileProps> = ({
           <QualityTag kind={quality} />
         </div>
       </div>
-      <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
-        <span className="text-2xl font-bold tracking-tight tabular-nums text-ink whitespace-nowrap">
+      <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5 min-w-0">
+        <span className="text-2xl font-bold tracking-tight tabular-nums text-ink max-w-full break-words">
           {value}
         </span>
-        {unit && <span className="text-xs font-sans font-medium text-ink-3 whitespace-nowrap">{unit}</span>}
+        {unit && <span className="text-xs font-sans font-medium text-ink-3 break-words">{unit}</span>}
       </div>
       {subtitle && (
         <div className="text-xs text-ink-3 leading-relaxed">{subtitle}</div>

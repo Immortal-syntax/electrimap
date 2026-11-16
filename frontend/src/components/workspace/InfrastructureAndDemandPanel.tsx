@@ -18,6 +18,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   Cable,
+  Download,
   Route,
   Search,
   SlidersHorizontal,
@@ -25,6 +26,8 @@ import {
   X,
 } from 'lucide-react';
 import { apiRequest } from '../../lib/apiClient';
+import { formatModalityLabel } from '../../lib/beginnerGlossary';
+import { DEMO_PROJECT_ID } from '../layout/navigationConfig';
 import { LayerSourceBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Callout } from '../ui/Callout';
@@ -36,6 +39,7 @@ import { Panel } from '../ui/Panel';
 import { QualityTag, QualityTagKind } from '../ui/QualityTag';
 import { Select } from '../ui/Select';
 import { StatTile } from '../ui/StatTile';
+import { HelpTooltip } from '../ui/Tooltip';
 import {
   INFRASTRUCTURE_CATEGORY_META,
   resolveInfraCategoryMeta,
@@ -182,6 +186,7 @@ export interface ProjectDemandSummaryDto {
 
 export interface InfrastructureAndDemandPanelProps {
   projectId: string;
+  metricEpsg?: number;
   infrastructure: InfrastructureListDto | null;
   gapAnalysis: ProjectGapAnalysisDto | null;
   settings: ProjectSettingsListDto | null;
@@ -195,6 +200,7 @@ export const InfrastructureAndDemandPanel: React.FC<
   InfrastructureAndDemandPanelProps
 > = ({
   projectId,
+  metricEpsg,
   infrastructure,
   gapAnalysis,
   settings,
@@ -203,6 +209,12 @@ export const InfrastructureAndDemandPanel: React.FC<
   onTogglePlaceTieInMode,
   onInfrastructureAndDemandUpdated,
 }) => {
+  const isDemoProject = projectId === DEMO_PROJECT_ID;
+  const utmLabel = metricEpsg ? `UTM (EPSG:${metricEpsg})` : 'Local UTM';
+  const powerFactorVal =
+    settings?.items.find(
+      (item) => item.key === 'power_factor_cos_phi' || item.key === 'power_factor',
+    )?.value ?? 0.85;
   const [editedValues, setEditedValues] = useState<Record<string, number>>({});
   const [savingSettings, setSavingSettings] = useState(false);
   const [placingRefTieIn, setPlacingRefTieIn] = useState(false);
@@ -247,11 +259,11 @@ export const InfrastructureAndDemandPanel: React.FC<
       });
       await onInfrastructureAndDemandUpdated();
       setStatusMessage(
-        'Placed explicit USER_ASSUMED 11 kV tie-in point and recomputed UTM terrain gap matrix.',
+        'Added assumed 11 kV starting connection point and updated terrain distances.',
       );
     } catch (err) {
       setErrorMessage(
-        err instanceof Error ? err.message : 'Failed to place tie-in point.',
+        err instanceof Error ? err.message : 'Failed to place connection point.',
       );
     } finally {
       setPlacingRefTieIn(false);
@@ -267,14 +279,60 @@ export const InfrastructureAndDemandPanel: React.FC<
         method: 'DELETE',
       });
       await onInfrastructureAndDemandUpdated();
-      setStatusMessage('Removed infrastructure asset and updated gap analysis.');
+      setStatusMessage('Removed power asset and updated village distance table.');
     } catch (err) {
       setErrorMessage(
-        err instanceof Error ? err.message : 'Failed to delete infrastructure asset.',
+        err instanceof Error ? err.message : 'Failed to remove power asset.',
       );
     } finally {
       setDeletingAssetId(null);
     }
+  };
+
+  const handleDownloadSampleInfraGeoJson = () => {
+    const sample = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {
+            asset_type: 'TIE_IN',
+            name: 'Sample 11 kV Connection Point',
+            voltage_kv: 11.0,
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [82.7265, 18.5645],
+          },
+        },
+        {
+          type: 'Feature',
+          properties: {
+            asset_type: 'LINE_11KV',
+            name: 'Sample Existing 11 kV Feeder Line',
+            voltage_kv: 11.0,
+          },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [82.722, 18.562],
+              [82.7265, 18.5645],
+            ],
+          },
+        },
+      ],
+    };
+    const blob = new Blob([JSON.stringify(sample, null, 2)], {
+      type: 'application/geo+json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sample_power_lines.geojson';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   const handleUploadInfraGeoJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -293,10 +351,10 @@ export const InfrastructureAndDemandPanel: React.FC<
         body: fd,
       });
       await onInfrastructureAndDemandUpdated();
-      setStatusMessage(`Uploaded utility GIS infrastructure file '${file.name}'.`);
+      setStatusMessage(`Uploaded power grid map file '${file.name}'.`);
     } catch (err) {
       setErrorMessage(
-        err instanceof Error ? err.message : 'Infrastructure GeoJSON upload failed.',
+        err instanceof Error ? err.message : 'Power grid GeoJSON upload failed.',
       );
     } finally {
       setUploadingGeoJson(false);
@@ -401,9 +459,14 @@ export const InfrastructureAndDemandPanel: React.FC<
   return (
     <Panel
       aria-label="Infrastructure Gap Analysis and Demand Engine"
-      overline="Step 3 · Infrastructure Gaps & Demand"
-      title="Existing Infrastructure, Terrain Gap Matrix, Assumptions Register & 7-Category Demand Engine"
-      subtitle="Enforces Core Principle #4 (no fabricated infrastructure), computes UTM (EPSG:32644) terrain-weighted feeder distances, and models 7-category rural demand over the planning horizon."
+      overline="Step 3 · Power Grid & Electricity Demand"
+      title={
+        <span className="inline-flex items-center gap-1.5">
+          <span>Existing Power Lines, Distance Gaps &amp; Electricity Demand</span>
+          <HelpTooltip glossaryKey="existingLinesDt" />
+        </span>
+      }
+      subtitle={`Add existing power lines or mark a starting connection point on the map so ElectriMap can measure real walking/terrain distance (${utmLabel}) and forecast community electricity demand.`}
       icon={Cable}
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -413,21 +476,23 @@ export const InfrastructureAndDemandPanel: React.FC<
             onClick={onTogglePlaceTieInMode}
           >
             {placeTieInModeActive
-              ? '✓ Click Map to Place Tie-In (Cancel)'
-              : '+ Place Assumed 11 kV Tie-In on Map'}
+              ? '✓ Click Map to Mark Starting Point (Cancel)'
+              : '+ Click Map to Mark Starting Point'}
           </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            isLoading={placingRefTieIn}
-            loadingText="Placing Tie-In…"
-            onClick={() => void handlePlaceReferenceTieIn()}
-          >
-            Place Reference Nandapur 11 kV Tap (USER_ASSUMED)
-          </Button>
+          {isDemoProject && (
+            <Button
+              size="sm"
+              variant="secondary"
+              isLoading={placingRefTieIn}
+              loadingText="Adding Point…"
+              onClick={() => void handlePlaceReferenceTieIn()}
+            >
+              Add Sample Connection Point (Assumed)
+            </Button>
+          )}
           <label className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium bg-paper border border-rule-strong rounded-xs cursor-pointer hover:bg-sheet transition-colors">
             <Icon icon={Upload} size="xs" className="text-ink-2" />
-            <span>{uploadingGeoJson ? 'Uploading…' : 'Upload Utility GIS (.geojson)'}</span>
+            <span>{uploadingGeoJson ? 'Uploading…' : 'Upload Power Grid (.geojson)'}</span>
             <input
               type="file"
               accept=".geojson,.json"
@@ -437,6 +502,15 @@ export const InfrastructureAndDemandPanel: React.FC<
               className="sr-only"
             />
           </label>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            leftIcon={Download}
+            onClick={handleDownloadSampleInfraGeoJson}
+          >
+            Sample GeoJSON
+          </Button>
         </div>
       }
     >
@@ -446,12 +520,12 @@ export const InfrastructureAndDemandPanel: React.FC<
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-ink">
-                Electricity Infrastructure Symbology &amp; Data Provenance Key
+                Power Grid Map Legend &amp; Data Source Key
               </span>
               <LayerSourceBadge source={hasInfra ? 'PROJECT' : 'REFERENCE_DEMO'} />
             </div>
             <span className="text-xs text-ink-2">
-              Solid = Existing / Mapped Grid · Dashed = Preliminary Proposed (Layer F)
+              Solid line = Existing grid · Dashed line = Planned new line
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2 pt-2 border-t border-rule-subtle">
@@ -492,20 +566,19 @@ export const InfrastructureAndDemandPanel: React.FC<
             ))}
           </div>
           <p className="text-[11px] text-ink-2 leading-snug">
-            <strong className="text-ink">Contextual Note:</strong> 33 kV lines carry bulk power to
-            33/11 kV primary substations; 11 kV feeders supply village distribution transformers
-            (DTs); 415 V LT cables connect households. Incomplete OpenStreetMap or utility GIS records
-            never prove that physical lines are absent on the ground.
+            <strong className="text-ink">How power reaches villages:</strong> Regional 33 kV lines
+            feed main substations, 11 kV lines carry power to villages, and 415 V cables supply
+            homes. Missing public map data never proves real power lines are absent on the ground.
           </p>
         </div>
 
         {errorMessage && (
-          <Callout tone="error" title="Infrastructure / Demand Error">
+          <Callout tone="error" title="Power Grid / Demand Error">
             {errorMessage}
           </Callout>
         )}
         {statusMessage && (
-          <Callout tone="info" title="Infrastructure & Demand Update">
+          <Callout tone="info" title="Power Grid & Demand Updated">
             {statusMessage}
           </Callout>
         )}
@@ -514,13 +587,31 @@ export const InfrastructureAndDemandPanel: React.FC<
         {!hasInfra && (
           <Callout
             tone="warn"
-            title="Existing Electrical Infrastructure UNSET (Core Principle #4 — Zero Fabricated Lines)"
+            title="No Existing Power Lines Added Yet — Grid Distances Not Measured"
           >
-            No utility 11 kV/LT lines, Distribution Transformers, or tie-in points have been uploaded
-            or placed yet. Consistent with epistemic honesty rules, <code>d_straight_m</code> and{' '}
-            <code>d_terrain_m</code> remain <strong>UNSET</strong> rather than invented. Click{' '}
-            <strong>Place Reference Nandapur 11 kV Tap (USER_ASSUMED)</strong>, click on the map,
-            or upload a utility GeoJSON file to compute grid extension distances.
+            <div className="space-y-1.5">
+              <p>
+                ElectriMap never invents fake power lines. Because no utility lines, transformers,
+                or starting tap points are added yet, straight and terrain distances stay{' '}
+                <strong>Not measured</strong> until you provide a starting point.{' '}
+                <HelpTooltip glossaryKey="tiedInPoint" />
+              </p>
+              <p>
+                {isDemoProject ? (
+                  <>
+                    Click <strong>Add Sample Connection Point (Assumed)</strong>, click on the map,
+                    or upload a <code>.geojson</code> file above (download{' '}
+                    <strong>Sample GeoJSON</strong> to see the format).
+                  </>
+                ) : (
+                  <>
+                    Click <strong>+ Click Map to Mark Starting Point</strong> or upload a{' '}
+                    <code>.geojson</code> utility file above (download{' '}
+                    <strong>Sample GeoJSON</strong> to see the format).
+                  </>
+                )}
+              </p>
+            </div>
           </Callout>
         )}
 
@@ -529,8 +620,8 @@ export const InfrastructureAndDemandPanel: React.FC<
           <div className="space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="small-caps-heading">
-                Registered Existing Infrastructure &amp; Tie-In Points ({filteredAssets.length} of{' '}
-                {infrastructure.items.length} Assets)
+                Added Power Grid Assets &amp; Starting Points ({filteredAssets.length} of{' '}
+                {infrastructure.items.length})
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Input
@@ -548,7 +639,7 @@ export const InfrastructureAndDemandPanel: React.FC<
                     htmlFor="asset-category-filter-select"
                     className="font-mono text-[11px] text-ink-2 whitespace-nowrap"
                   >
-                    Filter Category:
+                    Filter:
                   </label>
                   <Select
                     id="asset-category-filter-select"
@@ -560,11 +651,11 @@ export const InfrastructureAndDemandPanel: React.FC<
                     options={[
                       {
                         value: 'ALL',
-                        label: `All Asset Categories (${infrastructure.items.length})`,
+                        label: `All Asset Types (${infrastructure.items.length})`,
                       },
-                      { value: 'TIE_IN', label: 'Assumed 11 kV Tie-In Points' },
+                      { value: 'TIE_IN', label: 'Assumed 11 kV Connection Points' },
                       { value: 'SUBSTATION', label: '33/11 kV Substations' },
-                      { value: 'DT', label: 'Distribution Transformers (DT)' },
+                      { value: 'DT', label: 'Village Transformers (DT)' },
                       { value: 'LINE', label: '33 kV / 11 kV Power Lines' },
                       { value: 'POLE_TOWER', label: 'Towers & Poles' },
                     ]}
@@ -590,8 +681,8 @@ export const InfrastructureAndDemandPanel: React.FC<
               <EmptyState
                 compact
                 icon={Search}
-                title={`No Registered Infrastructure Match (${assetCategoryFilter})`}
-                description="Clear the search or category filter to view all registered assets."
+                title={`No Matching Power Assets (${assetCategoryFilter})`}
+                description="Clear the search or category filter to view all added power assets."
                 action={
                   <Button
                     size="xs"
@@ -610,11 +701,11 @@ export const InfrastructureAndDemandPanel: React.FC<
                 <table className="w-full text-left border-collapse text-body-sm">
                   <thead>
                     <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
-                      <th className="py-2 px-2.5">Asset Type &amp; Symbology</th>
+                      <th className="py-2 px-2.5">Asset Type &amp; Symbol</th>
                       <th className="py-2 px-2.5">Asset Name</th>
-                      <th className="py-2 px-2.5">Voltage / Rating</th>
-                      <th className="py-2 px-2.5">Provenance &amp; Quality</th>
-                      <th className="py-2 px-2.5">Source Note</th>
+                      <th className="py-2 px-2.5">Voltage / Capacity</th>
+                      <th className="py-2 px-2.5">Source &amp; Status</th>
+                      <th className="py-2 px-2.5">Note</th>
                       <th className="py-2 px-2.5 text-right">Action</th>
                     </tr>
                   </thead>
@@ -625,6 +716,12 @@ export const InfrastructureAndDemandPanel: React.FC<
                         asset.provenance,
                         asset.voltage_kv,
                       );
+                      const provenanceLabel =
+                        asset.provenance === 'USER_ASSUMED'
+                          ? 'Assumed Point'
+                          : asset.provenance === 'UTILITY_RECORD'
+                            ? 'Uploaded Utility Map'
+                            : asset.provenance;
                       return (
                         <tr
                           key={asset.id}
@@ -651,7 +748,7 @@ export const InfrastructureAndDemandPanel: React.FC<
                                   }}
                                 />
                               )}
-                              <span>{asset.asset_type}</span>
+                              <span>{spec.shortLabel}</span>
                             </span>
                           </td>
                           <td className="py-2 px-2.5 font-medium text-ink">{asset.name}</td>
@@ -660,10 +757,7 @@ export const InfrastructureAndDemandPanel: React.FC<
                             {asset.rating_kva ? ` · ${asset.rating_kva} kVA` : ''}
                           </td>
                           <td className="py-2 px-2.5">
-                            <QualityTag
-                              kind={asset.quality_tag}
-                              label={`${asset.provenance}`}
-                            />
+                            <QualityTag kind={asset.quality_tag} label={provenanceLabel} />
                           </td>
                           <td className="py-2 px-2.5 text-xs text-ink-2">
                             {asset.source_note}
@@ -693,17 +787,29 @@ export const InfrastructureAndDemandPanel: React.FC<
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="small-caps-heading flex items-center gap-1.5">
               <Icon icon={Route} size="xs" className="text-ink-2" />
-              <span>
-                Terrain-Weighted Distance &amp; Obstacle Gap Analysis Matrix (UTM EPSG:32644)
-              </span>
+              <span>Distance to Grid &amp; Suggested Supply Option ({utmLabel})</span>
+              <HelpTooltip glossaryKey="terrainCostSurface" />
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
               {gapAnalysis && gapAnalysis.has_existing_infra && (
                 <div className="font-mono text-[11px] text-ink-2">
-                  Mean Straight: <strong>{gapAnalysis.mean_d_straight_m} m</strong> · Mean
-                  Terrain: <strong>{gapAnalysis.mean_d_terrain_m} m</strong> · Grid Ext.:{' '}
+                  Straight Avg:{' '}
+                  <strong>
+                    {gapAnalysis.mean_d_straight_m !== null &&
+                    gapAnalysis.mean_d_straight_m !== undefined
+                      ? `${gapAnalysis.mean_d_straight_m} m`
+                      : 'Unset'}
+                  </strong>{' '}
+                  · Terrain Avg:{' '}
+                  <strong>
+                    {gapAnalysis.mean_d_terrain_m !== null &&
+                    gapAnalysis.mean_d_terrain_m !== undefined
+                      ? `${gapAnalysis.mean_d_terrain_m} m`
+                      : 'Unset'}
+                  </strong>{' '}
+                  · Grid:{' '}
                   <strong>{gapAnalysis.grid_extension_candidates}</strong> · Mini-Grid:{' '}
-                  <strong>{gapAnalysis.minigrid_candidates}</strong> · SHS:{' '}
+                  <strong>{gapAnalysis.minigrid_candidates}</strong> · Home Solar:{' '}
                   <strong>{gapAnalysis.shs_candidates}</strong>
                 </div>
               )}
@@ -712,7 +818,7 @@ export const InfrastructureAndDemandPanel: React.FC<
                 size="sm"
                 leftIcon={Search}
                 aria-label="Search gap matrix clusters"
-                placeholder="Search cluster..."
+                placeholder="Search village..."
                 value={gapSearch}
                 onChange={(e) => setGapSearch(e.target.value)}
                 containerClassName="w-44"
@@ -722,7 +828,7 @@ export const InfrastructureAndDemandPanel: React.FC<
                   htmlFor="gap-modality-filter-select"
                   className="font-mono text-[11px] text-ink-2 whitespace-nowrap"
                 >
-                  Modality Filter:
+                  Option:
                 </label>
                 <Select
                   id="gap-modality-filter-select"
@@ -734,11 +840,11 @@ export const InfrastructureAndDemandPanel: React.FC<
                   options={[
                     {
                       value: 'ALL',
-                      label: `All Modalities (${gapAnalysis?.clusters.length ?? 0})`,
+                      label: `All Options (${gapAnalysis?.clusters.length ?? 0})`,
                     },
-                    { value: 'GRID', label: 'Grid Extension / Augmentation' },
-                    { value: 'MINIGRID', label: 'Solar PV Mini-Grid' },
-                    { value: 'SHS', label: 'Standalone Solar Home Systems (SHS)' },
+                    { value: 'GRID', label: 'Grid Extension / Upgrade' },
+                    { value: 'MINIGRID', label: 'Solar Mini-Grid' },
+                    { value: 'SHS', label: 'Home Solar Systems' },
                   ]}
                 />
               </div>
@@ -749,15 +855,15 @@ export const InfrastructureAndDemandPanel: React.FC<
             <EmptyState
               compact
               icon={Route}
-              title="No Terrain Gap Matrix Rows Computed"
-              description="Run Step 2 DBSCAN habitation clustering to evaluate terrain-weighted feeder distances and obstacle penalties."
+              title="No Village Distances Calculated Yet"
+              description="Group homes into village clusters in Step 2 first to calculate distances and terrain difficulty."
             />
           ) : filteredGapClusters.length === 0 ? (
             <EmptyState
               compact
               icon={Search}
-              title="No Matching Gap Matrix Clusters"
-              description={`No habitation clusters match modality filter ${modalityFilter}${gapSearch ? ` and query "${gapSearch}"` : ''}.`}
+              title="No Matching Village Rows"
+              description={`No village clusters match filter "${modalityFilter}"${gapSearch ? ` and search "${gapSearch}"` : ''}.`}
               action={
                 <Button
                   size="xs"
@@ -767,7 +873,7 @@ export const InfrastructureAndDemandPanel: React.FC<
                     setGapSearch('');
                   }}
                 >
-                  Show All Clusters
+                  Show All Villages
                 </Button>
               }
             />
@@ -776,49 +882,55 @@ export const InfrastructureAndDemandPanel: React.FC<
               <table className="w-full text-left border-collapse text-body-sm">
                 <thead>
                   <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
-                    <th className="py-2 px-2.5">Cluster</th>
-                    <th className="py-2 px-2.5">Nearest Tie-In / Asset</th>
-                    <th className="py-2 px-2.5">Straight (m)</th>
-                    <th className="py-2 px-2.5">Terrain Penalty</th>
-                    <th className="py-2 px-2.5">Terrain Dist (m)</th>
-                    <th className="py-2 px-2.5">Obstacles</th>
-                    <th className="py-2 px-2.5">Preliminary Modality Affinity</th>
+                    <th className="py-2 px-2.5">Village Cluster</th>
+                    <th className="py-2 px-2.5">Nearest Grid Point</th>
+                    <th className="py-2 px-2.5">Straight Dist.</th>
+                    <th className="py-2 px-2.5">Terrain Factor</th>
+                    <th className="py-2 px-2.5">Effective Dist.</th>
+                    <th className="py-2 px-2.5">Slope, Trees &amp; Rivers</th>
+                    <th className="py-2 px-2.5">Suggested Supply Option</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-rule-subtle">
                   {filteredGapClusters.map((g) => (
                     <tr key={g.cluster_id} className="hover:bg-surface-hover">
                       <td className="py-2 px-2.5 font-semibold text-ink text-xs">
-                        {g.cluster_label} · {g.cluster_name} ({g.est_households} HH)
+                        {g.cluster_label} · {g.cluster_name} ({g.est_households} homes)
                       </td>
                       <td className="py-2 px-2.5 text-xs">
                         {g.nearest_asset_name ? (
                           <span>
                             {g.nearest_asset_name}{' '}
                             <span className="text-ink-2">
-                              ({g.nearest_asset_provenance})
+                              (
+                              {g.nearest_asset_provenance === 'USER_ASSUMED'
+                                ? 'Assumed'
+                                : g.nearest_asset_provenance === 'UTILITY_RECORD'
+                                  ? 'Utility Map'
+                                  : g.nearest_asset_provenance}
+                              )
                             </span>
                           </span>
                         ) : (
-                          <span className="font-mono text-warn font-semibold">UNSET</span>
+                          <span className="font-mono text-warn font-semibold">Not set</span>
                         )}
                       </td>
                       <td className="py-2 px-2.5 font-mono text-xs tabular-nums">
-                        {g.d_straight_m !== null ? `${g.d_straight_m.toFixed(0)} m` : 'UNSET'}
+                        {g.d_straight_m !== null ? `${g.d_straight_m.toFixed(0)} m` : 'Not set'}
                       </td>
                       <td className="py-2 px-2.5 font-mono text-xs tabular-nums">
                         {g.terrain_penalty_factor.toFixed(2)}×
                       </td>
                       <td className="py-2 px-2.5 font-mono text-xs tabular-nums font-semibold">
-                        {g.d_terrain_m !== null ? `${g.d_terrain_m.toFixed(0)} m` : 'UNSET'}
+                        {g.d_terrain_m !== null ? `${g.d_terrain_m.toFixed(0)} m` : 'Not set'}
                       </td>
                       <td className="py-2 px-2.5 text-xs tabular-nums text-ink-2">
-                        {g.slope_mean_deg.toFixed(1)}° · {(g.canopy_share * 100).toFixed(0)}%
-                        canopy · {g.water_crossings_count} water x-ing
+                        {g.slope_mean_deg.toFixed(1)}° slope · {(g.canopy_share * 100).toFixed(0)}%
+                        trees · {g.water_crossings_count} stream crossings
                       </td>
                       <td className="py-2 px-2.5">
                         <span className="text-xs px-2 py-0.5 rounded-xs border border-rule bg-paper font-semibold text-ink whitespace-nowrap">
-                          {g.recommended_modality}
+                          {formatModalityLabel(g.recommended_modality)}
                         </span>
                       </td>
                     </tr>
@@ -829,161 +941,59 @@ export const InfrastructureAndDemandPanel: React.FC<
           )}
         </div>
 
-        {/* Split Grid: Project Assumptions Register + 7-Category Parametric Demand Engine */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-3 border-t border-rule">
-          {/* Left 5 cols: Project Assumptions Register */}
-          <div className="lg:col-span-5 bg-paper border border-rule rounded-xs p-3.5 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule pb-2">
-              <div>
-                <span className="small-caps-heading flex items-center gap-1.5">
-                  <Icon icon={SlidersHorizontal} size="xs" className="text-ink-2" />
-                  <span>
-                    Project Assumptions Register ({settings?.user_edited_count ?? 0} Overrides)
-                  </span>
-                </span>
-                <span className="text-[11px] text-ink-2">
-                  Normative REC / CEA / ESMAP MTF parameters
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  disabled={savingSettings || !settings || settings.items.length === 0}
-                  onClick={() => setConfirmResetAssumptions(true)}
-                >
-                  Reset Defaults
-                </Button>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  isLoading={savingSettings}
-                  loadingText="Saving…"
-                  disabled={!settings || settings.items.length === 0}
-                  onClick={() => void handleSaveAssumptions()}
-                >
-                  Save &amp; Recalculate
-                </Button>
-              </div>
-            </div>
-
-            {!settings || settings.items.length === 0 ? (
-              <EmptyState
-                compact
-                icon={SlidersHorizontal}
-                title="No Project Assumptions Loaded"
-                description="Assumptions register populates once project metadata initializes."
-              />
-            ) : (
-              <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
-                {settings.items.map((item) => {
-                  const currentVal = editedValues[item.key] ?? item.value;
-                  return (
-                    <div
-                      key={item.key}
-                      className="p-2.5 bg-sheet border border-rule rounded-xs space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <label
-                          htmlFor={`setting-${item.key}`}
-                          className="text-xs font-medium text-ink"
-                        >
-                          {item.label}
-                        </label>
-                        <QualityTag
-                          kind={item.is_user_edited ? 'USER_ENTERED' : 'ESTIMATED'}
-                          label={
-                            item.is_user_edited
-                              ? 'USER_ENTERED'
-                              : `DEFAULT: ${item.default_value}`
-                          }
-                        />
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span
-                          className="text-[11px] text-ink-2 truncate"
-                          title={`${item.citation} (Allowed: ${item.min_value}–${item.max_value} ${item.unit})`}
-                        >
-                          {item.citation}
-                        </span>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <Input
-                            id={`setting-${item.key}`}
-                            size="sm"
-                            type="number"
-                            step="any"
-                            min={item.min_value}
-                            max={item.max_value}
-                            mono
-                            unit={item.unit}
-                            value={currentVal}
-                            onChange={(e) =>
-                              setEditedValues((prev) => ({
-                                ...prev,
-                                [item.key]: Number(e.target.value),
-                              }))
-                            }
-                            containerClassName="w-32"
-                            className="text-right"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Right 7 cols: 7-Category Parametric Electricity Demand Forecast */}
-          <div className="lg:col-span-7 space-y-3">
+        {/* Community Electricity Demand Forecast (Front & Center) */}
+        <div className="space-y-4 pt-3 border-t border-rule">
+          <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span className="small-caps-heading flex items-center gap-1.5">
                   <Icon icon={Activity} size="xs" className="text-accent" />
                   <span>
-                    7-Category Parametric Electricity Demand &amp; {demand?.horizon_years ?? 10}
-                    -Year Horizon Forecast
+                    Community Electricity Demand &amp; {demand?.horizon_years ?? 10}-Year Growth
+                    Forecast
                   </span>
+                  <HelpTooltip glossaryKey="serviceLoadTier" />
                 </span>
-                <span className="text-[11px] text-ink-2">
-                  Coincident peak demand computed at cos φ = 0.85 lag and{' '}
-                  {((demand?.annual_growth_rate ?? 0.045) * 100).toFixed(1)}%/yr compound load
-                  growth
+                <span className="text-[11px] text-ink-2 inline-flex items-center gap-1.5 flex-wrap">
+                  <span>
+                    Peak demand uses power factor {powerFactorVal.toFixed(2)} and{' '}
+                    {((demand?.annual_growth_rate ?? 0.045) * 100).toFixed(1)}%/yr growth
+                  </span>
+                  <HelpTooltip glossaryKey="loadFactorPowerFactor" />
                 </span>
               </div>
             </div>
 
             {demand ? (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   <StatTile
-                    label="Total Connected Load"
+                    label="Total Connected Appliances"
                     value={demand.total_connected_kw.toFixed(2)}
                     unit="kW"
                     quality="ESTIMATED"
-                    subtitle={`${demand.total_households} Total HH`}
+                    subtitle={`${demand.total_households} Homes`}
                   />
                   <StatTile
-                    label="Base Coincident Peak"
+                    label="Peak Demand Today"
                     value={demand.peak_kva_base.toFixed(2)}
                     unit="kVA"
                     quality="ESTIMATED"
                     subtitle={`${demand.peak_kw_base.toFixed(2)} kW`}
                   />
                   <StatTile
-                    label={`Horizon Peak (+${demand.horizon_years} Yrs)`}
+                    label={`Year-${demand.horizon_years} Design Peak`}
                     value={`${demand.peak_kva_horizon.toFixed(2)} kVA`}
                     quality="ESTIMATED"
                     tone="accent"
-                    subtitle={`${demand.peak_kw_horizon.toFixed(2)} kW design`}
+                    subtitle={`${demand.peak_kw_horizon.toFixed(2)} kW future peak`}
                   />
                   <StatTile
-                    label="Annual Energy"
+                    label="Annual Electricity Used"
                     value={`${demand.annual_energy_mwh_base.toFixed(1)} → ${demand.annual_energy_mwh_horizon.toFixed(1)}`}
                     unit="MWh/yr"
                     quality="ESTIMATED"
-                    subtitle="Base → Horizon"
+                    subtitle="Today → Horizon Year"
                   />
                 </div>
 
@@ -991,12 +1001,12 @@ export const InfrastructureAndDemandPanel: React.FC<
                   <table className="w-full text-left border-collapse text-body-sm">
                     <thead>
                       <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
-                        <th className="py-2 px-2.5">Consumer Category</th>
-                        <th className="py-2 px-2.5">Units</th>
+                        <th className="py-2 px-2.5">Consumer Type</th>
+                        <th className="py-2 px-2.5">Connections</th>
                         <th className="py-2 px-2.5">Connected (kW)</th>
-                        <th className="py-2 px-2.5">Max Demand (kW)</th>
-                        <th className="py-2 px-2.5">Daily (kWh/d)</th>
-                        <th className="py-2 px-2.5">Annual (MWh/yr)</th>
+                        <th className="py-2 px-2.5">Peak Demand (kW)</th>
+                        <th className="py-2 px-2.5">Daily (kWh/day)</th>
+                        <th className="py-2 px-2.5">Yearly (MWh/yr)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-rule-subtle">
@@ -1028,11 +1038,123 @@ export const InfrastructureAndDemandPanel: React.FC<
               <EmptyState
                 compact
                 icon={Activity}
-                title="Demand Forecast Not Computed Yet"
-                description="Save or reset project assumptions, or complete Step 2 habitation clustering to compute the 7-category load forecast."
+                title="Demand Forecast Not Calculated Yet"
+                description="Save engineering settings below or finish Step 2 village clustering to compute community electricity demand."
               />
             )}
           </div>
+
+          {/* Collapsible Advanced Engineering Assumptions (FTU-19 Progressive Disclosure) */}
+          <details className="bg-paper border border-rule rounded-xs p-3.5">
+            <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2 select-none">
+              <div className="flex items-center gap-2 text-xs font-semibold text-ink">
+                <Icon icon={SlidersHorizontal} size="xs" className="text-ink-2" />
+                <span>
+                  Advanced Electricity Load Assumptions (
+                  {settings?.user_edited_count ?? 0} Customized · Standard Govt. Defaults Pre-Loaded)
+                </span>
+              </div>
+              <span className="text-[11px] font-medium text-accent">
+                Expand to view or customize
+              </span>
+            </summary>
+
+            <div className="space-y-3 mt-3 pt-3 border-t border-rule-subtle">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs text-ink-2">
+                  Default REC / CEA / ESMAP planning parameters used across demand and feeder
+                  calculations.
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={savingSettings || !settings || settings.items.length === 0}
+                    onClick={() => setConfirmResetAssumptions(true)}
+                  >
+                    Reset Defaults
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    isLoading={savingSettings}
+                    loadingText="Saving…"
+                    disabled={!settings || settings.items.length === 0}
+                    onClick={() => void handleSaveAssumptions()}
+                  >
+                    Save &amp; Recalculate
+                  </Button>
+                </div>
+              </div>
+
+              {!settings || settings.items.length === 0 ? (
+                <EmptyState
+                  compact
+                  icon={SlidersHorizontal}
+                  title="No Engineering Assumptions Loaded"
+                  description="Default assumptions load automatically once project details initialize."
+                />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-[380px] overflow-y-auto pr-1">
+                  {settings.items.map((item) => {
+                    const currentVal = editedValues[item.key] ?? item.value;
+                    return (
+                      <div
+                        key={item.key}
+                        className="p-2.5 bg-sheet border border-rule rounded-xs space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <label
+                            htmlFor={`setting-${item.key}`}
+                            className="text-xs font-medium text-ink"
+                          >
+                            {item.label}
+                          </label>
+                          <QualityTag
+                            kind={item.is_user_edited ? 'USER_ENTERED' : 'ESTIMATED'}
+                            label={
+                              item.is_user_edited
+                                ? 'Custom Value'
+                                : `Default: ${item.default_value}`
+                            }
+                          />
+                        </div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-[11px] text-ink-2 leading-snug">
+                            <span>{item.citation}</span>
+                            <span className="block text-[10px] text-ink-3 font-mono">
+                              Allowed: {item.min_value}–{item.max_value} {item.unit}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Input
+                              id={`setting-${item.key}`}
+                              size="sm"
+                              type="number"
+                              step="any"
+                              min={item.min_value}
+                              max={item.max_value}
+                              mono
+                              unit={item.unit}
+                              value={currentVal}
+                              onChange={(e) =>
+                                setEditedValues((prev) => ({
+                                  ...prev,
+                                  [item.key]: Number(e.target.value),
+                                }))
+                              }
+                              containerClassName="w-32"
+                              className="text-right"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </details>
         </div>
       </div>
 
@@ -1046,7 +1168,7 @@ export const InfrastructureAndDemandPanel: React.FC<
           setPendingDeleteAsset(null);
           void handleDeleteAsset(id);
         }}
-        title="Remove Registered Infrastructure Asset?"
+        title="Remove Added Power Asset?"
         description={
           pendingDeleteAsset ? (
             <div className="space-y-1">
@@ -1055,8 +1177,7 @@ export const InfrastructureAndDemandPanel: React.FC<
                 <code className="code-pill">{pendingDeleteAsset.asset_type}</code>)?
               </p>
               <p className="text-2xs text-ink-3 font-mono">
-                Terrain gap distances (d_straight_m, d_terrain_m) will be recomputed immediately
-                across all habitation clusters.
+                Village distances to the nearest power line will be updated right away.
               </p>
             </div>
           ) : null
@@ -1074,8 +1195,8 @@ export const InfrastructureAndDemandPanel: React.FC<
           setConfirmResetAssumptions(false);
           void handleResetAssumptions();
         }}
-        title="Reset All Assumptions to Normative REC / CEA Defaults?"
-        description="This reverts every USER_ENTERED assumption override back to its normative REC/CEA default and recalculates the 7-category demand forecast."
+        title="Reset Assumptions to Standard Government Defaults?"
+        description="This reverts every custom electricity assumption back to standard REC/CEA defaults and updates the demand forecast."
         confirmLabel="Reset Defaults"
         variant="danger"
         isLoading={savingSettings}

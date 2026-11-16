@@ -1,14 +1,14 @@
 # PROJECT_STATUS.md — Live Project State & Agent Handover Record
 
-> **Status:** Production-Ready (v1.0) · Phase: ElectriMap Vision Reset Frontend Composition Redesign Completed  
-> **Last Synchronized:** 2026-11-15  
+> **Status:** Production-Ready (v1.0) · Phase: Full Data Integrity, Contextual Help & End-to-End DPR PDF Remediation Completed & Verified  
+> **Last Synchronized:** 2026-11-16  
 > **Active AI Agent:** Antigravity (Google DeepMind)  
 > **Secondary Compatibility:** Claude (Anthropic) via `CLAUDE.md` and `AGENTS.md`  
 
 ---
 
 ## 1. Executive Status Summary
-- **Current Phase & Milestone:** **ELECTRIMAP VISION RESET — COMPLETE FRONTEND COMPOSITION REDESIGN** completed & verified on branch `experiment` (built atop verified Milestones M0–M8 & Production Readiness Audit).
+- **Current Phase & Milestone:** **FULL DATA INTEGRITY, CONTEXTUAL HELP & END-TO-END DPR PDF REMEDIATION (`CRIT-01`–`CRIT-06`, `HIGH-01`–`HIGH-05`, `MED-01`–`MED-03`, `LOW-01`–`LOW-02`)** completed & verified on branch `experiment` across backend (`ruff`, `mypy --strict`, `pytest`), frontend (`tsc`, `eslint`, `vitest`, `vite build`), live E2E exports, visual 12-page DPR PDF verification, and headless Edge CDP inspection.
 - **Completed Milestones & Audits:**
   - **Milestone M0:** Tooling, Database Setup & Technical Risk Spikes S1–S4 (**APPROVED & COMPLETED**)
   - **Milestone M1:** Core Authentication, Project CRUD & AOI Module (**APPROVED & COMPLETED**)
@@ -35,6 +35,11 @@
     3. Refactored `ProjectsPage.tsx` into a foregrounded project register with inline summary telemetry, search/sort controls, and interactive scheme filter pills.
     4. Integrated live overview mapping (`<MapCanvas variant="overview" />`) into `WorkspacePage.tsx` and `ProjectOverviewDashboard.tsx` alongside a streamlined project identity header preserving `PRELIMINARY — NOT FIELD VERIFIED`, CRS metadata, and full epistemic rules.
     5. Polished `MapCanvas.tsx` workstation toolbar/Layer Drawer (`Loading Raster...` `flex-wrap`), `GisFeatureInspectorDrawer.tsx`, `GisSymbologyLegend.tsx`, `NewProjectWizardPage.tsx`, inline SVG favicon in `frontend/index.html`, and fixed BOQ table column widths in `CostAndScenarioComparisonPanel.tsx` (`1113px` exact container fit on desktop `1440px`) (**COMPLETED & VERIFIED**)
+  - **Full-Stack Product Audit & Master Remediation (`AUD-01` through `AUD-29`):**
+    1. Enforced strict demo vs. non-demo project isolation (`AUD-01`, `AUD-03`, `AUD-19`, `AUD-23`): tagged synthetic fallback GIS datasets (`SYNTHETIC_FALLBACK`), gated Koraput reference packs/quick-jumps/VIIRS overlays to `DEMO_PROJECT_ID`, replaced placeholder copy (`AUD-05`), and replaced overlapping rectangular village buffers with metric octagons aligned with backend fixtures.
+    2. Eliminated false epistemic `VERIFIED` tags & unsafe export gates (`AUD-04`, `AUD-10`, `AUD-11`, `AUD-12`, `AUD-14`): downgraded unverified proxy counts and 0%-verified Pre-Flight states to `ESTIMATED`/`READY`, separated Axis-2 verification classes from proxy enums, enforced zero-cluster/AOI export blocks preventing `=SUM(C2:C1)` formulas, withheld partial ₹ totals when SoR items are `UNSET`, removed silent Section 21/SLD truncations, and switched downloads to authenticated blob requests.
+    3. Restored cross-stage calculation & routing fidelity (`AUD-02`, `AUD-06`, `AUD-07`, `AUD-08`, `AUD-09`, `AUD-13`, `AUD-15`, `AUD-16`, `AUD-17`): replaced `sc.vdrop_compliance_ok` omission (`Exceeds CEA VDrop`), wired `load_tier` defaults and explicit cascade invalidation, protected verified clusters with confirmation dialogs, synchronized `selectedScenarioKey` and SLD ΔV error styling, aligned annual GHI key / grant settings, and surfaced async Cost/SoR & Workspace errors.
+    4. Hardened auth, wizard transactions, accessibility & responsive viewports (`AUD-18`, `AUD-20`, `AUD-21`, `AUD-22`, `AUD-24`–`AUD-29`): validated wizard AOI inputs before project creation, removed silent auto-login & guarded `?next=`, added `Dialog` scrolling + focus trap and `AppShell` mobile drawer Esc/focus handling, fixed header/Panel stacking at `768×1024`, replaced `QualityTag` mono Unicode glyphs with Lucide icons, fixed `ref-buildings-fill` inspector dispatch, wrapped mobile `390×844` map basemap controls, and bounded `GisFeatureInspectorDrawer` inside small viewports (**COMPLETED & VERIFIED**)
 - **Git Repository Status:**
   - Remote: `https://github.com/Immortal-syntax/electrimap.git`
   - Active Branch: `experiment` (ready for commit/push synchronization with `origin/experiment`).
@@ -60,14 +65,15 @@
 
 ---
 
-## 3. Verification & Test Results (Synchronized 2026-11-15)
-- **Backend Test Suite (`pytest -q`):** **60 passed** (`1 warning`, `18.28s`; zero backend files modified during Vision Reset).
+## 3. Verification & Test Results (Synchronized 2026-11-16)
+- **Backend Ruff Lint (`ruff check backend/app backend/tests`):** Passed (`All checks passed!`).
+- **Backend Strict Typecheck (`mypy --config-file backend/pyproject.toml backend/app backend/tests`):** Passed (`Success: no issues found in 116 source files`).
+- **Backend Test Suite (`pytest backend/tests -q`):** **65 passed** (`1 warning` from third-party `starlette.testclient` deprecation).
 - **Frontend Typecheck (`npm run typecheck` -> `tsc --noEmit`):** Passed (`0 errors`).
 - **Frontend Linting (`npm run lint` -> `eslint . --max-warnings 0`):** Passed (`0 warnings, 0 errors`).
-- **Frontend Unit Tests (`npm run test -- --run` -> `vitest run --run`):** **38 passed** across 2 test suites (`QualityTag.test.tsx`: 10 passed; `AppRoutes.test.tsx`: 28 passed).
-- **Frontend Production Build (`npm run build` -> `tsc -b && vite build`):** Passed cleanly (`dist/` built in `9.09s`).
-- **Live Browser CDP Verification (Edge Headless, Desktop `1440x900`/`1920x1080` & Mobile `390x844`):** `0` horizontal overflow (`overflowPx: 0`), `0` console errors, `0` page errors, `0` HTTP `>= 400` failures, BOQ container/table exact `1113px` alignment on `/cost`.
-*(Prior M8/PR audit baseline also verified `ruff check backend` and `mypy --config-file backend/pyproject.toml backend/app backend/tests` on unchanged backend code.)*
+- **Frontend Unit Tests (`npm test -- --run` -> `vitest run --run`):** **53 passed** across 3 test suites (`QualityTag.test.tsx`: 10; `BeginnerUxRemediation.test.tsx`: 9; `AppRoutes.test.tsx`: 34).
+- **Frontend Production Build (`npm run build` -> `tsc -b && vite build`):** Passed cleanly (`1624` modules transformed).
+- **Live E2E, Visual DPR PDF & Edge CDP Verification:** Verified 17-cluster Demo Project (`UNKNOWN`/unavailable VIIRS), real Copernicus GLO-30 & ESA WorldCover extraction, NASA POWER `4.90 kWh/m²/d` (`AUG 3.43`), distinct comparison NPC columns, Pre-Flight `GRID_TIE_IN_PRESENT` & synthetic blocks, Tile `ETag` `304`, CSV `\x00` validation, 12-page visual DPR PDF (Plates 1–2, wrapped multi-row SLD, `1280.0 Wh/HH` SHS, wrapped tables), Excel formula workbook, blank wizard defaults, tooltip `Escape` cycle, task-focused Step 1 (`Get your map ready`), task-focused Step 5 (`Project Costs & Scenarios` 3 headlines + collapsed `Financial details` / `Rate sources & assumptions` + 4-column expandable BOQ), individual user sign-in (`Swayam Kumar` & `Sumit Kushwaha` showing ONLY authenticated full name in top-right, shared Sample Study access + private project isolation, refresh persistence, sign-out + browser-back protection, zero hardcoded frontend passwords), and `0 px` horizontal overflow at desktop (`1440×900`) and mobile (`390×844`) with `0` page/post-login HTTP errors.
 
 ---
 

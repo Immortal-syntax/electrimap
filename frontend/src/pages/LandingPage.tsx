@@ -27,15 +27,12 @@ import {
   Plus,
   Sun,
 } from 'lucide-react';
-import {
-  Badge,
-  ClassificationBadge,
-  LayerSourceBadge,
-  ProxyElectrificationClass,
-} from '../components/ui/Badge';
+import { Badge, ClassificationBadge, LayerSourceBadge, ProxyElectrificationClass } from '../components/ui/Badge';
 import { QualityTag } from '../components/ui/QualityTag';
 import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
+import { HelpTooltip } from '../components/ui/Tooltip';
+import { formatSchemeLabel } from '../lib/beginnerGlossary';
 import {
   MapSpikePreview,
   type ReferenceGeoJsonBundle,
@@ -121,7 +118,7 @@ const OPEN_DATASET_REGISTRY = [
     provider: 'VIDA / Source Cooperative',
     resolution: '0.5 m vector polygons',
     licence: 'CC BY 4.0 / ODbL',
-    sourceBadge: 'PROJECT' as const,
+    sourceBadge: 'REFERENCE_DEMO' as const,
   },
   {
     key: 'copernicus_dem',
@@ -129,7 +126,7 @@ const OPEN_DATASET_REGISTRY = [
     provider: 'ESA / Copernicus',
     resolution: '30 m raster',
     licence: 'Copernicus Free & Open',
-    sourceBadge: 'PROJECT' as const,
+    sourceBadge: 'REFERENCE_DEMO' as const,
   },
   {
     key: 'esa_worldcover',
@@ -137,7 +134,7 @@ const OPEN_DATASET_REGISTRY = [
     provider: 'ESA / VITO',
     resolution: '10 m / 30 m harmonised',
     licence: 'CC BY 4.0',
-    sourceBadge: 'PROJECT' as const,
+    sourceBadge: 'REFERENCE_DEMO' as const,
   },
   {
     key: 'nasa_power',
@@ -145,7 +142,7 @@ const OPEN_DATASET_REGISTRY = [
     provider: 'NASA Langley Research Center',
     resolution: '0.5° × 0.5° monthly climatology',
     licence: 'Public Domain (US Govt)',
-    sourceBadge: 'PROJECT' as const,
+    sourceBadge: 'REFERENCE_DEMO' as const,
   },
   {
     key: 'nasa_viirs',
@@ -185,7 +182,9 @@ export const LandingPage: React.FC = () => {
   const [referenceGeoJson, setReferenceGeoJson] =
     useState<ExtendedReferenceGeoJsonBundle | null>(null);
   const [spikeSummary, setSpikeSummary] = useState<SpikeSummaryPayload | null>(null);
+  const [referenceNotice, setReferenceNotice] = useState<string | null>(null);
   const [policyExpanded, setPolicyExpanded] = useState(false);
+  const [techMetaExpanded, setTechMetaExpanded] = useState(false);
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
 
   useEffect(() => {
@@ -197,16 +196,28 @@ export const LandingPage: React.FC = () => {
           fetch('/api/v1/spikes/summary'),
         ]);
         if (!active) return;
+        let failed = false;
         if (geoRes.status === 'fulfilled' && geoRes.value.ok) {
           setReferenceGeoJson(
             (await geoRes.value.json()) as ExtendedReferenceGeoJsonBundle,
           );
+        } else {
+          failed = true;
         }
         if (sumRes.status === 'fulfilled' && sumRes.value.ok) {
           setSpikeSummary((await sumRes.value.json()) as SpikeSummaryPayload);
         }
+        setReferenceNotice(
+          failed
+            ? 'Live reference API unavailable — displaying bundled Koraput example snapshot.'
+            : null,
+        );
       } catch {
-        // Fallback smoothly in offline or unit-test environments
+        if (active) {
+          setReferenceNotice(
+            'Live reference API unreachable — displaying bundled Koraput example snapshot.',
+          );
+        }
       }
     }
     void loadReference();
@@ -229,8 +240,16 @@ export const LandingPage: React.FC = () => {
         buildings: Number(p.building_count ?? 0),
         estHouseholds: Number(p.estimated_households ?? 0),
         estPopulation: Number(p.estimated_population ?? 0),
-        viirs2020: Number(p.viirs_radiance_2020_nw ?? 0),
-        viirsRadNanoW: Number(p.viirs_radiance_2024_nw ?? 0),
+        viirs2020:
+          typeof p.viirs_radiance_2020_nw === 'number' &&
+          Number.isFinite(p.viirs_radiance_2020_nw)
+            ? p.viirs_radiance_2020_nw
+            : null,
+        viirsRadNanoW:
+          typeof p.viirs_radiance_2024_nw === 'number' &&
+          Number.isFinite(p.viirs_radiance_2024_nw)
+            ? p.viirs_radiance_2024_nw
+            : null,
         terrainDistM: Number(p.terrain_effective_dist_m ?? 0),
         proxyClass: (p.proxy_class as ProxyElectrificationClass) ?? 'UNKNOWN',
         preliminaryMode: String(p.preliminary_mode ?? 'Field Survey Required'),
@@ -299,12 +318,12 @@ export const LandingPage: React.FC = () => {
       routes && routes.length > 0
         ? routes.reduce((acc, r) => acc + (r.length_km ?? 0), 0)
         : 0;
-    const lengthKm = apiTotalKm > 0 ? apiTotalKm.toFixed(2) : '9.35';
+    const lengthKm = apiTotalKm > 0 ? apiTotalKm.toFixed(2) : '—';
     const elapsedSec = spikeSummary?.spikes?.S2_least_cost_routing?.elapsed_seconds;
     const timingNote =
       typeof elapsedSec === 'number' && elapsedSec > 0
         ? `${elapsedSec.toFixed(3)} s solver`
-        : '0.044 s solver';
+        : 'Awaiting live API';
     return { lengthKm, timingNote };
   }, [spikeSummary]);
 
@@ -312,7 +331,7 @@ export const LandingPage: React.FC = () => {
     spikeSummary?.spikes?.S3_cartographic_pdf?.pdf_size_bytes &&
     spikeSummary.spikes.S3_cartographic_pdf.pdf_size_bytes > 0
       ? (spikeSummary.spikes.S3_cartographic_pdf.pdf_size_bytes / 1024).toFixed(1)
-      : '224.1';
+      : '—';
 
   const clusterProportions = useMemo(() => {
     const buckets: Record<ProxyElectrificationClass, number> = {
@@ -371,13 +390,13 @@ export const LandingPage: React.FC = () => {
       num: '05',
       title: 'Cost & Scenarios',
       status: 'SoR & 4 scenarios',
-      desc: 'Traceable Schedule of Rates, BOQ & 20-year lifecycle NPC',
+      desc: 'Traceable Schedule of Rates, BOQ & horizon-configured NPC',
       path: `/projects/${DEMO_PROJECT_ID}/cost`,
     },
     {
       num: '06',
       title: 'DPR & Exports',
-      status: `${pdfSizeKb} KB plate`,
+      status: pdfSizeKb !== '—' ? `${pdfSizeKb} KB plate` : '24-sec export gate',
       desc: 'Pre-flight audit gate, 24-section PDF & formula Excel BOQ',
       path: `/projects/${DEMO_PROJECT_ID}/reports`,
     },
@@ -396,76 +415,103 @@ export const LandingPage: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
               <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
                 <span className="h-2 w-2 rounded-full bg-ok" aria-hidden="true" />
-                Active Reference Study
+                Pre-Loaded Sample Study
               </span>
               <span className="text-rule-strong" aria-hidden="true">
                 ·
               </span>
-              <span>Nandapur Block, Koraput</span>
-              <span className="inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full border border-dashed border-warn-border bg-warn-bg text-warn">
-                Preliminary — Not Field Verified
+              <span>Nandapur Block, Koraput (Odisha)</span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full border border-dashed border-warn-border bg-warn-bg text-warn">
+                <span>Preliminary Screening Estimate</span>
+                <HelpTooltip glossaryKey="preliminaryDisclaimer" placement="bottom" />
               </span>
             </div>
 
             <h1 className="text-2xl sm:text-[2rem] font-bold text-ink tracking-tight leading-[1.15]">
-              Nandapur Tribal Electrification Pre-Feasibility Study
+              Plan Rural &amp; Tribal Village Electrification Using Open Maps
             </h1>
 
             <p className="text-sm text-ink-2 leading-relaxed">
-              Spatial pre-feasibility workbench evaluating habitation clustering, terrain-weighted
-              11 kV extension, and solar mini-grid sizing across Bheja, Padwa, and Maliaguda using
-              100% open satellite and Census baselines.
+              See which hamlets are dark at night, estimate how much power they need, compare grid lines vs. village solar microgrids, and prepare a 24-section Detailed Project Report ({formatSchemeLabel('DA-JGUA / RDSS')}) — starting with this example across Bheja, Padwa, and Maliaguda.
             </p>
 
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono text-ink-3 tabular-nums">
-              <span>Village Bheja (LGD 398712 · C2011 428914)</span>
-              <span>·</span>
-              <span>EPSG:32644</span>
+            <div>
+              <button
+                type="button"
+                aria-expanded={techMetaExpanded}
+                onClick={() => setTechMetaExpanded((prev) => !prev)}
+                className="inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-accent transition-colors"
+              >
+                <span>{techMetaExpanded ? 'Hide technical study codes' : 'Show technical study codes (LGD / CRS)'}</span>
+                <Icon icon={techMetaExpanded ? ChevronUp : ChevronDown} size="xs" />
+              </button>
+              {techMetaExpanded && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono text-ink-3 tabular-nums">
+                  <span>Village Bheja (LGD 398712 · C2011 428914)</span>
+                  <span>·</span>
+                  <span>Metric Grid: EPSG:32644</span>
+                  <HelpTooltip glossaryKey="crsEpsgUtm" placement="right" />
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Primary Navigation Actions */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Button
-              variant="primary"
-              size="md"
-              leftIcon={MapIcon}
-              rightIcon={ArrowRight}
-              onClick={() => navigate(`/projects/${DEMO_PROJECT_ID}/map`)}
-            >
-              Open Full GIS Workspace
-            </Button>
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={() => navigate(`/projects/${DEMO_PROJECT_ID}/workspace`)}
-            >
-              Open Planning Workspace
-            </Button>
-            <div className="flex items-center gap-3 pl-1 text-xs font-medium text-ink-2">
-              <Link
-                to="/projects"
-                className="inline-flex items-center gap-1 hover:text-accent transition-colors whitespace-nowrap"
+          {/* Primary Navigation Actions (2 Clear Hero CTAs + Sign-in Note) */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <Button
+                variant="primary"
+                size="md"
+                leftIcon={Compass}
+                rightIcon={ArrowRight}
+                onClick={() => navigate(`/projects/${DEMO_PROJECT_ID}/workspace`)}
               >
-                <Icon icon={FolderKanban} size="xs" />
-                Portfolio
-              </Link>
-              <Link
-                to="/projects/new"
-                className="inline-flex items-center gap-1 hover:text-accent transition-colors whitespace-nowrap"
+                Explore Sample Study
+              </Button>
+              <Button
+                variant="secondary"
+                size="md"
+                leftIcon={Plus}
+                onClick={() => navigate('/projects/new')}
               >
-                <Icon icon={Plus} size="xs" />
-                New Project
-              </Link>
+                Create New Village Project
+              </Button>
+              <div className="flex items-center gap-3 pl-1 text-xs font-medium text-ink-2">
+                <Link
+                  to={`/projects/${DEMO_PROJECT_ID}/map`}
+                  className="inline-flex items-center gap-1 hover:text-accent transition-colors whitespace-nowrap"
+                >
+                  <Icon icon={MapIcon} size="xs" />
+                  GIS Map
+                </Link>
+                <Link
+                  to="/projects"
+                  className="inline-flex items-center gap-1 hover:text-accent transition-colors whitespace-nowrap"
+                >
+                  <Icon icon={FolderKanban} size="xs" />
+                  My Projects
+                </Link>
+              </div>
             </div>
+            <p className="text-[11px] text-ink-3">
+              Creating your own village study or opening saved workspaces will ask you to sign in (a 1-click demo planner account is available on the sign-in screen).
+            </p>
+            {referenceNotice && (
+              <p role="status" className="text-xs text-warn bg-warn-bg/60 border border-warn-border rounded px-3 py-1.5">
+                {referenceNotice}
+              </p>
+            )}
           </div>
 
-          {/* Open Editorial Analytical Highlights (Varied Layout, No Heavy Box Grid) */}
+          {/* Open Editorial Analytical Highlights (Varied Layout, Plain Language + Help Icons) */}
           <div className="bg-sheet border border-rule/80 rounded-lg p-5 shadow-card space-y-4">
             <div className="grid grid-cols-2 gap-x-6 gap-y-4 divide-y-0">
               <div className="space-y-1">
                 <div className="flex items-center justify-between gap-1.5">
-                  <span className="text-xs font-medium text-ink-3">Detected Footprints</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-ink-3">
+                    <span>Detected Buildings</span>
+                    <HelpTooltip glossaryKey="buildingFootprints" placement="top" />
+                  </span>
                   <QualityTag kind="ESTIMATED" />
                 </div>
                 <div className="flex items-baseline gap-1.5">
@@ -473,7 +519,7 @@ export const LandingPage: React.FC = () => {
                     {detectedBuildingsCount}
                   </span>
                   <span className="text-xs text-ink-3">
-                    bldgs · {totalEstHouseholds} HH
+                    roofs · ~{totalEstHouseholds} homes
                   </span>
                 </div>
                 <div
@@ -495,23 +541,29 @@ export const LandingPage: React.FC = () => {
 
               <div className="space-y-1">
                 <div className="flex items-center justify-between gap-1.5">
-                  <span className="text-xs font-medium text-ink-3">11 kV Terrain Route</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-ink-3">
+                    <span>Terrain Line Route</span>
+                    <HelpTooltip glossaryKey="terrainCostSurface" placement="top" />
+                  </span>
                   <QualityTag kind="ESTIMATED" />
                 </div>
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-2xl font-bold tracking-tight text-ink tabular-nums">
                     {routingSummary.lengthKm}
                   </span>
-                  <span className="text-xs text-ink-3">km</span>
+                  <span className="text-xs text-ink-3">km of 11 kV line</span>
                 </div>
                 <div className="text-2xs text-ink-3 tabular-nums">
-                  {routingSummary.timingNote} · COP-30
+                  Follows gentle terrain ({routingSummary.timingNote})
                 </div>
               </div>
 
               <div className="space-y-1 pt-2 border-t border-rule-subtle">
                 <div className="flex items-center justify-between gap-1.5">
-                  <span className="text-xs font-medium text-ink-3">Solar Mean GHI</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-ink-3">
+                    <span>Average Daily Sunlight</span>
+                    <HelpTooltip glossaryKey="ghiSolarIrradiance" placement="top" />
+                  </span>
                   <QualityTag kind="PROXY" />
                 </div>
                 <div className="flex items-baseline gap-1.5">
@@ -521,28 +573,40 @@ export const LandingPage: React.FC = () => {
                   <span className="text-xs text-ink-3">kWh/m²/d</span>
                 </div>
                 <div className="text-2xs text-ink-3">
-                  Monsoon low ({solarData.worstMonth}): {solarData.worstGhi.toFixed(2)}
+                  Cloudiest month ({solarData.worstMonth}): {solarData.worstGhi.toFixed(2)}
                 </div>
               </div>
 
               <div className="space-y-1 pt-2 border-t border-rule-subtle">
                 <div className="flex items-center justify-between gap-1.5">
-                  <span className="text-xs font-medium text-ink-3">24-Sec DPR Plate</span>
-                  <Badge variant="ok" size="sm">
-                    Ready
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-ink-3">
+                    <span>24-Section PDF Report</span>
+                    <HelpTooltip glossaryKey="dpr" placement="top" />
+                  </span>
+                  <Badge
+                    variant={
+                      spikeSummary?.spikes?.S3_cartographic_pdf?.status === 'PASSED'
+                        ? 'ok'
+                        : 'neutral'
+                    }
+                    size="sm"
+                  >
+                    {spikeSummary?.spikes?.S3_cartographic_pdf?.status === 'PASSED'
+                      ? 'Ready'
+                      : 'Pending'}
                   </Badge>
                 </div>
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-xl font-bold tracking-tight text-ink tabular-nums">
                     {pdfSizeKb}
                   </span>
-                  <span className="text-xs text-ink-3">KB PDF</span>
+                  <span className="text-xs text-ink-3">KB preview plate</span>
                 </div>
                 <Link
                   to={`/projects/${DEMO_PROJECT_ID}/reports`}
                   className="inline-flex items-center gap-1 text-2xs font-medium text-accent hover:underline"
                 >
-                  Open export gate →
+                  Open checklist &amp; downloads →
                 </Link>
               </div>
             </div>
@@ -556,7 +620,7 @@ export const LandingPage: React.FC = () => {
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2 text-xs font-semibold text-warn">
                 <Icon icon={AlertTriangle} size="sm" />
-                <span>Scientific limitations &amp; verification policy</span>
+                <span>Important rule: satellites cannot see inside homes</span>
               </div>
               <button
                 type="button"
@@ -564,24 +628,23 @@ export const LandingPage: React.FC = () => {
                 onClick={() => setPolicyExpanded((prev) => !prev)}
                 className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accent-hover transition-colors"
               >
-                <span>{policyExpanded ? 'Hide rules' : 'View verification rules'}</span>
+                <span>{policyExpanded ? 'Hide methodology rules' : 'How checks & safety rules work'}</span>
                 <Icon icon={policyExpanded ? ChevronUp : ChevronDown} size="xs" />
               </button>
             </div>
             <p className="text-xs text-ink-2 leading-relaxed">
-              Satellites cannot observe indoor meters, supply hours, or voltage drops. Habitation
-              statuses remain remote-sensing proxies (Axis 1) and <strong className="text-ink">UNVERIFIED</strong> (Axis 2) until ground-confirmed.
+              Outdoor nighttime brightness only gives screening clues. Clusters stay <strong className="text-ink">Unverified</strong> until someone checks records or visits the village.
             </p>
             {policyExpanded && (
               <ul className="pt-2 border-t border-warn-border/50 space-y-1 text-xs text-ink-2 leading-relaxed list-disc pl-4">
                 <li>
-                  All areas, conductor lengths, and DBSCAN radii compute in local UTM coordinates (EPSG:32644).
+                  All areas, wire lengths, and village groupings measure real meters using local flat map grids (UTM Zone 44N / EPSG:32644).
                 </li>
                 <li>
-                  Existing grid infrastructure is never invented — unmapped lines remain UNSET until uploaded or logged as an explicit USER_ASSUMED tie-in.
+                  Existing poles and transformers are never invented — only uploaded utility files or points you mark on the map are used.
                 </li>
                 <li>
-                  Missing unit cost rates block DPR export rather than substituting placeholder prices.
+                  Missing equipment prices block final DPR export until real local prices are filled in.
                 </li>
               </ul>
             )}
@@ -594,7 +657,7 @@ export const LandingPage: React.FC = () => {
             <div className="flex items-center gap-2 text-xs text-ink-2">
               <Icon icon={Compass} size="sm" className="text-accent" />
               <span className="font-semibold text-ink">
-                Interactive Spatial Assessment Canvas — Koraput Reference AOI
+                Interactive Village Map — Click any Hamlet, Line, or Transformer
               </span>
             </div>
             <LayerSourceBadge source="REFERENCE_DEMO" />
@@ -810,7 +873,7 @@ export const LandingPage: React.FC = () => {
               Habitation Cluster Schedule — Village Bheja
             </h2>
             <p className="text-xs text-ink-2 mt-0.5">
-              Two-axis classification keeping satellite proxy indicators distinct from ground verification
+              Satellite clues stay clearly separated from confirmed field surveys. Hover or tap `?` on any column for a plain explanation.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -828,14 +891,34 @@ export const LandingPage: React.FC = () => {
           <table className="w-full text-left border-collapse text-body-sm">
             <thead>
               <tr className="border-b border-rule-subtle bg-subtle/70 text-ink-2 text-xs font-semibold">
-                <th className="py-3 px-4">Cluster</th>
-                <th className="py-3 px-4">Habitation Name</th>
-                <th className="py-3 px-4 text-right">Footprints</th>
-                <th className="py-3 px-4 text-right">Est. HH</th>
-                <th className="py-3 px-4 text-right">VIIRS 2020 → 2024 (nW/cm²/sr)</th>
-                <th className="py-3 px-4 text-right">11 kV Terrain Dist</th>
-                <th className="py-3 px-4">Two-Axis Status</th>
-                <th className="py-3 px-4">Preliminary Planning Mode</th>
+                <th className="py-3 px-4">ID</th>
+                <th className="py-3 px-4">Hamlet / Habitation Name</th>
+                <th className="py-3 px-4 text-right">Roofs Detected</th>
+                <th className="py-3 px-4 text-right">Est. Homes</th>
+                <th className="py-3 px-4 text-right">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <span>Night Light (nW/cm²/sr)</span>
+                    <HelpTooltip glossaryKey="viirsNighttimeLight" placement="top" />
+                  </span>
+                </th>
+                <th className="py-3 px-4 text-right">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <span>Distance to 11 kV Line</span>
+                    <HelpTooltip glossaryKey="terrainCostSurface" placement="top" />
+                  </span>
+                </th>
+                <th className="py-3 px-4">
+                  <span className="inline-flex items-center gap-1">
+                    <span>Satellite Clue &amp; Check State</span>
+                    <HelpTooltip glossaryKey="verificationStatus" placement="top" />
+                  </span>
+                </th>
+                <th className="py-3 px-4">
+                  <span className="inline-flex items-center gap-1">
+                    <span>Suggested Option</span>
+                    <HelpTooltip glossaryKey="distributionModality" placement="top" />
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-rule-subtle">
@@ -848,8 +931,12 @@ export const LandingPage: React.FC = () => {
                   <td className="py-3.5 px-4 text-right tabular-nums">{cluster.buildings}</td>
                   <td className="py-3.5 px-4 text-right tabular-nums">{cluster.estHouseholds}</td>
                   <td className="py-3.5 px-4 text-right tabular-nums">
-                    <span className="text-ink-3">{cluster.viirs2020.toFixed(2)} → </span>
-                    <strong className="text-ink">{cluster.viirsRadNanoW.toFixed(2)}</strong>
+                    <span className="text-ink-3">
+                      {cluster.viirs2020 != null ? cluster.viirs2020.toFixed(2) : '—'} →{' '}
+                    </span>
+                    <strong className="text-ink">
+                      {cluster.viirsRadNanoW != null ? cluster.viirsRadNanoW.toFixed(2) : '—'}
+                    </strong>
                   </td>
                   <td className="py-3.5 px-4 text-right tabular-nums text-ink-2">
                     {(cluster.terrainDistM / 1000).toFixed(2)} km

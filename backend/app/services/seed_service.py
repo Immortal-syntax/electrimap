@@ -15,19 +15,30 @@
 """Idempotent seeding for default accounts, Koraput admin units, and demo project."""
 
 from shapely.geometry import MultiPolygon, Polygon
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
-from app.db.models.auth import User
+from app.db.models.auth import User, UserSession
 from app.db.models.project import Project, ProjectAoi
 from app.db.models.reference import AdminUnit, CensusVillage, EngineeringConstant
 from app.domain.engineering.constants import STANDARD_ENGINEERING_CONSTANTS
 from app.domain.gis.crs import compute_metric_area_km2
 
 DEMO_PROJECT_ID = "00000000-0000-4000-8000-000000000001"
-DEFAULT_PLANNER_EMAIL = "planner@electrimap.in"
-DEFAULT_PLANNER_PASSWORD = "ElectriMap#2026"
+SWAYAM_USER_ID = "00000000-0000-4000-8000-000000000010"
+SWAYAM_EMAIL = "swayamkr26@gmail.com"
+SWAYAM_DISPLAY_NAME = "Swayam Kumar"
+SWAYAM_PASSWORD = "1234"
+
+SUMIT_USER_ID = "00000000-0000-4000-8000-000000000012"
+SUMIT_EMAIL = "sumitp@gmail.com"
+SUMIT_DISPLAY_NAME = "Sumit Kushwaha"
+SUMIT_PASSWORD = "1234"
+
+# Backwards-compatible aliases used by test suites
+DEFAULT_PLANNER_EMAIL = SWAYAM_EMAIL
+DEFAULT_PLANNER_PASSWORD = SWAYAM_PASSWORD
 DEFAULT_ADMIN_EMAIL = "admin@electrimap.in"
 DEFAULT_ADMIN_PASSWORD = "AdminElectriMap#2026"
 
@@ -49,31 +60,67 @@ def _make_rect_multipolygon(
 
 def ensure_seed_data(db: Session) -> None:
     """Seed users, Odisha/Koraput administrative units, Census 2011 records, and demo project."""
-    existing_planner = db.execute(
-        select(User).where(User.email == DEFAULT_PLANNER_EMAIL)
+    existing_swayam = db.execute(
+        select(User).where(or_(User.email == SWAYAM_EMAIL, User.id == SWAYAM_USER_ID))
     ).scalar_one_or_none()
 
-    if existing_planner is None:
+    if existing_swayam is None:
         planner = User(
-            id="00000000-0000-4000-8000-000000000010",
-            email=DEFAULT_PLANNER_EMAIL,
-            password_hash=hash_password(DEFAULT_PLANNER_PASSWORD),
-            display_name="Swayam (Lead Planner)",
+            id=SWAYAM_USER_ID,
+            email=SWAYAM_EMAIL,
+            password_hash=hash_password(SWAYAM_PASSWORD),
+            display_name=SWAYAM_DISPLAY_NAME,
             role="PLANNER",
             is_active=True,
         )
-        admin = User(
-            id="00000000-0000-4000-8000-000000000011",
-            email=DEFAULT_ADMIN_EMAIL,
-            password_hash=hash_password(DEFAULT_ADMIN_PASSWORD),
-            display_name="System Administrator",
-            role="ADMIN",
-            is_active=True,
-        )
-        db.add_all([planner, admin])
+        db.add(planner)
         db.flush()
     else:
-        planner = existing_planner
+        planner = existing_swayam
+        if planner.email != SWAYAM_EMAIL or planner.display_name != SWAYAM_DISPLAY_NAME:
+            planner.email = SWAYAM_EMAIL
+            planner.display_name = SWAYAM_DISPLAY_NAME
+            planner.password_hash = hash_password(SWAYAM_PASSWORD)
+            planner.is_active = True
+            db.execute(delete(UserSession).where(UserSession.user_id == planner.id))
+            db.flush()
+
+    existing_sumit = db.execute(
+        select(User).where(or_(User.email == SUMIT_EMAIL, User.id == SUMIT_USER_ID))
+    ).scalar_one_or_none()
+
+    if existing_sumit is None:
+        db.add(
+            User(
+                id=SUMIT_USER_ID,
+                email=SUMIT_EMAIL,
+                password_hash=hash_password(SUMIT_PASSWORD),
+                display_name=SUMIT_DISPLAY_NAME,
+                role="PLANNER",
+                is_active=True,
+            )
+        )
+        db.flush()
+    elif existing_sumit.display_name != SUMIT_DISPLAY_NAME or not existing_sumit.is_active:
+        existing_sumit.display_name = SUMIT_DISPLAY_NAME
+        existing_sumit.is_active = True
+        db.flush()
+
+    existing_admin = db.execute(
+        select(User).where(User.email == DEFAULT_ADMIN_EMAIL)
+    ).scalar_one_or_none()
+    if existing_admin is None:
+        db.add(
+            User(
+                id="00000000-0000-4000-8000-000000000011",
+                email=DEFAULT_ADMIN_EMAIL,
+                password_hash=hash_password(DEFAULT_ADMIN_PASSWORD),
+                display_name="System Administrator",
+                role="ADMIN",
+                is_active=True,
+            )
+        )
+        db.flush()
 
     # Seed Admin Units if empty
     has_state = db.execute(

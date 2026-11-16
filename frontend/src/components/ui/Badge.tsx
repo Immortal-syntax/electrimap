@@ -178,6 +178,11 @@ export const ClassificationBadge: React.FC<ClassificationBadgeProps> = ({
     <span
       data-proxy-class={proxyClass}
       data-verification-state={verificationState}
+      title={
+        isVerified
+          ? `Ground check recorded: ${verificationState.replace('_', ' ')}`
+          : 'Satellite proxy estimate — confirm with field or Census records before finalizing DPR'
+      }
       className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-medium rounded-full bg-sheet text-ink ${
         isVerified ? 'border-2 border-solid' : 'border border-dashed'
       }`}

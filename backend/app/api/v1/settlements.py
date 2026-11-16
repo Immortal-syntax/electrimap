@@ -124,12 +124,16 @@ def add_manual_building_footprint(
 @router.get("/{project_id}/exports/preliminary-settlement-pdf")
 def export_preliminary_settlement_pdf(
     project_id: str,
+    skeleton_only: bool = False,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Export the 2-page Preliminary DPR Skeleton (Sections 1-5 + UTM Cartographic Map Plate)."""
+    """Export the Preliminary DPR PDF (Stage 2 Sections 1-5 + Plate 1 when skeleton_only=true)."""
     pdf_bytes = generate_preliminary_settlement_pdf(
-        db, project_id=project_id, user=user
+        db,
+        project_id=project_id,
+        user=user,
+        skeleton_only=skeleton_only,
     )
     return Response(
         content=pdf_bytes,

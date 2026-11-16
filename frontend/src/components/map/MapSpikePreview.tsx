@@ -356,7 +356,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
   const [rasterRetryToken, setRasterRetryToken] = useState<number>(0);
   const [stressActive, setStressActive] = useState<boolean>(false);
   const [stressStatusText, setStressStatusText] = useState<string>(
-    'Ready · Click any electrical line, substation, transformer, or habitation on the map to inspect',
+    'Ready · Click any map feature to inspect',
   );
   const [cursorCoords, setCursorCoords] = useState<{ lon: number; lat: number }>({
     lon: KORAPUT_CENTER[0],
@@ -369,6 +369,16 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
     defaultLayerPanelOpen ?? (variant !== 'hero'),
   );
   const [beginnerGuideOpen, setBeginnerGuideOpen] = useState<boolean>(false);
+  useEffect(() => {
+    if (!beginnerGuideOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setBeginnerGuideOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [beginnerGuideOpen]);
   const [layerAEnabled, setLayerAEnabled] = useState<boolean>(true);
   const [voltageFilter, setVoltageFilter] = useState<VoltageFilterMode>('ALL');
   const [layerBEnabled, setLayerBEnabled] = useState<boolean>(false);
@@ -384,10 +394,15 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<SearchableLocationItem[]>([]);
+  const [activeLocationId, setActiveLocationId] = useState<string>('');
   const [measureModeActive, setMeasureModeActive] = useState<boolean>(false);
   const [measurePoints, setMeasurePoints] = useState<Array<[number, number]>>([]);
   const [inspectedFeature, setInspectedFeature] =
     useState<InspectedFeatureState | null>(null);
+  const [hoveredFeatureHint, setHoveredFeatureHint] = useState<{
+    title: string;
+    subtitle: string;
+  } | null>(null);
 
   const activePeriodMeta =
     VIIRS_PERIOD_OPTIONS.find((p) => p.id === viirsPeriod) ??
@@ -601,24 +616,34 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               source: 'viirs-radiance-source',
               paint: {
                 'circle-radius': [
-                  'match',
-                  ['get', 'cluster_code'],
-                  'CL-01',
-                  42,
-                  'CL-02',
-                  24,
-                  'CL-03',
-                  14,
+                  'interpolate',
+                  ['linear'],
+                  ['coalesce', ['get', periodRadField], ['get', 'lightscore_mean'], 0.05],
+                  0.05,
                   10,
+                  0.5,
+                  16,
+                  2.0,
+                  24,
+                  5.0,
+                  34,
+                  12.0,
+                  42,
                 ],
                 'circle-color': [
-                  'match',
-                  ['get', 'cluster_code'],
-                  'CL-01',
-                  '#FDE047',
-                  'CL-02',
-                  '#F59E0B',
-                  '#6D28D9',
+                  'interpolate',
+                  ['linear'],
+                  ['coalesce', ['get', periodRadField], ['get', 'lightscore_mean'], 0.05],
+                  0.05,
+                  '#3B0F70',
+                  0.5,
+                  '#8C2981',
+                  2.0,
+                  '#DE4968',
+                  5.0,
+                  '#FE9F6D',
+                  12.0,
+                  '#FCFDBF',
                 ],
                 'circle-blur': 0.75,
                 'circle-opacity': viirsOpacity * 0.65,
@@ -692,12 +717,12 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
                 'match',
                 ['get', 'electrification_status'],
                 'ELECTRIFIED_GRID_CONNECTED',
-                '#1B6E3A',
+                '#0072B2',
                 'PARTIALLY_ELECTRIFIED_UNDERSERVED',
-                '#B35300',
+                '#E69F00',
                 'REPORTED_UNELECTRIFIED_HABITATION',
-                '#A61B1B',
-                '#1E4D3B',
+                '#D55E00',
+                '#64748B',
               ],
               'fill-opacity': 0.11,
             },
@@ -711,14 +736,15 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
                 'match',
                 ['get', 'electrification_status'],
                 'ELECTRIFIED_GRID_CONNECTED',
-                '#1B6E3A',
+                '#0072B2',
                 'PARTIALLY_ELECTRIFIED_UNDERSERVED',
-                '#B35300',
+                '#E69F00',
                 'REPORTED_UNELECTRIFIED_HABITATION',
-                '#A61B1B',
-                '#1E4D3B',
+                '#D55E00',
+                '#64748B',
               ],
               'line-width': 2.2,
+              'line-dasharray': [3, 2],
             },
           });
           map.addLayer({
@@ -790,17 +816,35 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
             paint: {
               'circle-radius': 8.5,
               'circle-color': [
-                'match',
-                ['get', 'proxy_class'],
-                'LIKELY_ELECTRIFIED',
-                '#1B6E3A',
-                'POTENTIALLY_UNDERSERVED',
-                '#B35300',
-                'POTENTIALLY_UNSERVED',
-                '#A61B1B',
-                '#52504A',
+                'case',
+                [
+                  'in',
+                  ['get', 'verification_state'],
+                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                ],
+                '#009E73',
+                [
+                  'match',
+                  ['get', 'proxy_class'],
+                  'LIKELY_ELECTRIFIED',
+                  '#0072B2',
+                  'POTENTIALLY_UNDERSERVED',
+                  '#E69F00',
+                  'POTENTIALLY_UNSERVED',
+                  '#D55E00',
+                  '#64748B',
+                ],
               ],
-              'circle-stroke-color': '#FFFFFF',
+              'circle-stroke-color': [
+                'case',
+                [
+                  'in',
+                  ['get', 'verification_state'],
+                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                ],
+                '#0F172A',
+                '#FFFFFF',
+              ],
               'circle-stroke-width': 2.2,
             },
           });
@@ -1256,9 +1300,24 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
             layers: hoverLayers,
           });
           const canvasEl = map.getCanvas?.();
+          const topHit = hits && hits.length > 0 ? hits[0] : null;
           if (canvasEl?.style) {
-            canvasEl.style.cursor = hits && hits.length > 0 ? 'pointer' : '';
+            canvasEl.style.cursor = topHit ? 'pointer' : '';
           }
+          if (topHit) {
+            const p = (topHit.properties ?? {}) as Record<string, unknown>;
+            const rawTitle = String(
+              p.name ?? p.cluster_code ?? p.label ?? p.route_code ?? 'Map Feature',
+            );
+            setHoveredFeatureHint({
+              title: rawTitle,
+              subtitle: 'Click to inspect details',
+            });
+          } else {
+            setHoveredFeatureHint(null);
+          }
+        } else {
+          setHoveredFeatureHint(null);
         }
       } catch {
         // Ignore hover errors in headless unit tests
@@ -1464,6 +1523,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
   const handleSelectSearchLocation = (loc: SearchableLocationItem) => {
     setSearchResults([]);
     setSearchQuery(loc.label);
+    setActiveLocationId(loc.id);
     setInspectedFeature(buildInspectedFeatureFromSearchItem(loc));
     const map = mapRef.current;
     if (!map) return;
@@ -1604,14 +1664,16 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
 
           <button
             type="button"
+            aria-pressed={beginnerGuideOpen}
             onClick={() => setBeginnerGuideOpen((prev) => !prev)}
             className={`h-8 px-2.5 text-xs font-medium rounded-xs border transition-colors whitespace-nowrap ${
               beginnerGuideOpen
                 ? 'bg-accent text-white border-accent'
                 : 'bg-sheet text-ink-2 border-rule-strong hover:text-ink'
             }`}
+            title="Open plain-language guide to map colors, symbols, and layers"
           >
-            ? Beginner Guide
+            ? Map Guide
           </button>
 
           <Button
@@ -1628,75 +1690,39 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
       <div
         role="toolbar"
         aria-label="Koraput quick-jump geographic locations"
-        className="px-3 py-1.5 bg-paper border-b border-rule flex items-center justify-between gap-2 text-xs"
+        className="px-3 py-2 bg-paper border-b border-rule flex flex-wrap items-center justify-between gap-2 text-xs"
       >
-        <div className="flex items-center gap-1.5 flex-nowrap flex-1 min-w-0 overflow-x-auto py-0.5">
-          <span className="text-xs font-medium text-ink-2 whitespace-nowrap shrink-0 mr-1">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+          <label
+            htmlFor="spike-quick-jump-select"
+            className="text-xs font-medium text-ink-2 whitespace-nowrap shrink-0"
+          >
             Inspect Koraput Feature:
-          </span>
-          {KORAPUT_SEARCH_CATALOG.map((loc) => {
-            const shortName = formatQuickJumpLabel(loc);
-            return (
-              <button
-                key={loc.id}
-                type="button"
-                onClick={() => handleSelectSearchLocation(loc)}
-                className="px-2.5 py-1 rounded-xs text-xs font-medium border bg-sheet text-ink-2 border-rule hover:border-rule-strong hover:text-ink transition-colors whitespace-nowrap shrink-0"
-                title={`${loc.label} — ${loc.summary}`}
-              >
-                {shortName}
-              </button>
-            );
-          })}
+          </label>
+          <select
+            id="spike-quick-jump-select"
+            aria-label="Inspect Koraput reference location or asset"
+            value={activeLocationId ?? ''}
+            onChange={(e) => {
+              const chosen = KORAPUT_SEARCH_CATALOG.find(
+                (item) => item.id === e.target.value,
+              );
+              if (chosen) handleSelectSearchLocation(chosen);
+            }}
+            className="h-8 w-full sm:w-auto sm:min-w-[260px] max-w-full px-2.5 text-xs bg-sheet border border-rule rounded-xs text-ink"
+          >
+            <option value="">Select Koraput settlement, substation, or gap...</option>
+            {KORAPUT_SEARCH_CATALOG.map((loc) => (
+              <option key={loc.id} value={loc.id}>
+                {formatQuickJumpLabel(loc)}
+              </option>
+            ))}
+          </select>
         </div>
-        <div className="shrink-0 pl-2 border-l border-rule">
+        <div className="shrink-0">
           <LayerSourceBadge source="REFERENCE_DEMO" />
         </div>
       </div>
-
-      {beginnerGuideOpen && (
-        <div className="p-3.5 bg-paper border-b border-rule-strong text-xs space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-ink text-sm">
-              Beginner Guide: Understanding the Specialised Electricity GIS Layers
-            </span>
-            <button
-              type="button"
-              onClick={() => setBeginnerGuideOpen(false)}
-              className="text-ink-2 underline text-xs font-medium"
-            >
-              Close Guide
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-ink-2 leading-relaxed">
-            <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs">
-              <strong className="text-ink block mb-1">
-                Layer A &amp; Layer F: Existing vs. Proposed Grid
-              </strong>
-              <strong>Solid purple (33 kV)</strong> and{' '}
-              <strong>solid dark-red (11 kV)</strong> lines are existing OpenStreetMap
-              power lines. <strong>Dashed red (11 kV)</strong> and{' '}
-              <strong>dashed blue (415 V)</strong> lines are preliminary proposed routes.
-            </div>
-            <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs">
-              <strong className="text-ink block mb-1">
-                Layer B: NASA VIIRS Nighttime Illumination
-              </strong>
-              Measures upward nighttime radiance (<code>nW/cm²/sr</code>). Bright areas
-              indicate outdoor lighting; dark pixels are an indirect indicator only and do
-              not prove a household lacks an indoor meter or solar home system.
-            </div>
-            <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs">
-              <strong className="text-ink block mb-1">
-                Layer C, D &amp; E: Settlements &amp; Electrification Gaps
-              </strong>
-              Combines Census 2011 supply records, 143 satellite building footprints, and
-              distance to the nearest 11 kV transformer to highlight habitations needing
-              field survey verification.
-            </div>
-          </div>
-        </div>
-      )}
 
       {measureModeActive && (
         <div className="px-3 py-2 bg-info-tint border-b border-rule flex flex-wrap items-center justify-between gap-2 text-xs text-info">
@@ -1717,17 +1743,39 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               </>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setMeasurePoints([])}
-            className="underline font-medium"
-          >
-            Reset Points
-          </button>
+          <div className="flex items-center gap-3 font-medium">
+            <button
+              type="button"
+              onClick={() => setMeasurePoints([])}
+              className="underline"
+            >
+              Reset Points
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMeasureModeActive(false);
+                setMeasurePoints([]);
+              }}
+              className="underline"
+            >
+              Exit Measure
+            </button>
+          </div>
         </div>
       )}
 
         </>
+      )}
+
+      {rasterLoading && !tileWarning && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="px-3 py-1 bg-subtle border-b border-rule text-xs text-ink-2 flex items-center justify-between gap-2"
+        >
+          <span>Loading satellite imagery / map overlay…</span>
+        </div>
       )}
 
       {tileWarning && (
@@ -1814,6 +1862,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                 <input
                   type="checkbox"
+                  aria-label="Toggle Layer A Existing Electricity Infrastructure"
                   checked={layerAEnabled}
                   onChange={(e) => setLayerAEnabled(e.target.checked)}
                   className="mt-0.5"
@@ -1843,53 +1892,11 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
             </div>
 
             <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-1.5">
-              <div className="flex items-center justify-between gap-1.5">
-                <span className="font-semibold text-ink text-xs">
-                  Optical Satellite Basemap (Sentinel-2)
-                </span>
-                <div className="flex items-center gap-1">
-                  {rasterLoading && (
-                    <span className="text-xs text-accent animate-pulse">
-                      Loading Raster...
-                    </span>
-                  )}
-                  <QualityTag
-                    kind="ESTIMATED"
-                    label={basemap === 'satellite' ? 'ACTIVE · 10 m' : '10 m OPTICAL'}
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-ink-2 leading-relaxed">
-                EOX Sentinel-2 Cloudless 2020 Mosaic (10 m resolution ·{' '}
-                <code>CC BY-NC-SA 4.0</code> · Copernicus Sentinel Data 2020).
-              </p>
-              {basemap !== 'satellite' ? (
-                <button
-                  type="button"
-                  onClick={() => handleBasemapChange('satellite')}
-                  className="w-full h-8 px-2.5 text-xs font-medium bg-paper border border-rule-strong rounded-xs text-ink hover:bg-accent-tint transition-colors"
-                >
-                  Switch to Sentinel-2 Satellite Basemap
-                </button>
-              ) : (
-                <div className="flex items-center justify-between text-xs font-medium text-ok bg-ok-tint px-2.5 py-1.5 rounded-xs border border-ok/30">
-                  <span>✓ Viewing 10 m Optical Satellite Imagery</span>
-                  <button
-                    type="button"
-                    onClick={() => handleBasemapChange('survey_paper')}
-                    className="underline text-ink-2 hover:text-ink"
-                  >
-                    Survey Sheet
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="p-2.5 bg-sheet border border-rule-subtle rounded-xs space-y-1.5">
               <div className="flex flex-wrap items-start justify-between gap-1.5">
                 <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                   <input
                     type="checkbox"
+                    aria-label="Toggle Layer B NASA VIIRS Nighttime Illumination"
                     checked={layerBEnabled}
                     onChange={(e) => {
                       setLayerBEnabled(e.target.checked);
@@ -1912,48 +1919,6 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               </p>
               {layerBEnabled && (
                 <div className="space-y-2 pt-1.5 border-t border-rule-subtle">
-                  <div>
-                    <label
-                      htmlFor="landing-viirs-period-select"
-                      className="block text-xs font-medium text-ink-2 mb-1"
-                    >
-                      Observation Composite Scenario
-                    </label>
-                    <select
-                      id="landing-viirs-period-select"
-                      aria-label="Select VIIRS observation date"
-                      value={viirsPeriod}
-                      onChange={(e) => {
-                        setViirsPeriod(e.target.value as ViirsObservationPeriod);
-                        setTileWarning(null);
-                        if (!viirsGlobalGibs) {
-                          beginRasterLoad();
-                        }
-                      }}
-                      className="w-full h-8 px-2 text-xs bg-paper border border-rule rounded-xs text-ink"
-                    >
-                      {VIIRS_PERIOD_OPTIONS.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="p-2 bg-paper border border-rule-subtle rounded-xs space-y-1 text-xs text-ink-2">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="font-semibold text-ink">
-                        {activePeriodMeta.observationWindow}
-                      </span>
-                      <QualityTag kind="ASSUMED" label="SYNTHETIC_PLACEHOLDER" />
-                    </div>
-                    <div>Sensor: {activePeriodMeta.sensorResolution}</div>
-                    <div className="text-ink-3 leading-relaxed">
-                      {activePeriodMeta.compositeNote}. Local AOI PNG is an
-                      illustrative proxy — not live orbital imagery.
-                    </div>
-                  </div>
-
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs font-medium text-ink">
                       <span className="tabular-nums">
@@ -1995,33 +1960,6 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
                     </div>
                   </div>
 
-                  <div className="space-y-1.5 pt-1.5 border-t border-rule-subtle">
-                    <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={viirsHalosEnabled}
-                        onChange={(e) => setViirsHalosEnabled(e.target.checked)}
-                      />
-                      <span>
-                        Show Radiometric Settlement Glow Halos (nW/cm²/sr)
-                      </span>
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={viirsGlobalGibs}
-                        onChange={(e) => {
-                          setViirsGlobalGibs(e.target.checked);
-                          setTileWarning(null);
-                          beginRasterLoad();
-                        }}
-                      />
-                      <span>
-                        Include Global NASA GIBS VIIRS_CityLights_2012 Tiles (2012 Mosaic · z ≤ 8)
-                      </span>
-                    </label>
-                  </div>
-
                   <div className="p-2 bg-paper border border-rule-subtle rounded-xs space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-ink">
@@ -2033,17 +1971,24 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
                       {RASTER_LEGEND_SPECS.nightlights.stops.map((stop) => (
                         <div
                           key={stop.rangeText}
-                          className="flex items-center gap-1.5"
+                          className="space-y-0.5"
                           title={stop.interpretation}
                         >
-                          <span
-                            className="w-3 h-2.5 inline-block rounded-xs border border-rule shrink-0"
-                            style={{ backgroundColor: stop.color }}
-                          />
-                          <span className="font-mono tabular-nums font-semibold text-ink w-16 shrink-0">
-                            {stop.rangeText}
-                          </span>
-                          <span className="truncate">{stop.label}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="w-3 h-2.5 inline-block rounded-xs border border-rule shrink-0"
+                              style={{ backgroundColor: stop.color }}
+                            />
+                            <span className="font-mono tabular-nums font-semibold text-ink w-16 shrink-0">
+                              {stop.rangeText}
+                            </span>
+                            <span className="truncate font-medium text-ink-2">{stop.label}</span>
+                          </div>
+                          {stop.interpretation && (
+                            <div className="text-[11px] text-ink-3 pl-[4.75rem]">
+                              {stop.interpretation}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2053,6 +1998,84 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
                       visible to nighttime satellites.
                     </div>
                   </div>
+
+                  <details className="pt-1.5 border-t border-rule-subtle">
+                    <summary className="text-xs font-medium text-ink-2 cursor-pointer select-none hover:text-ink">
+                      Advanced Night-Light Options
+                    </summary>
+                    <div className="space-y-2 pt-2">
+                      <div>
+                        <label
+                          htmlFor="landing-viirs-period-select"
+                          className="block text-xs font-medium text-ink-2 mb-1"
+                        >
+                          Observation Composite Scenario
+                        </label>
+                        <select
+                          id="landing-viirs-period-select"
+                          aria-label="Select VIIRS observation date"
+                          value={viirsPeriod}
+                          onChange={(e) => {
+                            setViirsPeriod(e.target.value as ViirsObservationPeriod);
+                            setTileWarning(null);
+                            if (!viirsGlobalGibs) {
+                              beginRasterLoad();
+                            }
+                          }}
+                          className="w-full h-8 px-2 text-xs bg-paper border border-rule rounded-xs text-ink"
+                        >
+                          {VIIRS_PERIOD_OPTIONS.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="p-2 bg-paper border border-rule-subtle rounded-xs space-y-1 text-xs text-ink-2">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-semibold text-ink">
+                            {activePeriodMeta.observationWindow}
+                          </span>
+                          <QualityTag kind="ASSUMED" label="Illustrative Preview" />
+                        </div>
+                        <div>Sensor: {activePeriodMeta.sensorResolution}</div>
+                        <div className="text-ink-3 leading-relaxed">
+                          {activePeriodMeta.compositeNote}. Local AOI image is an
+                          illustrative proxy — not live orbital imagery.
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 pt-1">
+                        <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            aria-label="Show Radiometric Settlement Glow Halos"
+                            checked={viirsHalosEnabled}
+                            onChange={(e) => setViirsHalosEnabled(e.target.checked)}
+                          />
+                          <span>
+                            Show Radiometric Settlement Glow Halos (nW/cm²/sr)
+                          </span>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            aria-label="Include Global NASA GIBS VIIRS 2012 Tiles"
+                            checked={viirsGlobalGibs}
+                            onChange={(e) => {
+                              setViirsGlobalGibs(e.target.checked);
+                              setTileWarning(null);
+                              beginRasterLoad();
+                            }}
+                          />
+                          <span>
+                            Include Global NASA GIBS 2012 Nighttime Lights (z ≤ 8)
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               )}
             </div>
@@ -2061,6 +2084,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                 <input
                   type="checkbox"
+                  aria-label="Toggle Layer C Village Electrification Status"
                   checked={layerCEnabled}
                   onChange={(e) => setLayerCEnabled(e.target.checked)}
                   className="mt-0.5"
@@ -2076,6 +2100,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                 <input
                   type="checkbox"
+                  aria-label="Toggle Layer D Settlements and Footprints"
                   checked={layerDEnabled}
                   onChange={(e) => setLayerDEnabled(e.target.checked)}
                   className="mt-0.5"
@@ -2088,6 +2113,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                 <input
                   type="checkbox"
+                  aria-label="Toggle Layer E Potential Electrification Gaps"
                   checked={layerEEnabled}
                   onChange={(e) => setLayerEEnabled(e.target.checked)}
                   className="mt-0.5"
@@ -2100,6 +2126,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
               <label className="flex items-start gap-2 cursor-pointer font-semibold text-ink">
                 <input
                   type="checkbox"
+                  aria-label="Toggle Layer F Proposed Electricity Network"
                   checked={layerFEnabled}
                   onChange={(e) => setLayerFEnabled(e.target.checked)}
                   className="mt-0.5"
@@ -2174,46 +2201,119 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
                   >
                     VIIRS Lights
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      try {
-                        mapRef.current?.flyTo({
-                          center: KORAPUT_CENTER,
-                          zoom: DEFAULT_ZOOM,
-                          duration: 450,
-                        });
-                      } catch {
-                        // Ignore in tests
-                      }
-                    }}
-                    className="px-2.5 py-1.5 rounded-full text-xs font-medium text-ink-2 hover:bg-subtle hover:text-ink transition-colors"
-                  >
-                    Fit AOI
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          mapRef.current?.flyTo({
+                            center: KORAPUT_CENTER,
+                            zoom: DEFAULT_ZOOM,
+                            duration: 450,
+                          });
+                        } catch {
+                          // Ignore in tests
+                        }
+                      }}
+                      className="px-2.5 py-1.5 rounded-full text-xs font-medium text-ink-2 hover:bg-subtle hover:text-ink transition-colors"
+                      title="Zoom and center map on the sample study area"
+                    >
+                      Center on Study Area
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={beginnerGuideOpen}
+                      onClick={() => setBeginnerGuideOpen((prev) => !prev)}
+                      className={`px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                        beginnerGuideOpen
+                          ? 'bg-accent text-white'
+                          : 'text-ink-2 hover:bg-subtle hover:text-ink'
+                      }`}
+                      title="Open plain-language guide to map colors and layers"
+                    >
+                      ? Map Guide
+                    </button>
+                  </div>
+
+                  {onOpenFullMap && (
+                    <button
+                      type="button"
+                      onClick={onOpenFullMap}
+                      className="pointer-events-auto hidden sm:inline-flex px-4 py-2 rounded-full bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold shadow-control transition-colors whitespace-nowrap"
+                    >
+                      Open Full GIS Workspace →
+                    </button>
+                  )}
                 </div>
 
-                {onOpenFullMap && (
-                  <button
-                    type="button"
-                    onClick={onOpenFullMap}
-                    className="pointer-events-auto hidden sm:inline-flex px-4 py-2 rounded-full bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold shadow-control transition-colors whitespace-nowrap"
-                  >
-                    Open Full GIS Workspace →
-                  </button>
-                )}
-              </div>
-
-              <div className="pointer-events-none absolute bottom-9 left-3 z-10 map-hud-surface px-3 py-1 rounded-full max-w-[calc(100%-10rem)]">
-                <div className="text-2xs text-warn font-semibold truncate">
-                  PRELIMINARY — FIELD SURVEY REQUIRED
+                <div className="pointer-events-none absolute bottom-9 left-3 z-10 map-hud-surface px-3 py-1 rounded-full max-w-[calc(100%-10rem)]">
+                  <div className="text-2xs text-warn font-semibold truncate">
+                    PRELIMINARY — FIELD SURVEY REQUIRED
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="pointer-events-none absolute top-3 left-3 z-10 map-hud-surface px-3 py-1 rounded-full">
+                <div className="text-xs text-warn font-semibold">
+                  PRELIMINARY ENGINEERING ESTIMATE — FIELD SURVEY REQUIRED
                 </div>
               </div>
-            </>
-          ) : (
-            <div className="pointer-events-none absolute top-3 left-3 z-10 map-hud-surface px-3 py-1 rounded-full">
-              <div className="text-xs text-warn font-semibold">
-                PRELIMINARY ENGINEERING ESTIMATE — FIELD SURVEY REQUIRED
+            )}
+
+          {hoveredFeatureHint && !inspectedFeature && (
+            <div
+              role="status"
+              aria-label="Hovered feature hint"
+              className="pointer-events-none absolute bottom-12 left-3 z-20 bg-sheet/95 backdrop-blur-md border border-accent/40 px-3 py-2 rounded-md shadow-control max-w-xs text-xs"
+            >
+              <div className="font-semibold text-ink truncate">{hoveredFeatureHint.title}</div>
+              <div className="text-ink-2 text-[11px] truncate">{hoveredFeatureHint.subtitle}</div>
+            </div>
+          )}
+
+          {beginnerGuideOpen && (
+            <div
+              role="dialog"
+              aria-label="How to Read This Electrification Map"
+              className="absolute top-16 right-3 z-30 w-[min(22rem,calc(100%-1.5rem))] max-h-[75%] overflow-y-auto bg-sheet/95 backdrop-blur-md border border-rule-strong rounded-lg shadow-overlay p-3.5 text-xs space-y-2.5"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-rule-subtle pb-2">
+                <span className="font-semibold text-ink text-sm">
+                  How to Read This Map
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBeginnerGuideOpen(false)}
+                  className="text-ink-2 hover:text-ink px-1.5 py-0.5 rounded-xs border border-rule-subtle text-xs font-medium"
+                  aria-label="Close map guide"
+                >
+                  × Close
+                </button>
+              </div>
+              <div className="space-y-2 text-ink-2 leading-relaxed">
+                <div className="p-2.5 bg-paper/80 border border-rule-subtle rounded-xs">
+                  <strong className="text-ink block mb-0.5">
+                    Existing Lines vs. Preliminary Plans
+                  </strong>
+                  <strong>Solid lines</strong> show existing mapped power lines (purple =
+                  33 kV, dark red = 11 kV). <strong>Dashed lines</strong> show proposed
+                  preliminary routes — they are planning estimates, not yet built.
+                </div>
+                <div className="p-2.5 bg-paper/80 border border-rule-subtle rounded-xs">
+                  <strong className="text-ink block mb-0.5">
+                    Nighttime Brightness (NASA VIIRS)
+                  </strong>
+                  Shows outdoor night lights in <code>nW/cm²/sr</code>.{' '}
+                  <strong>A dark spot never proves there is no electricity</strong> —
+                  satellites cannot see indoor bulbs, meters, or home solar kits.
+                </div>
+                <div className="p-2.5 bg-paper/80 border border-rule-subtle rounded-xs">
+                  <strong className="text-ink block mb-0.5">
+                    Hamlets &amp; Potential Gaps
+                  </strong>
+                  Colored circles mark detected house clusters needing verification; dashed
+                  corridors show hamlets far from mapped 11 kV lines. Click any symbol on the
+                  map to inspect details.
+                </div>
               </div>
             </div>
           )}

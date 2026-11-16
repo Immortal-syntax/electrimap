@@ -102,6 +102,7 @@ class ClusterCostBreakdown:
     has_unset_rates: bool
     unset_item_codes: list[str]
     economics: LifecycleEconomicResult
+    totals_withheld: bool = False
 
 
 @dataclass(frozen=True)
@@ -125,6 +126,7 @@ class ScenarioBoqSummary:
     unset_item_codes: list[str]
     export_blocked_reason: str | None
     economics: LifecycleEconomicResult
+    totals_withheld: bool = False
 
 
 def compute_terrain_difficulty_multiplier(
@@ -270,8 +272,17 @@ def compute_cluster_boq(
         )
 
     # 3. 415 V / 240 V LT Aerial Bunched Cable Network & 8 m PSC Poles
-    if cluster.lt_3ph_length_m > 0.0:
-        lt_3ph_km = (cluster.lt_3ph_length_m / 1000.0) * CONDUCTOR_SAG_WASTAGE_FACTOR
+    # GRID_AUGMENTATION upgrades/extends 50% infill of local LT spurs alongside 35% service infill
+    lt_scale = 0.50 if cluster.modality == "GRID_AUGMENTATION" else 1.0
+    lt_3ph_eff_m = round(cluster.lt_3ph_length_m * lt_scale, 1)
+    lt_1ph_eff_m = round(cluster.lt_1ph_length_m * lt_scale, 1)
+    lt_poles_eff = (
+        max(1, math.ceil(cluster.lt_poles_count * lt_scale))
+        if cluster.lt_poles_count > 0
+        else 0
+    )
+    if lt_3ph_eff_m > 0.0:
+        lt_3ph_km = (lt_3ph_eff_m / 1000.0) * CONDUCTOR_SAG_WASTAGE_FACTOR
         lines.append(
             _make_boq_line(
                 cluster_id=cluster.cluster_id,
@@ -279,13 +290,14 @@ def compute_cluster_boq(
                 item_code="LT-COND-AB-3PH",
                 quantity=lt_3ph_km,
                 quantity_basis=(
-                    f"{cluster.lt_3ph_length_m:.1f} m 3-phase trunk x 1.03 sag allowance"
+                    f"{lt_3ph_eff_m:.1f} m 3-phase trunk"
+                    f"{' (50% augmentation infill)' if lt_scale < 1.0 else ''} x 1.03 sag allowance"
                 ),
                 rates_map=rates_map,
             )
         )
-    if cluster.lt_1ph_length_m > 0.0:
-        lt_1ph_km = (cluster.lt_1ph_length_m / 1000.0) * CONDUCTOR_SAG_WASTAGE_FACTOR
+    if lt_1ph_eff_m > 0.0:
+        lt_1ph_km = (lt_1ph_eff_m / 1000.0) * CONDUCTOR_SAG_WASTAGE_FACTOR
         lines.append(
             _make_boq_line(
                 cluster_id=cluster.cluster_id,
@@ -293,19 +305,20 @@ def compute_cluster_boq(
                 item_code="LT-COND-AB-1PH",
                 quantity=lt_1ph_km,
                 quantity_basis=(
-                    f"{cluster.lt_1ph_length_m:.1f} m 1-phase lateral x 1.03 sag allowance"
+                    f"{lt_1ph_eff_m:.1f} m 1-phase lateral"
+                    f"{' (50% augmentation infill)' if lt_scale < 1.0 else ''} x 1.03 sag allowance"
                 ),
                 rates_map=rates_map,
             )
         )
-    if cluster.lt_poles_count > 0:
+    if lt_poles_eff > 0:
         lines.append(
             _make_boq_line(
                 cluster_id=cluster.cluster_id,
                 cluster_label=cluster.cluster_label,
                 item_code="LT-POLE-PSC-8M",
-                quantity=float(cluster.lt_poles_count),
-                quantity_basis=f"{cluster.lt_poles_count} nos. 8 m PSC poles @ 45 m span",
+                quantity=float(lt_poles_eff),
+                quantity_basis=f"{lt_poles_eff} nos. 8 m PSC poles @ 45 m span",
                 rates_map=rates_map,
             )
         )
@@ -415,27 +428,88 @@ def compute_cluster_boq(
     unset_codes = sorted({ln.item_code for ln in lines if ln.is_unset})
     has_unset = len(unset_codes) > 0
 
-    base_equipment_inr = round(sum(ln.amount_inr for ln in lines), 2)
     terrain_mult, terrain_label = compute_terrain_difficulty_multiplier(
         cluster.slope_mean_deg, cluster.forest_crossings, cluster.water_crossings
     )
-    terrain_premium_inr = round(base_equipment_inr * (terrain_mult - 1.0), 2)
-    subtotal_inr = round(base_equipment_inr + terrain_premium_inr, 2)
+    if has_unset:
+        base_equipment_inr = 0.0
+        terrain_premium_inr = 0.0
+        subtotal_inr = 0.0
+        gst_inr = 0.0
+        contingency_inr = 0.0
+        pmc_inr = 0.0
+        total_capex_inr = 0.0
+        base_econ_ref = evaluate_lifecycle_economics(
+            modality=cluster.modality,
+            capex_inr=0.0,
+            bess_or_shs_battery_capex_inr=0.0,
+            est_households=cluster.est_households,
+            annual_delivered_energy_mwh=cluster.annual_energy_mwh_horizon,
+            annual_technical_loss_mwh=cluster.total_loss_mwh_yr,
+            params=econ_params,
+        )
+        econ_result = LifecycleEconomicResult(
+            modality=cluster.modality,
+            capex_inr=0.0,
+            capex_lakhs=0.0,
+            capital_subsidy_inr=0.0,
+            net_utility_capex_inr=0.0,
+            annual_om_inr=0.0,
+            annual_energy_purchase_inr=0.0,
+            pv_om_inr=0.0,
+            pv_energy_purchase_inr=0.0,
+            pv_battery_replacement_inr=0.0,
+            npc_inr=0.0,
+            npc_lakhs=0.0,
+            annual_delivered_energy_kwh=base_econ_ref.annual_delivered_energy_kwh,
+            pv_delivered_energy_kwh=base_econ_ref.pv_delivered_energy_kwh,
+            lcoe_inr_kwh=0.0,
+            annualized_cost_inr_yr=0.0,
+            cost_per_household_inr=0.0,
+            npc_per_household_inr=0.0,
+            avoided_co2_tonnes_yr=base_econ_ref.avoided_co2_tonnes_yr,
+        )
+    else:
+        base_equipment_inr = round(sum(ln.amount_inr for ln in lines), 2)
+        # Apply terrain erection/porterage premium strictly to field line/pole/civil works,
+        # never inflating factory-supplied PV modules, LiFePO4 batteries, PCUs, or SHS kits.
+        terrain_eligible_inr = round(
+            sum(
+                ln.amount_inr
+                for ln in lines
+                if ln.category in {"HT_11KV", "LT_415V", "CIVIL_EARTHING"}
+                or ln.item_code == "MG-CIV-CTRL-ROOM"
+            ),
+            2,
+        )
+        terrain_premium_inr = round(terrain_eligible_inr * (terrain_mult - 1.0), 2)
+        subtotal_inr = round(base_equipment_inr + terrain_premium_inr, 2)
 
-    gst_inr = round(subtotal_inr * (econ_params.gst_pct / 100.0), 2)
-    contingency_inr = round(subtotal_inr * (econ_params.contingency_pct / 100.0), 2)
-    pmc_inr = round(subtotal_inr * (econ_params.pmc_overhead_pct / 100.0), 2)
-    total_capex_inr = round(subtotal_inr + gst_inr + contingency_inr + pmc_inr, 2)
+        gst_inr = round(subtotal_inr * (econ_params.gst_pct / 100.0), 2)
+        contingency_inr = round(subtotal_inr * (econ_params.contingency_pct / 100.0), 2)
+        pmc_inr = round(subtotal_inr * (econ_params.pmc_overhead_pct / 100.0), 2)
+        total_capex_inr = round(subtotal_inr + gst_inr + contingency_inr + pmc_inr, 2)
 
-    econ_result = evaluate_lifecycle_economics(
-        modality=cluster.modality,
-        capex_inr=total_capex_inr,
-        bess_or_shs_battery_capex_inr=bess_or_shs_battery_capex_inr,
-        est_households=cluster.est_households,
-        annual_delivered_energy_mwh=cluster.annual_energy_mwh_horizon,
-        annual_technical_loss_mwh=cluster.total_loss_mwh_yr,
-        params=econ_params,
-    )
+        shs_delivered_mwh = cluster.annual_energy_mwh_horizon
+        if cluster.modality == "STANDALONE_SHS":
+            # Physical daily yield of 200 Wp SHS kits (or solar_pv_kwp with institutional pack)
+            effective_pv_kwp = (
+                cluster.solar_pv_kwp
+                if cluster.solar_pv_kwp > 0.0
+                else (max(1, cluster.shs_kits_count) * 0.200)
+            )
+            shs_max_mwh = round((effective_pv_kwp * 3.5 * 0.75 * 365.0) / 1000.0, 3)
+            shs_delivered_mwh = min(cluster.annual_energy_mwh_horizon, shs_max_mwh)
+
+        econ_result = evaluate_lifecycle_economics(
+            modality=cluster.modality,
+            capex_inr=total_capex_inr,
+            bess_or_shs_battery_capex_inr=bess_or_shs_battery_capex_inr,
+            est_households=cluster.est_households,
+            annual_delivered_energy_mwh=shs_delivered_mwh,
+            annual_technical_loss_mwh=cluster.total_loss_mwh_yr,
+            params=econ_params,
+        )
 
     return ClusterCostBreakdown(
         cluster_id=cluster.cluster_id,
@@ -454,9 +528,10 @@ def compute_cluster_boq(
         pmc_overhead_amount_inr=pmc_inr,
         total_capex_inr=total_capex_inr,
         total_capex_lakhs=round(total_capex_inr / 100000.0, 2),
-        bess_or_shs_battery_capex_inr=bess_or_shs_battery_capex_inr,
+        bess_or_shs_battery_capex_inr=0.0 if has_unset else bess_or_shs_battery_capex_inr,
         has_unset_rates=has_unset,
         unset_item_codes=unset_codes,
+        totals_withheld=has_unset,
         economics=econ_result,
     )
 
@@ -503,20 +578,6 @@ def compute_scenario_boq(
             )
         )
 
-    base_equipment_inr = round(
-        sum(cb.base_equipment_inr for cb in cluster_breakdowns), 2
-    )
-    terrain_premium_inr = round(
-        sum(cb.terrain_premium_inr for cb in cluster_breakdowns), 2
-    )
-    subtotal_inr = round(base_equipment_inr + terrain_premium_inr, 2)
-    gst_inr = round(sum(cb.gst_amount_inr for cb in cluster_breakdowns), 2)
-    contingency_inr = round(
-        sum(cb.contingency_amount_inr for cb in cluster_breakdowns), 2
-    )
-    pmc_inr = round(sum(cb.pmc_overhead_amount_inr for cb in cluster_breakdowns), 2)
-    total_capex_inr = round(sum(cb.total_capex_inr for cb in cluster_breakdowns), 2)
-
     unset_codes = sorted(
         {code for cb in cluster_breakdowns for code in cb.unset_item_codes}
     )
@@ -534,62 +595,118 @@ def compute_scenario_boq(
     total_loss_mwh = sum(c.total_loss_mwh_yr for c in clusters)
     total_bess_capex = sum(cb.bess_or_shs_battery_capex_inr for cb in cluster_breakdowns)
 
-    # Sum cluster-level lifecycle costs so hybrid scenarios preserve modality-specific O&M/tariffs
-    pv_om_total = round(sum(cb.economics.pv_om_inr for cb in cluster_breakdowns), 2)
-    pv_energy_total = round(
-        sum(cb.economics.pv_energy_purchase_inr for cb in cluster_breakdowns), 2
-    )
-    pv_rep_total = round(
-        sum(cb.economics.pv_battery_replacement_inr for cb in cluster_breakdowns), 2
-    )
-    annual_om_total = round(
-        sum(cb.economics.annual_om_inr for cb in cluster_breakdowns), 2
-    )
-    annual_energy_cost_total = round(
-        sum(cb.economics.annual_energy_purchase_inr for cb in cluster_breakdowns), 2
-    )
-    npc_total = round(
-        total_capex_inr + pv_om_total + pv_energy_total + pv_rep_total, 2
-    )
-    avoided_co2_total = round(
-        sum(cb.economics.avoided_co2_tonnes_yr for cb in cluster_breakdowns), 2
-    )
+    if has_unset:
+        base_equipment_inr = 0.0
+        terrain_premium_inr = 0.0
+        subtotal_inr = 0.0
+        gst_inr = 0.0
+        contingency_inr = 0.0
+        pmc_inr = 0.0
+        total_capex_inr = 0.0
+        base_econ = evaluate_lifecycle_economics(
+            modality=scenario_key,
+            capex_inr=0.0,
+            bess_or_shs_battery_capex_inr=0.0,
+            est_households=max(1, total_hh),
+            annual_delivered_energy_mwh=total_energy_mwh,
+            annual_technical_loss_mwh=total_loss_mwh,
+            params=econ_params,
+        )
+        avoided_co2_total = round(
+            sum(cb.economics.avoided_co2_tonnes_yr for cb in cluster_breakdowns), 2
+        )
+        scenario_econ = LifecycleEconomicResult(
+            modality=scenario_key,
+            capex_inr=0.0,
+            capex_lakhs=0.0,
+            capital_subsidy_inr=0.0,
+            net_utility_capex_inr=0.0,
+            annual_om_inr=0.0,
+            annual_energy_purchase_inr=0.0,
+            pv_om_inr=0.0,
+            pv_energy_purchase_inr=0.0,
+            pv_battery_replacement_inr=0.0,
+            npc_inr=0.0,
+            npc_lakhs=0.0,
+            annual_delivered_energy_kwh=base_econ.annual_delivered_energy_kwh,
+            pv_delivered_energy_kwh=base_econ.pv_delivered_energy_kwh,
+            lcoe_inr_kwh=0.0,
+            annualized_cost_inr_yr=0.0,
+            cost_per_household_inr=0.0,
+            npc_per_household_inr=0.0,
+            avoided_co2_tonnes_yr=avoided_co2_total,
+        )
+    else:
+        base_equipment_inr = round(
+            sum(cb.base_equipment_inr for cb in cluster_breakdowns), 2
+        )
+        terrain_premium_inr = round(
+            sum(cb.terrain_premium_inr for cb in cluster_breakdowns), 2
+        )
+        subtotal_inr = round(base_equipment_inr + terrain_premium_inr, 2)
+        gst_inr = round(sum(cb.gst_amount_inr for cb in cluster_breakdowns), 2)
+        contingency_inr = round(
+            sum(cb.contingency_amount_inr for cb in cluster_breakdowns), 2
+        )
+        pmc_inr = round(sum(cb.pmc_overhead_amount_inr for cb in cluster_breakdowns), 2)
+        total_capex_inr = round(sum(cb.total_capex_inr for cb in cluster_breakdowns), 2)
 
-    base_econ = evaluate_lifecycle_economics(
-        modality=scenario_key,
-        capex_inr=total_capex_inr,
-        bess_or_shs_battery_capex_inr=total_bess_capex,
-        est_households=max(1, total_hh),
-        annual_delivered_energy_mwh=total_energy_mwh,
-        annual_technical_loss_mwh=total_loss_mwh,
-        params=econ_params,
-    )
+        # Sum cluster-level lifecycle costs so hybrid scenarios keep modality O&M/tariffs
+        pv_om_total = round(sum(cb.economics.pv_om_inr for cb in cluster_breakdowns), 2)
+        pv_energy_total = round(
+            sum(cb.economics.pv_energy_purchase_inr for cb in cluster_breakdowns), 2
+        )
+        pv_rep_total = round(
+            sum(cb.economics.pv_battery_replacement_inr for cb in cluster_breakdowns), 2
+        )
+        annual_om_total = round(
+            sum(cb.economics.annual_om_inr for cb in cluster_breakdowns), 2
+        )
+        annual_energy_cost_total = round(
+            sum(cb.economics.annual_energy_purchase_inr for cb in cluster_breakdowns), 2
+        )
+        npc_total = round(
+            total_capex_inr + pv_om_total + pv_energy_total + pv_rep_total, 2
+        )
+        avoided_co2_total = round(
+            sum(cb.economics.avoided_co2_tonnes_yr for cb in cluster_breakdowns), 2
+        )
 
-    scenario_econ = LifecycleEconomicResult(
-        modality=scenario_key,
-        capex_inr=total_capex_inr,
-        capex_lakhs=round(total_capex_inr / 100000.0, 2),
-        capital_subsidy_inr=base_econ.capital_subsidy_inr,
-        net_utility_capex_inr=base_econ.net_utility_capex_inr,
-        annual_om_inr=annual_om_total,
-        annual_energy_purchase_inr=annual_energy_cost_total,
-        pv_om_inr=pv_om_total,
-        pv_energy_purchase_inr=pv_energy_total,
-        pv_battery_replacement_inr=pv_rep_total,
-        npc_inr=npc_total,
-        npc_lakhs=round(npc_total / 100000.0, 2),
-        annual_delivered_energy_kwh=base_econ.annual_delivered_energy_kwh,
-        pv_delivered_energy_kwh=base_econ.pv_delivered_energy_kwh,
-        lcoe_inr_kwh=round(npc_total / max(1.0, base_econ.pv_delivered_energy_kwh), 2),
-        annualized_cost_inr_yr=round(
-            npc_total
-            * (base_econ.annualized_cost_inr_yr / max(1.0, base_econ.npc_inr)),
-            2,
-        ),
-        cost_per_household_inr=round(total_capex_inr / max(1, total_hh), 2),
-        npc_per_household_inr=round(npc_total / max(1, total_hh), 2),
-        avoided_co2_tonnes_yr=avoided_co2_total,
-    )
+        base_econ = evaluate_lifecycle_economics(
+            modality=scenario_key,
+            capex_inr=total_capex_inr,
+            bess_or_shs_battery_capex_inr=total_bess_capex,
+            est_households=max(1, total_hh),
+            annual_delivered_energy_mwh=total_energy_mwh,
+            annual_technical_loss_mwh=total_loss_mwh,
+            params=econ_params,
+        )
+
+        scenario_econ = LifecycleEconomicResult(
+            modality=scenario_key,
+            capex_inr=total_capex_inr,
+            capex_lakhs=round(total_capex_inr / 100000.0, 2),
+            capital_subsidy_inr=base_econ.capital_subsidy_inr,
+            net_utility_capex_inr=base_econ.net_utility_capex_inr,
+            annual_om_inr=annual_om_total,
+            annual_energy_purchase_inr=annual_energy_cost_total,
+            pv_om_inr=pv_om_total,
+            pv_energy_purchase_inr=pv_energy_total,
+            pv_battery_replacement_inr=pv_rep_total,
+            npc_inr=npc_total,
+            npc_lakhs=round(npc_total / 100000.0, 2),
+            annual_delivered_energy_kwh=base_econ.annual_delivered_energy_kwh,
+            pv_delivered_energy_kwh=base_econ.pv_delivered_energy_kwh,
+            lcoe_inr_kwh=round(npc_total / max(1.0, base_econ.pv_delivered_energy_kwh), 2),
+            annualized_cost_inr_yr=round(
+                npc_total
+                * (base_econ.annualized_cost_inr_yr / max(1.0, base_econ.npc_inr)),
+                2,
+            ),
+            cost_per_household_inr=round(total_capex_inr / max(1, total_hh), 2),
+            npc_per_household_inr=round(npc_total / max(1, total_hh), 2),
+            avoided_co2_tonnes_yr=avoided_co2_total,
+        )
 
     return ScenarioBoqSummary(
         aggregated_lines=aggregated_lines,
@@ -607,6 +724,7 @@ def compute_scenario_boq(
         total_capex_lakhs=round(total_capex_inr / 100000.0, 2),
         has_unset_rates=has_unset,
         unset_item_codes=unset_codes,
+        totals_withheld=has_unset,
         export_blocked_reason=export_blocked_reason,
         economics=scenario_econ,
     )

@@ -23,6 +23,8 @@ from collections import deque
 from dataclasses import dataclass
 
 import numpy as np
+import shapely
+from numpy.typing import NDArray
 from scipy.sparse.csgraph import minimum_spanning_tree
 from shapely.geometry import LineString, MultiLineString, MultiPoint, Point
 from shapely.geometry.base import BaseGeometry
@@ -31,10 +33,24 @@ from app.domain.engineering.constants import (
     TransformerRatingSpec,
     select_standard_dt_spec,
 )
-from app.domain.gis.crs import WGS84_EPSG, project_geometry
+from app.domain.gis.cost_surface import WORLDCOVER_WATER, build_routing_cost_surface
+from app.domain.gis.crs import WGS84_EPSG, get_transformer, project_geometry
+from app.domain.gis.raster_ops import compute_slope_deg
 from app.domain.gis.routing import route_least_cost_feeder
 
 DEFAULT_METRIC_EPSG = 32644
+
+
+@dataclass(frozen=True)
+class TerrainCostGridInput:
+    """Real DEM, WorldCover, and vector road/water grid aligned to local UTM coordinates."""
+
+    cost_surface: NDArray[np.float64]
+    slope_deg: NDArray[np.float64]
+    landcover_class: NDArray[np.int32]
+    origin_x_m: float
+    origin_y_m: float
+    cell_size_m: float
 
 
 @dataclass(frozen=True)
@@ -87,8 +103,9 @@ def _extract_metric_building_points(
     cluster_centroid_wgs84: tuple[float, float],
     est_households: int,
     metric_epsg: int = DEFAULT_METRIC_EPSG,
+    allow_centroid_ring_fallback: bool = True,
 ) -> list[tuple[float, float]]:
-    """Project building WGS 84 points to UTM (x_m, y_m), generating deterministic nodes if empty."""
+    """Project building WGS 84 points to UTM (x_m, y_m)."""
     if building_points_wgs84:
         pts_m: list[tuple[float, float]] = []
         for lon, lat in building_points_wgs84:
@@ -97,7 +114,6 @@ def _extract_metric_building_points(
             pts_m.append((float(p_m.x), float(p_m.y)))
         return pts_m
 
-    # Fallback deterministic ring around cluster centroid when raw footprints are not passed
     center_m = project_geometry(
         Point(cluster_centroid_wgs84[0], cluster_centroid_wgs84[1]),
         WGS84_EPSG,
@@ -105,6 +121,10 @@ def _extract_metric_building_points(
     )
     assert isinstance(center_m, Point)
     cx, cy = float(center_m.x), float(center_m.y)
+    if not allow_centroid_ring_fallback:
+        return [(cx, cy)]
+
+    # Pure unit-test synthetic ring fallback when explicit test helper requests centroid expansion
     n_nodes = max(4, min(24, max(4, est_households // 5)))
     pts_synth: list[tuple[float, float]] = []
     for idx in range(n_nodes):
@@ -123,8 +143,9 @@ def place_cluster_transformers(
     dt_max_loading_ratio: float = 0.80,
     lt_max_radial_reach_m: float = 800.0,
     metric_epsg: int = DEFAULT_METRIC_EPSG,
+    allow_centroid_ring_fallback: bool = True,
 ) -> list[PlacedDistributionTransformer]:
-    """Place one or more 11/0.433 kV Distribution Transformers in UTM EPSG:32644 (Task M5-2).
+    """Place one or more 11/0.433 kV Distribution Transformers in UTM (Task M5-2).
 
     Enforces:
     - Horizon peak load per DT <= dt_max_loading_ratio * rating_kva
@@ -135,28 +156,37 @@ def place_cluster_transformers(
         cluster_centroid_wgs84=cluster_centroid_wgs84,
         est_households=est_households,
         metric_epsg=metric_epsg,
+        allow_centroid_ring_fallback=allow_centroid_ring_fallback,
     )
     coords = np.array(pts_m, dtype=np.float64)
     mean_xy = np.mean(coords, axis=0)
     radial_dists = np.hypot(coords[:, 0] - mean_xy[0], coords[:, 1] - mean_xy[1])
     max_initial_radial_m = float(np.max(radial_dists)) if len(radial_dists) > 0 else 0.0
 
-    # Determine number of DT sub-zones needed
+    # Determine number of DT sub-zones needed (capping pole-mounted units <= 100 kVA when possible)
+    max_unit_kva = 100.0 * max(0.4, min(1.0, dt_max_loading_ratio))
     k_by_reach = max(1, math.ceil(max_initial_radial_m / max(100.0, lt_max_radial_reach_m)))
-    k_by_load = max(1, math.ceil(peak_kva_horizon / max(10.0, 100.0 * dt_max_loading_ratio)))
+    k_by_load = max(1, math.ceil(peak_kva_horizon / max(10.0, max_unit_kva)))
     n_subzones = min(len(coords), max(k_by_reach, k_by_load))
 
-    if n_subzones <= 1:
-        subzone_groups = [coords]
-    else:
-        # Partition along principal coordinate axis (largest spread)
+    def _partition(k_count: int) -> list[np.ndarray]:
+        if k_count <= 1:
+            return [coords]
         spread_x = float(np.ptp(coords[:, 0]))
         spread_y = float(np.ptp(coords[:, 1]))
         sort_axis = 0 if spread_x >= spread_y else 1
         order = np.argsort(coords[:, sort_axis])
         sorted_coords = coords[order]
-        chunks = np.array_split(sorted_coords, n_subzones)
-        subzone_groups = [chunk for chunk in chunks if len(chunk) > 0]
+        chunks = np.array_split(sorted_coords, k_count)
+        return [chunk for chunk in chunks if len(chunk) > 0]
+
+    subzone_groups = _partition(n_subzones)
+    total_pts = max(1, len(coords))
+    while n_subzones < len(coords) and any(
+        (peak_kva_horizon * (len(g) / total_pts)) > max_unit_kva for g in subzone_groups
+    ):
+        n_subzones += 1
+        subzone_groups = _partition(n_subzones)
 
     total_pts = max(1, len(coords))
     placed_dts: list[PlacedDistributionTransformer] = []
@@ -196,6 +226,114 @@ def place_cluster_transformers(
     return placed_dts
 
 
+def build_terrain_cost_grid_for_corridor(
+    *,
+    min_x: float,
+    max_x: float,
+    min_y: float,
+    max_y: float,
+    cell_size_m: float,
+    n_rows: int,
+    n_cols: int,
+    metric_epsg: int,
+    dem_elev_wgs84: NDArray[np.floating] | None = None,
+    landcover_wgs84: NDArray[np.integer] | None = None,
+    raster_bounds_wgs84: tuple[float, float, float, float] | None = None,
+    road_geoms_wgs84: list[BaseGeometry] | None = None,
+    water_geoms_wgs84: list[BaseGeometry] | None = None,
+    slope_fallback_deg: float = 0.0,
+) -> TerrainCostGridInput:
+    """Construct a UTM-aligned cost surface from clipped GeoTIFFs and OSM road/water vectors."""
+    xs = min_x + (np.arange(n_cols, dtype=np.float64) + 0.5) * cell_size_m
+    ys = max_y - (np.arange(n_rows, dtype=np.float64) + 0.5) * cell_size_m
+    xx, yy = np.meshgrid(xs, ys)
+
+    slope_grid = np.full((n_rows, n_cols), max(0.0, slope_fallback_deg), dtype=np.float64)
+    lc_grid = np.full((n_rows, n_cols), 30, dtype=np.int32)
+
+    if (
+        raster_bounds_wgs84 is not None
+        and (dem_elev_wgs84 is not None or landcover_wgs84 is not None)
+    ):
+        r_minx, r_miny, r_maxx, r_maxy = raster_bounds_wgs84
+        span_lon = max(1e-9, r_maxx - r_minx)
+        span_lat = max(1e-9, r_maxy - r_miny)
+        to_wgs84 = get_transformer(metric_epsg, WGS84_EPSG)
+        lon_grid, lat_grid = to_wgs84.transform(xx, yy)
+
+        if dem_elev_wgs84 is not None and dem_elev_wgs84.ndim == 2 and dem_elev_wgs84.size > 0:
+            h_d, w_d = dem_elev_wgs84.shape
+            r_idx = np.clip(
+                np.floor((r_maxy - lat_grid) / (span_lat / max(1, h_d))).astype(np.int32),
+                0,
+                h_d - 1,
+            )
+            c_idx = np.clip(
+                np.floor((lon_grid - r_minx) / (span_lon / max(1, w_d))).astype(np.int32),
+                0,
+                w_d - 1,
+            )
+            elev_sampled = dem_elev_wgs84[r_idx, c_idx].astype(np.float64)
+            valid = np.isfinite(elev_sampled) & (elev_sampled > -500.0) & (elev_sampled < 9000.0)
+            fill = float(np.median(elev_sampled[valid])) if np.any(valid) else 0.0
+            elev_clean = np.where(valid, elev_sampled, fill)
+            slope_grid = compute_slope_deg(
+                elev_clean, cell_size_x_m=cell_size_m, cell_size_y_m=cell_size_m
+            )
+
+        if landcover_wgs84 is not None and landcover_wgs84.ndim == 2 and landcover_wgs84.size > 0:
+            h_l, w_l = landcover_wgs84.shape
+            r_idx_l = np.clip(
+                np.floor((r_maxy - lat_grid) / (span_lat / max(1, h_l))).astype(np.int32),
+                0,
+                h_l - 1,
+            )
+            c_idx_l = np.clip(
+                np.floor((lon_grid - r_minx) / (span_lon / max(1, w_l))).astype(np.int32),
+                0,
+                w_l - 1,
+            )
+            lc_grid = landcover_wgs84[r_idx_l, c_idx_l].astype(np.int32)
+
+    road_mask: NDArray[np.bool_] | None = None
+    if road_geoms_wgs84:
+        proj_roads = [
+            project_geometry(g, WGS84_EPSG, metric_epsg).buffer(cell_size_m * 0.75)
+            for g in road_geoms_wgs84
+            if g is not None and not g.is_empty
+        ]
+        if proj_roads:
+            road_union = shapely.unary_union(proj_roads)
+            road_mask = np.asarray(shapely.contains_xy(road_union, xx, yy), dtype=np.bool_)
+
+    if water_geoms_wgs84:
+        proj_waters = [
+            project_geometry(g, WGS84_EPSG, metric_epsg).buffer(cell_size_m * 0.65)
+            for g in water_geoms_wgs84
+            if g is not None and not g.is_empty
+        ]
+        if proj_waters:
+            water_union = shapely.unary_union(proj_waters)
+            water_mask = np.asarray(shapely.contains_xy(water_union, xx, yy), dtype=np.bool_)
+            if road_mask is not None:
+                water_mask = water_mask & (~road_mask)
+            lc_grid = np.where(water_mask, WORLDCOVER_WATER, lc_grid)
+
+    cost_surface = build_routing_cost_surface(
+        slope_deg=slope_grid,
+        landcover_class=lc_grid,
+        road_corridor_mask=road_mask,
+    )
+    return TerrainCostGridInput(
+        cost_surface=cost_surface,
+        slope_deg=slope_grid,
+        landcover_class=lc_grid,
+        origin_x_m=min_x,
+        origin_y_m=max_y,
+        cell_size_m=cell_size_m,
+    )
+
+
 def route_cluster_11kv_ht_feeder(
     tie_in_wgs84: tuple[float, float] | None,
     placed_dts: list[PlacedDistributionTransformer],
@@ -205,8 +343,15 @@ def route_cluster_11kv_ht_feeder(
     ht_standard_span_m: float = 65.0,
     ht_steep_span_m: float = 45.0,
     metric_epsg: int = DEFAULT_METRIC_EPSG,
+    terrain_cost_grid: TerrainCostGridInput | None = None,
+    dem_elev_wgs84: NDArray[np.floating] | None = None,
+    landcover_wgs84: NDArray[np.integer] | None = None,
+    raster_bounds_wgs84: tuple[float, float, float, float] | None = None,
+    road_geoms_wgs84: list[BaseGeometry] | None = None,
+    water_geoms_wgs84: list[BaseGeometry] | None = None,
 ) -> HtFeederRoutingResult:
     """Route 11 kV HT feeder from nearest tie-in point to cluster DTs via MCP_Geometric."""
+    del canopy_share  # Real WorldCover grid drives canopy penalty when raster is provided.
     if tie_in_wgs84 is None or not placed_dts:
         return HtFeederRoutingResult(
             requires_tie_in=True,
@@ -228,43 +373,47 @@ def route_cluster_11kv_ht_feeder(
     dy = primary_dt.y_m - ty_m
     straight_dist_m = math.hypot(dx, dy)
 
-    # Construct a local UTM raster cost grid between tie-in and primary DT for MCP_Geometric routing
-    pad_m = max(180.0, straight_dist_m * 0.20)
-    min_x = min(tx_m, primary_dt.x_m) - pad_m
-    max_x = max(tx_m, primary_dt.x_m) + pad_m
-    min_y = min(ty_m, primary_dt.y_m) - pad_m
-    max_y = max(ty_m, primary_dt.y_m) + pad_m
+    if terrain_cost_grid is not None:
+        cost_grid = terrain_cost_grid.cost_surface
+        slope_grid = terrain_cost_grid.slope_deg
+        lc_grid = terrain_cost_grid.landcover_class
+        origin_x_m = terrain_cost_grid.origin_x_m
+        origin_y_m = terrain_cost_grid.origin_y_m
+        cell_size_m = terrain_cost_grid.cell_size_m
+        n_rows, n_cols = cost_grid.shape
+    else:
+        pad_m = max(180.0, straight_dist_m * 0.25)
+        min_x = min(tx_m, primary_dt.x_m) - pad_m
+        max_x = max(tx_m, primary_dt.x_m) + pad_m
+        min_y = min(ty_m, primary_dt.y_m) - pad_m
+        max_y = max(ty_m, primary_dt.y_m) + pad_m
 
-    span_max = max(max_x - min_x, max_y - min_y, 300.0)
-    cell_size_m = max(25.0, min(120.0, span_max / 48.0))
-    n_cols = max(12, min(80, math.ceil((max_x - min_x) / cell_size_m)))
-    n_rows = max(12, min(80, math.ceil((max_y - min_y) / cell_size_m)))
+        span_max = max(max_x - min_x, max_y - min_y, 300.0)
+        cell_size_m = max(25.0, min(90.0, span_max / 48.0))
+        n_cols = max(12, min(96, math.ceil((max_x - min_x) / cell_size_m)))
+        n_rows = max(12, min(96, math.ceil((max_y - min_y) / cell_size_m)))
 
-    origin_x_m = min_x
-    origin_y_m = max_y
-
-    # Build deterministic terrain friction grid reflecting slope, canopy, and water obstacles
-    rr, cc = np.meshgrid(np.arange(n_rows), np.arange(n_cols), indexing="ij")
-    base_friction = 1.0 + 0.035 * max(0.0, slope_mean_deg) + 0.35 * max(0.0, canopy_share)
-    # Add topographic ridge modulation so MCP_Geometric routes around high-friction pockets
-    ridge_wave = 0.22 * (
-        np.sin((rr / max(1, n_rows)) * math.pi * 2.0)
-        * np.cos((cc / max(1, n_cols)) * math.pi * 2.0)
-        + 1.0
-    )
-    cost_grid = (base_friction + ridge_wave).astype(np.float64)
-    slope_grid = np.full((n_rows, n_cols), max(0.0, slope_mean_deg), dtype=np.float64)
-    lc_grid = np.full((n_rows, n_cols), 30, dtype=np.int32)
-
-    if canopy_share >= 0.25:
-        forest_band = (rr + cc) % 4 == 0
-        lc_grid[forest_band] = 10
-        cost_grid[forest_band] *= 1.30
-
-    if water_crossings_count > 0:
-        mid_r = n_rows // 2
-        lc_grid[mid_r : min(n_rows, mid_r + 1), :] = 80
-        cost_grid[mid_r : min(n_rows, mid_r + 1), :] *= 1.85
+        grid_built = build_terrain_cost_grid_for_corridor(
+            min_x=min_x,
+            max_x=max_x,
+            min_y=min_y,
+            max_y=max_y,
+            cell_size_m=cell_size_m,
+            n_rows=n_rows,
+            n_cols=n_cols,
+            metric_epsg=metric_epsg,
+            dem_elev_wgs84=dem_elev_wgs84,
+            landcover_wgs84=landcover_wgs84,
+            raster_bounds_wgs84=raster_bounds_wgs84,
+            road_geoms_wgs84=road_geoms_wgs84,
+            water_geoms_wgs84=water_geoms_wgs84,
+            slope_fallback_deg=slope_mean_deg,
+        )
+        cost_grid = grid_built.cost_surface
+        slope_grid = grid_built.slope_deg
+        lc_grid = grid_built.landcover_class
+        origin_x_m = grid_built.origin_x_m
+        origin_y_m = grid_built.origin_y_m
 
     def _to_rc(x_val: float, y_val: float) -> tuple[int, int]:
         c_idx = int(np.clip(math.floor((x_val - origin_x_m) / cell_size_m), 0, n_cols - 1))
@@ -350,6 +499,7 @@ def build_cluster_415v_lt_mst(
     placed_dts: list[PlacedDistributionTransformer],
     lt_standard_span_m: float = 45.0,
     metric_epsg: int = DEFAULT_METRIC_EPSG,
+    allow_centroid_ring_fallback: bool = True,
 ) -> LtRadialMstResult:
     """Construct 415 V LT radial Minimum Spanning Tree (MST) from DTs to service nodes."""
     if not placed_dts:
@@ -368,6 +518,7 @@ def build_cluster_415v_lt_mst(
         cluster_centroid_wgs84=cluster_centroid_wgs84,
         est_households=est_households,
         metric_epsg=metric_epsg,
+        allow_centroid_ring_fallback=allow_centroid_ring_fallback,
     )
     service_nodes_m = _cluster_service_poles(raw_pts_m, merge_radius_m=28.0)
 

@@ -39,7 +39,11 @@ import {
   INFRASTRUCTURE_CATEGORY_META,
   resolveInfraCategoryMeta,
 } from '../components/map/symbology';
-import { buildInspectedFeatureFromMapProperties } from '../components/map/GisFeatureInspectorDrawer';
+import {
+  GisFeatureInspectorDrawer,
+  buildInspectedFeatureFromMapProperties,
+} from '../components/map/GisFeatureInspectorDrawer';
+import { apiRequest, ApiClientError } from '../lib/apiClient';
 import { CostAndScenarioComparisonPanel } from '../components/workspace/CostAndScenarioComparisonPanel';
 import { DprExportCenterPanel } from '../components/workspace/DprExportCenterPanel';
 import { MapCanvas } from '../components/map/MapCanvas';
@@ -151,19 +155,87 @@ vi.mock('maplibre-gl', () => {
 });
 
 describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
-  it('renders LoginPage with Survey Sheet header and default planner credentials button', () => {
+  it('renders clean LoginPage with email, password, show/hide toggle, sign-in error display, and zero hardcoded credentials', async () => {
+    useSessionStore.setState({ user: null, isInitialized: true, isLoading: false, error: null });
     render(
       <MemoryRouter>
         <LoginPage />
       </MemoryRouter>,
     );
     expect(screen.getByText(/Sign in to ElectriMap DPR/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Official \/ Planner Email/i)).toHaveValue(
-      'planner@electrimap.in',
-    );
+    const emailInput = screen.getByLabelText(/Email address/i) as HTMLInputElement;
+    const passwordInput = screen.getByLabelText('Password') as HTMLInputElement;
+    expect(emailInput).toHaveValue('');
+    expect(passwordInput).toHaveValue('');
+    expect(passwordInput.type).toBe('password');
     expect(
-      screen.getByRole('button', { name: /Sign In to Workbench/i }),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: /Fill Default Demo Planner Credentials/i }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Show password/i }));
+    expect(passwordInput.type).toBe('text');
+    expect(screen.getByRole('button', { name: /Sign In/i })).toBeInTheDocument();
+
+    act(() => {
+      useSessionStore.setState({ error: 'Invalid email or password.' });
+    });
+    expect(await screen.findByText(/Invalid email or password\./i)).toBeInTheDocument();
+    fireEvent.change(emailInput, { target: { value: 'sumitp@gmail.com' } });
+    await waitFor(() => {
+      expect(screen.queryByText(/Invalid email or password\./i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('displays ONLY the authenticated user name in top-right AppShell without role labels or Lead Planner text', () => {
+    useSessionStore.setState({
+      user: {
+        id: '00000000-0000-4000-8000-000000000010',
+        email: 'swayamkr26@gmail.com',
+        display_name: 'Swayam Kumar',
+        role: 'PLANNER',
+        is_active: true,
+      },
+      isInitialized: true,
+      isLoading: false,
+      error: null,
+    });
+
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <AppShell>
+          <div>Content</div>
+        </AppShell>
+      </MemoryRouter>,
+    );
+
+    const swayamBadge = screen.getByTestId('authenticated-user-name');
+    expect(swayamBadge).toHaveTextContent(/^Swayam Kumar$/);
+    expect(screen.queryByText(/Lead Planner/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\(PLANNER\)/i)).not.toBeInTheDocument();
+
+    act(() => {
+      useSessionStore.setState({
+        user: {
+          id: '00000000-0000-4000-8000-000000000012',
+          email: 'sumitp@gmail.com',
+          display_name: 'Sumit Kushwaha',
+          role: 'PLANNER',
+          is_active: true,
+        },
+      });
+    });
+    rerender(
+      <MemoryRouter initialEntries={['/projects']}>
+        <AppShell>
+          <div>Content</div>
+        </AppShell>
+      </MemoryRouter>,
+    );
+
+    const sumitBadge = screen.getByTestId('authenticated-user-name');
+    expect(sumitBadge).toHaveTextContent(/^Sumit Kushwaha$/);
+    expect(screen.queryByText(/Swayam/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/PLANNER/i)).not.toBeInTheDocument();
   });
 
   it('renders ProvenanceChip with licence, resolution, and expandable attribution', () => {
@@ -190,9 +262,9 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
 
     expect(screen.getByText(/ESA \/ Copernicus/i)).toBeInTheDocument();
     expect(screen.getByText(/30 m/i)).toBeInTheDocument();
-    expect(screen.getByText('REFERENCE_PACK')).toBeInTheDocument();
+    expect(screen.getByText('Open Reference Pack')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Attribution/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Source details/i }));
     expect(screen.getByText(/Contains Copernicus DEM data/i)).toBeInTheDocument();
     expect(screen.getByText(/30 m posting may smooth narrow micro-gullies/i)).toBeInTheDocument();
   });
@@ -221,8 +293,8 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
       />,
     );
 
-    expect(screen.getByText('ACQUIRE_PROJECT_DATA')).toBeInTheDocument();
-    expect(screen.getByText('RUNNING')).toBeInTheDocument();
+    expect(screen.getByText('Fetching Satellite Imagery & Data')).toBeInTheDocument();
+    expect(screen.getByText('Running…')).toBeInTheDocument();
     expect(screen.getByText('60%')).toBeInTheDocument();
     expect(screen.getByText(/Computing DEM slope/i)).toBeInTheDocument();
 
@@ -283,11 +355,11 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     );
 
     expect(
-      screen.getByText(/Building Footprints \(Google-MS-OSM Open Buildings\)/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/Building Footprints/i).length,
+    ).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Residential: 135/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Copernicus DEM Slope/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Hillside Slope/i }));
     expect(onChangeRaster).toHaveBeenCalledWith('dem_slope');
   });
 
@@ -388,9 +460,9 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     );
 
     expect(
-      screen.getByText(/Census 2011 Household Reconciliation/i),
+      screen.getByText(/Census 2011 Household Check/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/RECONCILED WITHIN ±30%/i)).toBeInTheDocument();
+    expect(screen.getByText(/Matches Census Within ±30%/i)).toBeInTheDocument();
     expect(
       screen.getAllByText(/Bheja Main Village Core/i).length,
     ).toBeGreaterThanOrEqual(2);
@@ -398,13 +470,10 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
       screen.getByText(/Verified 11kV transformer & LT service mains/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', {
+      screen.getByRole('button', {
         name: /Download Preliminary DPR Skeleton/i,
       }),
-    ).toHaveAttribute(
-      'href',
-      '/api/v1/projects/00000000-0000-4000-8000-000000000001/exports/preliminary-settlement-pdf',
-    );
+    ).toBeEnabled();
   });
 
   it('renders InfrastructureAndDemandPanel with UNSET warning, terrain gap matrix, assumptions register, and 7-category demand table', () => {
@@ -516,9 +585,9 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     );
 
     expect(
-      screen.getByText(/Existing Electrical Infrastructure UNSET/i),
+      screen.getByText(/No Existing Power Lines Added Yet — Grid Distances Not Measured/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/UNSET_INFRA_REQUIRED/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Not set/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/BPL Household Connected Load/i)).toBeInTheDocument();
     expect(
       screen.getByText(/Domestic BPL Households \(Kutcha \/ Tribal\)/i),
@@ -526,7 +595,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     expect(screen.getByText(/69.79 kVA/i)).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole('button', { name: /\+ Place Assumed 11 kV Tie-In on Map/i }),
+      screen.getByRole('button', { name: /\+ Click Map to Mark Starting Point/i }),
     );
     expect(onToggleTieIn).toHaveBeenCalledTimes(1);
   });
@@ -635,12 +704,13 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     );
 
     expect(screen.getAllByText(/1420 m/i).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText(/CEA Compliant/i)).toBeInTheDocument();
+    expect(screen.getByText(/Voltage OK/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Optional Engineering View · Expand Diagram/i));
     expect(
       screen.getByRole('img', { name: /Preliminary Single-Line Diagram/i }),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /REC\/IS\/CEA Constants/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Engineering Standards/i }));
     expect(screen.getByText('ht_11kv_r_ohm_per_km')).toBeInTheDocument();
   });
 
@@ -851,14 +921,17 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     );
 
     expect(
-      screen.getByText(/DPR Export Blocked — UNSET Unit Rates Detected/i),
+      screen.getByText(/Report Export Paused — Some Equipment Prices Are Missing/i),
     ).toBeInTheDocument();
     expect(screen.getAllByText(/HT-COND-ACSR-50/i).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText(/₹45.36 L/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Held \(Missing Prices?\)/i).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText(/₹45\.36 L/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /2\. Compare 4 Scenarios/i }));
-    expect(screen.getByText(/MINIGRID_PRIORITY/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Pin as Baseline/i }));
+    fireEvent.click(screen.getByRole('button', { name: /2\. Compare 4 Plans/i }));
+    expect(
+      screen.getByText(/Solar Microgrid \(Village Solar \+ Battery\)/i),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Select Plan/i }));
     await waitFor(() => {
       expect(onPinScenario).toHaveBeenCalledWith('scen-mg');
     });
@@ -935,35 +1008,26 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
       />,
     );
 
-    expect(screen.getByText(/READY TO EXPORT/i)).toBeInTheDocument();
-    expect(screen.getByText(/24\/24/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Ready to Export/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/24\/24 Ready/i)).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /Download 24-Section DPR \(\.pdf\)/i }),
-    ).toHaveAttribute(
-      'href',
-      '/api/v1/projects/00000000-0000-4000-8000-000000000001/exports/dpr-pdf',
-    );
+      screen.getByRole('button', { name: /Download 24-Section Report \(\.pdf\)/i }),
+    ).toBeEnabled();
     expect(
-      screen.getByRole('link', { name: /Download Formula BOQ \(\.xlsx\)/i }),
-    ).toHaveAttribute(
-      'href',
-      '/api/v1/projects/00000000-0000-4000-8000-000000000001/exports/boq-xlsx',
-    );
+      screen.getByRole('button', { name: /Download Cost Workbook \(\.xlsx\)/i }),
+    ).toBeEnabled();
     expect(
-      screen.getByRole('link', { name: /Download Cleaned GIS Package \(\.zip\)/i }),
-    ).toHaveAttribute(
-      'href',
-      '/api/v1/projects/00000000-0000-4000-8000-000000000001/exports/gis-package',
-    );
+      screen.getByRole('button', { name: /Download Map Files \(\.zip\)/i }),
+    ).toBeEnabled();
 
-    // Switch to 24-Section DPR Compilation Index tab
-    fireEvent.click(screen.getByRole('button', { name: /2\. 24-Section DPR Compilation Index/i }));
+    // Switch to 24-Section Report Index tab
+    fireEvent.click(screen.getByRole('button', { name: /2\. 24 Report Sections/i }));
     expect(
-      screen.getByText(/No data available — reason: Zero Axis-2 field verification records/i),
+      screen.getByText(/Zero Axis-2 field verification records/i),
     ).toBeInTheDocument();
 
-    // Switch to SHA-256 Export Audit Log tab
-    fireEvent.click(screen.getByRole('button', { name: /3\. Cryptographic SHA-256 Export Audit Log/i }));
+    // Switch to Download History tab
+    fireEvent.click(screen.getByRole('button', { name: /3\. Download History/i }));
     expect(
       screen.getByText(/electrimap_dpr_24sec_00000000_hybrid_optimal\.pdf/i),
     ).toBeInTheDocument();
@@ -981,7 +1045,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     const skipLink = screen.getByRole('link', { name: /Skip to main content/i });
     expect(skipLink).toHaveAttribute('href', '#main-content');
 
-    const portfolioLink = screen.getByRole('link', { name: /Projects Portfolio/i });
+    const portfolioLink = screen.getAllByRole('link', { name: /My Projects/i })[0]!;
     expect(portfolioLink).toHaveAttribute('aria-current', 'page');
 
     const mainLandmark = screen.getByRole('main', { name: /Main engineering workbench/i });
@@ -1051,7 +1115,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     expect(normalizeWorkspaceSection('unknown-route')).toBe('overview');
 
     const newProjCtx = resolveRouteContext('/projects/new');
-    expect(newProjCtx.pageTitle).toContain('New Project');
+    expect(newProjCtx.pageTitle).toContain('Start a New Village Electrification Study');
     expect(newProjCtx.breadcrumbs).toHaveLength(3);
 
     unmount();
@@ -1102,7 +1166,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     expect(previewMap.options.maxZoom).toBe(20.0);
     expect(previewMap.options.renderWorldCopies).toBe(false);
     expect(previewMap.options.maxBounds).toEqual([[65.0, 5.0], [100.0, 38.5]]);
-    expect(screen.getByRole('button', { name: /Fit AOI/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Center on Study Area/i })).toBeInTheDocument();
     expect(screen.getByText(/Likely Electrified \(Proxy\)/i)).toBeInTheDocument();
 
     // Verify all 4 free basemaps (including Terrain Topo and Sentinel-2 Satellite)
@@ -1112,11 +1176,11 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     fireEvent.click(satButtons[0]!);
     fireEvent.click(satButtons[1]!);
 
-    // Verify Beginner Guide toggle
-    const guideBtns = screen.getAllByRole('button', { name: /\? Beginner Guide/i });
+    // Verify Map Guide toggle
+    const guideBtns = screen.getAllByRole('button', { name: /\? Map Guide/i });
     fireEvent.click(guideBtns[0]!);
     expect(
-      screen.getByText(/Understanding the Specialised Electricity GIS Layers/i),
+      screen.getByText(/How to Read This Map/i),
     ).toBeInTheDocument();
 
     // Verify Measure Tool toggle
@@ -1460,7 +1524,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('img', {
-        name: /Scenario CAPEX and Net Present Cost comparison bar chart/i,
+        name: /Scenario build cost and lifetime system cost comparison bar chart/i,
       }),
     ).toBeInTheDocument();
     expect(
@@ -1469,12 +1533,12 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Strict Epistemic Separation of Rural Electrification Dimensions/i),
+      screen.getByText(/Why Satellite Clues Are Separate from Ground Reality/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/Confirmed 63 kVA DT in village center/i)).toBeInTheDocument();
 
     // Verify workflow shortcut triggers navigation callback
-    fireEvent.click(screen.getByRole('button', { name: /Inspect Clusters/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Inspect Villages/i }));
     expect(onNavigateSection).toHaveBeenCalledWith('settlements');
   });
 
@@ -1520,24 +1584,28 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     );
 
     // Must show "Not available" / EmptyState instead of invented zeroes
-    expect(screen.getAllByText('Not available').length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByText('Not loaded').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Not grouped').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Not estimated').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Not added').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Not computed').length).toBeGreaterThanOrEqual(1);
     expect(
-      screen.getByText(/Area of Interest \(AOI\) Not Configured/i),
+      screen.getByText(/Study Boundary Not Configured/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/No Habitation Clusters Generated Yet/i),
+      screen.getByText(/No Village Clusters Created Yet/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Scenario Cost Comparison Not Yet Computed/i),
+      screen.getByText(/Cost Comparison Not Ready Yet/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Consumer Load Forecast Not Available/i),
+      screen.getByText(/Electricity Demand Not Calculated Yet/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/No Geospatial Layers Acquired Yet/i),
+      screen.getByText(/No Map Data Fetched Yet/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/No Verification or Export Activity Recorded Yet/i),
+      screen.getByText(/No Checks or Report Downloads Yet/i),
     ).toBeInTheDocument();
   });
 
@@ -1587,7 +1655,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
       /Vector overlay layer transparency/i,
     );
     fireEvent.change(opacitySlider, { target: { value: '0.55' } });
-    expect(screen.getByText(/Vector Layer Opacity: 55%/i)).toBeInTheDocument();
+    expect(screen.getByText(/Overlay Transparency: 55%/i)).toBeInTheDocument();
 
     // 3. Verify Settlement Electrification Status Filter
     const settlementFilter = screen.getByLabelText(
@@ -1618,10 +1686,10 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     });
     expect(quickJumpToolbar).toBeInTheDocument();
 
-    const substationChip = screen.getByRole('button', {
-      name: /Inspect: SS Nandapur 33\/11kV/i,
+    const quickJumpSelect = screen.getByRole('combobox', {
+      name: /Inspect location or asset/i,
     });
-    fireEvent.click(substationChip);
+    fireEvent.change(quickJumpSelect, { target: { value: 'sub-nandapur' } });
 
     const inspectorRegion = screen.getByRole('region', {
       name: /Selected GIS Feature Inspector/i,
@@ -1631,14 +1699,11 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
       screen.getByText(/3.15 MVA/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/MAPPED EXISTING INFRASTRUCTURE/i),
+      screen.getByText(/Mapped Existing Grid/i),
     ).toBeInTheDocument();
 
-    // Select a gap cluster chip and verify onSelectCluster callback + ClassificationBadge
-    const clusterChip = screen.getByRole('button', {
-      name: /Inspect: CL-02 Podapadar Tola Eastern Ridge/i,
-    });
-    fireEvent.click(clusterChip);
+    // Select a gap cluster option and verify onSelectCluster callback + ClassificationBadge
+    fireEvent.change(quickJumpSelect, { target: { value: 'cl-02' } });
     expect(onSelectCluster).toHaveBeenCalledWith('cl-02');
     expect(
       screen.getByText(/1640 m/i),
@@ -1841,7 +1906,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
 
     // Symbology & Data Provenance Key is rendered
     expect(
-      screen.getByText(/Electricity Infrastructure Symbology & Data Provenance Key/i),
+      screen.getByText(/Power Grid Map Legend & Data Source Key/i),
     ).toBeInTheDocument();
 
     // Filter registered assets by SUBSTATION
@@ -1871,12 +1936,10 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
 
     // Quick-switch to Sentinel-2 Satellite basemap inside Group 2
     const switchSatelliteBtn = screen.getByRole('button', {
-      name: /Switch to Sentinel-2 Satellite Basemap/i,
+      name: /Sentinel-2 Satellite/i,
     });
     fireEvent.click(switchSatelliteBtn);
-    expect(
-      screen.getByText(/Viewing 10 m Optical Satellite Imagery/i),
-    ).toBeInTheDocument();
+    expect(switchSatelliteBtn.className).toContain('bg-accent');
     expect(
       screen.getByText(/SATELLITE: Sentinel-2 2020 \(10 m · CC BY-NC-SA 4\.0\)/i),
     ).toBeInTheDocument();
@@ -1890,16 +1953,16 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
 
     // Enable Layer B (NASA VIIRS Nighttime Illumination)
     const layerBCheckbox = screen.getByRole('checkbox', {
-      name: /Layer B · NASA VIIRS Nighttime Illumination/i,
+      name: /Layer B.*NASA VIIRS Nighttime Illumination/i,
     });
     fireEvent.click(layerBCheckbox);
 
     // Honest illustrative-scenario provenance card is displayed (no fake satellite dates)
     expect(
-      screen.getByText(/Illustrative Pre-Feasibility Scenario \(1\.00× · SYNTHETIC_PLACEHOLDER\)/i),
+      screen.getByText(/Illustrative Pre-Feasibility Scenario \(1\.00× baseline\)/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/~500 m VIIRS DNB Scale · Local AOI Proxy PNG/i),
+      screen.getByText(/~500 m VIIRS DNB Scale · Local Screening Preview/i),
     ).toBeInTheDocument();
 
     expect(mapInst.addSource).toHaveBeenCalledWith(
@@ -1914,7 +1977,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     const periodSelect = screen.getByLabelText(/Observation Composite Date/i);
     fireEvent.change(periodSelect, { target: { value: '2023_POST_MONSOON' } });
     expect(
-      screen.getByText(/Illustrative Pre-Feasibility Scenario \(1\.08× · SYNTHETIC_PLACEHOLDER\)/i),
+      screen.getByText(/Illustrative Pre-Feasibility Scenario \(1\.08× sensitivity\)/i),
     ).toBeInTheDocument();
     expect(mapInst.getSource('project-raster')?.updateImage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1932,9 +1995,9 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
       0.5,
     );
 
-    // Toggle Global NASA GIBS VIIRS_CityLights_2012 Tiles (2012 Mosaic · z <= 8)
+    // Toggle Global NASA GIBS 2012 Tiles (2012 Mosaic · z <= 8)
     const gibsCheckbox = screen.getByRole('checkbox', {
-      name: /Include Global NASA GIBS VIIRS_CityLights_2012 Tiles/i,
+      name: /Include Global NASA GIBS 2012 Tiles/i,
     });
     fireEvent.click(gibsCheckbox);
     expect(mapInst.addSource).toHaveBeenCalledWith(
@@ -1994,7 +2057,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
       screen.getByText(/Steep Eastern Ghats Escarpment/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Open a Project Workspace AOI to render clipped dem_slope PNG pixels/i),
+      screen.getByText(/Open a project study area in Step 1 to render clipped dem_slope imagery/i),
     ).toBeInTheDocument();
 
     // Verify buildInspectedFeatureFromMapProperties for 'viirs-radiance-glow-outer' includes multi-year trend
@@ -2028,7 +2091,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     const previewMap = mockMapInstances[mockMapInstances.length - 1]!;
 
     fireEvent.click(
-      screen.getByRole('button', { name: /Switch to Sentinel-2 Satellite Basemap/i }),
+      screen.getByRole('button', { name: /Sentinel-2 Satellite/i }),
     );
     expect(
       screen.getByText(/SATELLITE: Sentinel-2 2020 \(10 m · CC BY-NC-SA 4\.0\)/i),
@@ -2036,14 +2099,14 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
 
     fireEvent.click(
       screen.getByRole('checkbox', {
-        name: /Layer B · NASA VIIRS Nighttime Illumination/i,
+        name: /Layer B.*NASA VIIRS Nighttime Illumination/i,
       }),
     );
     expect(
       screen.getByText(/VIIRS Brightness Scale \(nW\/cm²\/sr\)/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Illustrative Pre-Feasibility Scenario \(1\.00× · SYNTHETIC_PLACEHOLDER\)/i),
+      screen.getByText(/Illustrative Pre-Feasibility Scenario \(1\.00× baseline\)/i),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '25%' }));
@@ -2084,7 +2147,7 @@ describe('Milestone M1, M2, M3, M4, M5, M6 & M7 Frontend Components', () => {
     );
 
     expect(
-      screen.getByText(/No Geospatial or Satellite Layers Ingested Yet/i),
+      screen.getByText(/No Map Data Loaded Yet/i),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/EOX Sentinel-2 Cloudless Optical Basemap/i),
@@ -2230,9 +2293,9 @@ describe('Phase 7: Remaining Pages, Forms, Filters, Empty States & Confirmation 
       const drawTab = screen.getByRole('tab', { name: /Draw Polygon/i });
       fireEvent.click(drawTab);
       expect(drawTab).toHaveAttribute('aria-selected', 'true');
-      expect(screen.getByText(/Interactive Map Polygon Drawing Active/i)).toBeInTheDocument();
+      expect(screen.getByText(/Map Drawing Mode Active/i)).toBeInTheDocument();
 
-      const adminTab = screen.getByRole('tab', { name: /Admin Unit \(LGD\)/i });
+      const adminTab = screen.getByRole('tab', { name: /Pick a Village/i });
       fireEvent.click(adminTab);
       expect(adminTab).toHaveAttribute('aria-selected', 'true');
 
@@ -2241,7 +2304,7 @@ describe('Phase 7: Remaining Pages, Forms, Filters, Empty States & Confirmation 
       fireEvent.click(screen.getByRole('button', { name: /^Search$/i }));
 
       await waitFor(() => {
-        expect(screen.getByText(/No Matching Reference Villages/i)).toBeInTheDocument();
+        expect(screen.getByText(/No Matching Villages Found/i)).toBeInTheDocument();
       });
 
       fireEvent.click(screen.getByRole('button', { name: /Show All Villages/i }));
@@ -2352,18 +2415,18 @@ describe('Phase 7: Remaining Pages, Forms, Filters, Empty States & Confirmation 
       // Cluster search empty state + reset
       const searchBox = screen.getByLabelText(/Filter habitation clusters by label or name/i);
       fireEvent.change(searchBox, { target: { value: 'NoSuchHamlet' } });
-      expect(screen.getByText(/No Matching Habitation Clusters/i)).toBeInTheDocument();
+      expect(screen.getByText(/No Matching Hamlets/i)).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /Reset Filters/i }));
       expect(screen.getAllByText(/Bheja Main/i).length).toBeGreaterThanOrEqual(1);
 
       // Reversal opens ConfirmDialog first without calling API
       fireEvent.click(screen.getByRole('button', { name: /Reverse Entry/i }));
       expect(
-        screen.getByText(/Confirm Append-Only Verification Reversal/i),
+        screen.getByText(/Confirm Field Check Reversal/i),
       ).toBeInTheDocument();
       expect(fetchSpy).not.toHaveBeenCalled();
 
-      fireEvent.click(screen.getByRole('button', { name: /Append Reversal Entry/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Add Reversal Entry/i }));
       await waitFor(() => {
         expect(fetchSpy).toHaveBeenCalledTimes(1);
       });
@@ -2441,11 +2504,11 @@ describe('Phase 7: Remaining Pages, Forms, Filters, Empty States & Confirmation 
       );
 
       // Missing demand renders structured EmptyState instead of returning null
-      expect(screen.getByText(/Demand Forecast Not Computed Yet/i)).toBeInTheDocument();
+      expect(screen.getByText(/Demand Forecast Not Calculated Yet/i)).toBeInTheDocument();
 
       // Remove asset confirmation dialog
       fireEvent.click(screen.getByRole('button', { name: /^Remove$/i }));
-      expect(screen.getByText(/Remove Registered Infrastructure Asset\?/i)).toBeInTheDocument();
+      expect(screen.getByText(/Remove Added Power Asset\?/i)).toBeInTheDocument();
       expect(fetchSpy).not.toHaveBeenCalled();
 
       fireEvent.click(screen.getByRole('button', { name: /^Remove Asset$/i }));
@@ -2457,7 +2520,7 @@ describe('Phase 7: Remaining Pages, Forms, Filters, Empty States & Confirmation 
       // Reset Defaults confirmation dialog
       fireEvent.click(screen.getByRole('button', { name: /Reset Defaults/i }));
       expect(
-        screen.getByText(/Reset All Assumptions to Normative REC \/ CEA Defaults\?/i),
+        screen.getByText(/Reset Assumptions to Standard Government Defaults\?/i),
       ).toBeInTheDocument();
     } finally {
       fetchSpy.mockRestore();
@@ -2475,7 +2538,7 @@ describe('Phase 7: Remaining Pages, Forms, Filters, Empty States & Confirmation 
     );
 
     expect(
-      screen.getByText(/No Network Engineering Scenario Generated Yet/i),
+      screen.getByText(/No Power Network Plan Built Yet/i),
     ).toBeInTheDocument();
 
     rerender(
@@ -2568,15 +2631,17 @@ describe('Phase 7: Remaining Pages, Forms, Filters, Empty States & Confirmation 
 
     const clusterSearch = screen.getByLabelText(/^Filter scenario clusters$/i);
     fireEvent.change(clusterSearch, { target: { value: 'UnknownCluster' } });
-    expect(screen.getByText(/No Clusters Match Engineering Filter/i)).toBeInTheDocument();
+    expect(screen.getByText(/No Village Rows Match Filter/i)).toBeInTheDocument();
 
     fireEvent.change(clusterSearch, { target: { value: '' } });
     expect(screen.getAllByText(/Bheja Main/i).length).toBeGreaterThanOrEqual(1);
 
-    // Switching scenarios over manual overrides prompts ConfirmDialog
-    const scenarioSelect = screen.getByLabelText(/Select Planning Scenario/i);
+    // Preview plan switch first, then Apply Selected Plan triggers ConfirmDialog over manual overrides
+    const scenarioSelect = screen.getByLabelText(/Choose Planning Option/i);
     fireEvent.change(scenarioSelect, { target: { value: 'MINIGRID_PRIORITY' } });
-    expect(screen.getByText(/Switch Scenario & Replace Manual Overrides\?/i)).toBeInTheDocument();
+    expect(screen.getByText(/Plan Selection Ready to Apply/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Apply Selected Plan/i }));
+    expect(screen.getByText(/Apply New Plan & Replace Custom Village Choices\?/i)).toBeInTheDocument();
   });
 
   it('renders CostAndScenarioComparisonPanel empty state, UNSET filters, and confirmation dialogs', async () => {
@@ -2724,29 +2789,29 @@ describe('Phase 7: Remaining Pages, Forms, Filters, Empty States & Confirmation 
       />,
     );
 
-    // Toggle UNSET Only on BOQ lines -> shows clean empty state
-    fireEvent.click(screen.getByRole('button', { name: /^UNSET Only/i }));
-    expect(screen.getByText(/No Matching BOQ Line Items/i)).toBeInTheDocument();
+    // Toggle Missing Prices Only on BOQ lines -> shows clean empty state
+    fireEvent.click(screen.getByRole('button', { name: /^Missing Prices Only/i }));
+    expect(screen.getByText(/No Equipment Cost Items Shown/i)).toBeInTheDocument();
 
     // Switch to SoR Editor and test Reset + Mark UNSET ConfirmDialogs
-    fireEvent.click(screen.getByRole('button', { name: /3\. Schedule of Rates & CSV/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Reset to Reference SoR/i }));
+    fireEvent.click(screen.getByRole('button', { name: /3\. Edit Unit Prices & CSV/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Reset to Default Prices/i }));
     const resetDialog = screen.getByRole('dialog');
     expect(
-      within(resetDialog).getByText(/Reset All Rates to Reference Schedule of Rates\?/i),
+      within(resetDialog).getByText(/Reset All Prices to Public Default Rates\?/i),
     ).toBeInTheDocument();
     expect(onResetRates).not.toHaveBeenCalled();
 
     await act(async () => {
       fireEvent.click(
-        within(resetDialog).getByRole('button', { name: /Reset to Reference SoR/i }),
+        within(resetDialog).getByRole('button', { name: /Reset to Default Prices/i }),
       );
     });
     expect(onResetRates).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /Mark UNSET/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Clear Price$/i }));
     expect(
-      screen.getByText(/Mark Unit Rate UNSET & Block DPR Export\?/i),
+      screen.getByText(/Clear Unit Price & Pause Report Export\?/i),
     ).toBeInTheDocument();
     expect(onUpdateRateItem).not.toHaveBeenCalled();
   });
@@ -2762,9 +2827,9 @@ describe('Phase 7: Remaining Pages, Forms, Filters, Empty States & Confirmation 
       />,
     );
 
-    expect(screen.getByText(/DPR Pre-Flight Audit Not Computed Yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/Final Readiness Check Not Run Yet/i)).toBeInTheDocument();
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Run Pre-Flight Audit/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Check Readiness Now/i }));
     });
     expect(onRefresh).toHaveBeenCalledTimes(1);
 
@@ -2823,19 +2888,392 @@ describe('Phase 7: Remaining Pages, Forms, Filters, Empty States & Confirmation 
       />,
     );
 
-    const blockedBtn = screen.getByRole('button', { name: /PDF & Excel Export Blocked/i });
+    const blockedBtn = screen.getByRole('button', { name: /PDF & Excel Locked/i });
     expect(blockedBtn).toBeDisabled();
 
     // Filter checks by FAIL
-    fireEvent.click(screen.getByRole('button', { name: /^Fail \(1\)$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Action Needed \(1\)$/i }));
     expect(screen.getByText('SOR_COMPLETE')).toBeInTheDocument();
     expect(screen.queryByText('AOI_VALID')).not.toBeInTheDocument();
 
-    // Switch to 24-section compilation index & search
-    fireEvent.click(screen.getByRole('button', { name: /2\. 24-Section DPR Compilation Index/i }));
+    // Switch to 24-section report index & search
+    fireEvent.click(screen.getByRole('button', { name: /2\. 24 Report Sections/i }));
     const secSearch = screen.getByPlaceholderText(/Section #, part, title/i);
     fireEvent.change(secSearch, { target: { value: 'Tariff' } });
     expect(screen.getByText(/Tariff Schedule & Cross-Subsidy/i)).toBeInTheDocument();
     expect(screen.queryByText('Executive Summary')).not.toBeInTheDocument();
+  });
+});
+
+describe('Remediation Invariants (AUD-01 through AUD-29)', () => {
+  it('parses FastAPI 422 validation detail arrays into readable ApiClientError messages (AUD-20)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          detail: [
+            { loc: ['body', 'name'], msg: 'String should have at least 3 characters' },
+            { loc: ['body', 'discount_rate'], msg: 'Input should be greater than 0' },
+          ],
+        }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    try {
+      await expect(
+        apiRequest('/api/v1/projects', { method: 'POST', body: '{}' }),
+      ).rejects.toThrowError(ApiClientError);
+
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            detail: [{ loc: ['body', 'name'], msg: 'Field required' }],
+          }),
+          { status: 422, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+      await apiRequest('/api/v1/projects', { method: 'POST', body: '{}' }).catch((err: unknown) => {
+        expect(err).toBeInstanceOf(ApiClientError);
+        expect((err as ApiClientError).code).toBe('HTTP_422');
+        expect((err as ApiClientError).message).toContain('name: Field required');
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('displays Exceeds CEA VDrop error badge in CostAndScenarioComparisonPanel when vdrop_compliance_ok is false (AUD-07)', () => {
+    render(
+      <CostAndScenarioComparisonPanel
+        projectId="00000000-0000-4000-8000-000000000001"
+        onUpdateRateItem={async () => {}}
+        onResetRates={async () => {}}
+        onImportRatesCsv={async () => ({
+          is_valid: true,
+          imported_count: 0,
+          unset_count: 0,
+          unset_item_codes: [],
+          errors: [],
+          rates: null,
+        })}
+        onPinScenario={async () => {}}
+        rates={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          template_key: 'ODISHA_USSOR',
+          template_name: 'Odisha Standard SoR',
+          total_items: 1,
+          unset_count: 0,
+          unset_item_codes: [],
+          user_edited_count: 0,
+          items: [],
+        }}
+        comparison={{
+          project_id: '00000000-0000-4000-8000-000000000001',
+          active_scenario_id: 'scen-grid',
+          active_scenario_key: 'GRID_FIRST',
+          discount_rate: 0.08,
+          horizon_years: 10,
+          has_unset_rates: false,
+          unset_item_codes: [],
+          export_blocked_reason: null,
+          scenarios: [
+            {
+              scenario_id: 'scen-grid',
+              scenario_key: 'GRID_FIRST',
+              scenario_name: 'Grid Extension Only',
+              is_active_baseline: true,
+              requires_tie_in_warning: true,
+              vdrop_compliance_ok: false,
+              total_households_served: 42,
+              annual_delivered_energy_mwh: 55.0,
+              modality_counts: { GRID_EXTENSION: 1 },
+              base_equipment_inr: 2100000,
+              terrain_premium_inr: 150000,
+              gst_amount_inr: 405000,
+              contingency_amount_inr: 67500,
+              pmc_overhead_amount_inr: 112500,
+              total_capex_inr: 2835000,
+              total_capex_lakhs: 28.35,
+              capital_subsidy_inr: 2551500,
+              net_utility_capex_inr: 283500,
+              annual_om_inr: 65000,
+              annual_energy_purchase_inr: 98000,
+              npc_inr: 3920000,
+              npc_lakhs: 39.2,
+              lcoe_inr_kwh: 7.42,
+              cost_per_household_inr: 67500,
+              npc_per_household_inr: 93333,
+              avoided_co2_tonnes_yr: 18.4,
+              has_unset_rates: false,
+              unset_item_codes: [],
+            },
+          ],
+          habitation_comparisons: [],
+          active_scenario_boq: {
+            project_id: '00000000-0000-4000-8000-000000000001',
+            scenario_id: 'scen-grid',
+            scenario_key: 'GRID_FIRST',
+            scenario_name: 'Grid Extension Only',
+            is_active_baseline: true,
+            discount_rate: 0.08,
+            horizon_years: 10,
+            gst_pct: 18.0,
+            contingency_pct: 3.0,
+            pmc_overhead_pct: 5.0,
+            capital_subsidy_pct: 90.0,
+            base_equipment_inr: 2100000,
+            terrain_premium_inr: 150000,
+            subtotal_supply_erection_inr: 2250000,
+            gst_amount_inr: 405000,
+            contingency_amount_inr: 67500,
+            pmc_overhead_amount_inr: 112500,
+            total_capex_inr: 2835000,
+            total_capex_lakhs: 28.35,
+            has_unset_rates: false,
+            unset_item_codes: [],
+            export_blocked_reason: null,
+            economics: {
+              modality: 'GRID_FIRST',
+              capex_inr: 2835000,
+              capex_lakhs: 28.35,
+              capital_subsidy_inr: 2551500,
+              net_utility_capex_inr: 283500,
+              annual_om_inr: 65000,
+              annual_energy_purchase_inr: 98000,
+              pv_om_inr: 436155,
+              pv_energy_purchase_inr: 657587,
+              pv_battery_replacement_inr: 0,
+              npc_inr: 3928742,
+              npc_lakhs: 39.29,
+              annual_delivered_energy_kwh: 55000,
+              pv_delivered_energy_kwh: 369054,
+              lcoe_inr_kwh: 7.42,
+              annualized_cost_inr_yr: 585500,
+              cost_per_household_inr: 67500,
+              npc_per_household_inr: 93541,
+              avoided_co2_tonnes_yr: 18.4,
+            },
+            aggregated_lines: [],
+            cluster_breakdowns: [],
+          },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /2\. Compare 4 Plans/i }));
+    expect(screen.getAllByText(/Voltage Alert/i).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('withholds uncomputed INR totals in ProjectOverviewDashboard when UNSET rates exist (AUD-11)', () => {
+    render(
+      <ProjectOverviewDashboard
+        project={{
+          id: '11111111-1111-4111-8111-111111111111',
+          owner_id: 'usr-1',
+          name: 'Rayagada Non-Demo Test',
+          description: 'Non-demo test project',
+          scheme: 'RDSS',
+          target_state: 'Odisha',
+          target_district: 'Rayagada',
+          target_block: 'Gunupur',
+          village_names: 'Pukali',
+          base_year: 2026,
+          horizon_years: 10,
+          discount_rate: 0.08,
+          load_tier: 'TIER_2',
+          metric_epsg: 32644,
+          status: 'DATA_READY',
+          version: 1,
+          created_at: '2026-11-06T00:00:00Z',
+          updated_at: '2026-11-07T00:00:00Z',
+          aoi: {
+            boundary_source: 'OFFICIAL_LGD',
+            area_km2: 8.5,
+            lgd_code: '399001',
+            census2011_code: '429001',
+            upload_filename: null,
+            original_crs: 'EPSG:4326',
+            warnings: [],
+            geojson_geometry: { type: 'Polygon', coordinates: [] },
+          },
+        }}
+        layers={[]}
+        settlements={null}
+        verificationLedger={null}
+        infrastructure={null}
+        gapAnalysis={null}
+        demand={null}
+        scenariosState={null}
+        ratesState={{
+          project_id: '11111111-1111-4111-8111-111111111111',
+          template_key: 'ODISHA_USSOR',
+          template_name: 'Odisha SoR',
+          total_items: 2,
+          unset_count: 1,
+          unset_item_codes: ['DT-25KVA-11KV'],
+          user_edited_count: 1,
+          items: [],
+        }}
+        comparisonState={{
+          project_id: '11111111-1111-4111-8111-111111111111',
+          active_scenario_id: 'scen-1',
+          active_scenario_key: 'HYBRID_OPTIMAL',
+          discount_rate: 0.08,
+          horizon_years: 10,
+          has_unset_rates: true,
+          unset_item_codes: ['DT-25KVA-11KV'],
+          export_blocked_reason: 'UNSET rate exists',
+          scenarios: [
+            {
+              scenario_id: 'scen-1',
+              scenario_key: 'HYBRID_OPTIMAL',
+              scenario_name: 'Hybrid Optimal',
+              is_active_baseline: true,
+              requires_tie_in_warning: false,
+              vdrop_compliance_ok: true,
+              total_households_served: 30,
+              annual_delivered_energy_mwh: 40,
+              modality_counts: { SOLAR_MINIGRID: 1 },
+              base_equipment_inr: 1500000,
+              terrain_premium_inr: 0,
+              gst_amount_inr: 270000,
+              contingency_amount_inr: 45000,
+              pmc_overhead_amount_inr: 75000,
+              total_capex_inr: 1890000,
+              total_capex_lakhs: 18.9,
+              capital_subsidy_inr: 1701000,
+              net_utility_capex_inr: 189000,
+              annual_om_inr: 50000,
+              annual_energy_purchase_inr: 0,
+              npc_inr: 2225000,
+              npc_lakhs: 22.25,
+              lcoe_inr_kwh: 8.3,
+              cost_per_household_inr: 63000,
+              npc_per_household_inr: 74166,
+              avoided_co2_tonnes_yr: 12.1,
+              has_unset_rates: true,
+              totals_withheld: true,
+              unset_item_codes: ['DT-25KVA-11KV'],
+            },
+          ],
+          habitation_comparisons: [],
+          active_scenario_boq: {
+            project_id: '11111111-1111-4111-8111-111111111111',
+            scenario_id: 'scen-1',
+            scenario_key: 'HYBRID_OPTIMAL',
+            scenario_name: 'Hybrid Optimal',
+            is_active_baseline: true,
+            discount_rate: 0.08,
+            horizon_years: 10,
+            gst_pct: 18.0,
+            contingency_pct: 3.0,
+            pmc_overhead_pct: 5.0,
+            capital_subsidy_pct: 90.0,
+            base_equipment_inr: 1500000,
+            terrain_premium_inr: 0,
+            subtotal_supply_erection_inr: 1500000,
+            gst_amount_inr: 270000,
+            contingency_amount_inr: 45000,
+            pmc_overhead_amount_inr: 75000,
+            total_capex_inr: 1890000,
+            total_capex_lakhs: 18.9,
+            has_unset_rates: true,
+            unset_item_codes: ['DT-25KVA-11KV'],
+            export_blocked_reason: 'UNSET rate exists',
+            economics: {
+              modality: 'HYBRID_OPTIMAL',
+              capex_inr: 1890000,
+              capex_lakhs: 18.9,
+              capital_subsidy_inr: 1701000,
+              net_utility_capex_inr: 189000,
+              annual_om_inr: 50000,
+              annual_energy_purchase_inr: 0,
+              pv_om_inr: 335504,
+              pv_energy_purchase_inr: 0,
+              pv_battery_replacement_inr: 0,
+              npc_inr: 2225504,
+              npc_lakhs: 22.26,
+              annual_delivered_energy_kwh: 40000,
+              pv_delivered_energy_kwh: 268403,
+              lcoe_inr_kwh: 8.3,
+              annualized_cost_inr_yr: 331667,
+              cost_per_household_inr: 63000,
+              npc_per_household_inr: 74183,
+              avoided_co2_tonnes_yr: 12.1,
+            },
+            aggregated_lines: [],
+            cluster_breakdowns: [],
+          },
+        }}
+        preflightState={null}
+        exportLogState={null}
+        onNavigateSection={() => {}}
+      />,
+    );
+
+    expect(screen.getAllByText(/Prices Needed/i).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText(/₹18\.90 L/i)).not.toBeInTheDocument();
+  });
+
+  it('isolates non-demo MapCanvas projects from Koraput reference layers and spike endpoints (AUD-03)', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 }),
+    );
+
+    try {
+      render(
+        <MapCanvas
+          projectId="11111111-1111-4111-8111-111111111111"
+          metricEpsg={32645}
+          defaultLayerPanelOpen={true}
+        />,
+      );
+
+      expect(screen.queryByText(/Include Koraput Reference Pack/i)).not.toBeInTheDocument();
+      const quickJumpSelect = screen.getByRole('combobox', {
+        name: /Inspect location or asset/i,
+      }) as HTMLSelectElement;
+      expect(
+        within(quickJumpSelect).queryByText(/Nandapur/i),
+      ).not.toBeInTheDocument();
+
+      const calledUrls = fetchSpy.mock.calls.map(([arg]) => String(arg));
+      expect(
+        calledUrls.some((url) => url.includes('/api/v1/spikes/viirs-overlay')),
+      ).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('inspects individual building footprint polygons without falling back to Layer C village card (AUD-25)', () => {
+    const buildingFeature = buildInspectedFeatureFromMapProperties(
+      'ref-buildings-fill',
+      {
+        id: 'bldg-9',
+        area_m2: 64.5,
+        cluster_code: 'CL-02',
+        size_class: 'RESIDENTIAL_STANDARD',
+      },
+      [82.738, 18.564],
+      true,
+    );
+
+    expect(buildingFeature).not.toBeNull();
+    render(
+      <GisFeatureInspectorDrawer
+        feature={buildingFeature!}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Layer D · Building Structure Footprint/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/64\.5 m²/i)).toBeInTheDocument();
+    expect(screen.getByText(/CL-02/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/cannot reveal interior electricity meters/i),
+    ).toBeInTheDocument();
   });
 });

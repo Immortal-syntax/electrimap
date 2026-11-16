@@ -43,38 +43,38 @@ export const ProvenanceChip: React.FC<ProvenanceChipProps> = ({
 
   if (!dataset) {
     return (
-      <div className="text-2xs font-mono text-ink-2 border border-rule rounded-xs bg-subtle px-2 py-1">
-        Provenance: Custom User Upload (USER_ENTERED)
+      <div className="text-xs text-ink-2 border border-rule rounded-xs bg-subtle px-2.5 py-1">
+        Data source: Uploaded directly by user
       </div>
     )
   }
 
   const originLabel = cacheKey?.includes('user_upload')
-    ? 'USER_ENTERED'
-    : 'REFERENCE_PACK'
+    ? 'User Uploaded'
+    : 'Open Reference Pack'
 
   return (
-    <div className="text-2xs border border-rule/80 rounded-sm bg-subtle/75 px-3 py-2 space-y-1.5">
+    <div className="text-xs border border-rule/80 rounded-sm bg-subtle/75 px-3 py-2 space-y-1.5">
       <div className="flex flex-wrap items-center justify-between gap-1.5">
-        <div className="flex flex-wrap items-center gap-1.5 font-mono text-ink-2">
+        <div className="flex flex-wrap items-center gap-1.5 text-ink-2">
           <span className="font-semibold text-ink">{dataset.provider}</span>
           <span>·</span>
           <span>{dataset.licence}</span>
           <span>·</span>
-          <span>{dataset.spatial_resolution}</span>
+          <span className="font-mono text-2xs">{dataset.spatial_resolution}</span>
           <span>·</span>
           <span>{dataset.temporal_coverage}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="font-mono text-[10px] px-1.5 py-0.5 border border-rule bg-sheet rounded-xs text-ink-2">
+          <span className="text-[11px] font-medium px-2 py-0.5 border border-rule bg-sheet rounded-xs text-ink-2">
             {originLabel}
           </span>
           <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="font-mono text-[10px] text-accent underline hover:text-accent-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+            className="text-[11px] font-medium text-accent underline hover:text-accent-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
           >
-            {expanded ? 'Hide attribution' : 'Attribution'}
+            {expanded ? 'Hide source details' : 'Source details'}
           </button>
         </div>
       </div>

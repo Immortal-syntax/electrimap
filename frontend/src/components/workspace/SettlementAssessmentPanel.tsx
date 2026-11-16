@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ClipboardCheck,
+  Download,
   FileDown,
   History,
   MapPin,
@@ -25,6 +26,10 @@ import {
   X,
 } from 'lucide-react';
 import { apiRequest } from '../../lib/apiClient';
+import {
+  formatEvidenceSourceLabel,
+  formatVerificationStateLabel,
+} from '../../lib/beginnerGlossary';
 import {
   Badge,
   ClassificationBadge,
@@ -40,6 +45,7 @@ import { Input } from '../ui/Input';
 import { Panel } from '../ui/Panel';
 import { QualityTag } from '../ui/QualityTag';
 import { Select } from '../ui/Select';
+import { HelpTooltip } from '../ui/Tooltip';
 
 export interface ClusterDto {
   id: string;
@@ -135,6 +141,7 @@ export interface VerificationLedgerDto {
 
 export interface SettlementAssessmentPanelProps {
   projectId: string;
+  metricEpsg?: number;
   settlements: ClusterListResponseDto | null;
   ledger: VerificationLedgerDto | null;
   selectedClusterId: string | null;
@@ -144,6 +151,7 @@ export interface SettlementAssessmentPanelProps {
 
 export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps> = ({
   projectId,
+  metricEpsg,
   settlements,
   ledger,
   selectedClusterId,
@@ -157,17 +165,36 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
   const [householdAlpha, setHouseholdAlpha] = useState<number>(
     settlements?.params?.household_alpha ?? 0.9,
   );
+  const paramsEpsM = settlements?.params?.eps_m;
+  const paramsMinSamples = settlements?.params?.min_samples;
+  const paramsHouseholdAlpha = settlements?.params?.household_alpha;
+  useEffect(() => {
+    if (
+      paramsEpsM === undefined &&
+      paramsMinSamples === undefined &&
+      paramsHouseholdAlpha === undefined
+    ) {
+      return;
+    }
+    setEpsM(paramsEpsM ?? 150);
+    setMinSamples(paramsMinSamples ?? 5);
+    setHouseholdAlpha(paramsHouseholdAlpha ?? 0.9);
+  }, [paramsEpsM, paramsMinSamples, paramsHouseholdAlpha]);
   const [runningCluster, setRunningCluster] = useState(false);
+  const [confirmRecluster, setConfirmRecluster] = useState(false);
+  const [downloadingSkeletonPdf, setDownloadingSkeletonPdf] = useState(false);
 
   // Verification form state
   const [verState, setVerState] = useState<'FIELD_VERIFIED' | 'UTILITY_VERIFIED'>(
     'FIELD_VERIFIED',
   );
-  const [verClass, setVerClass] = useState<string>('POTENTIALLY_UNSERVED');
+  const [verClass, setVerClass] = useState<string>('UNSERVED');
   const [verHouseholds, setVerHouseholds] = useState<string>('');
   const [evidenceType, setEvidenceType] = useState<string>('FIELD_SURVEY');
-  const [verifierName, setVerifierName] = useState<string>('Er. R. K. Mohanty (AE TPSODL)');
-  const [observedOn, setObservedOn] = useState<string>('2026-03-15');
+  const [verifierName, setVerifierName] = useState<string>('');
+  const [observedOn, setObservedOn] = useState<string>(() =>
+    new Date().toISOString().slice(0, 10),
+  );
   const [verNote, setVerNote] = useState<string>('');
   const [submittingVer, setSubmittingVer] = useState(false);
 
@@ -217,6 +244,57 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
         .includes(q),
     );
   }, [ledger?.records, ledgerSearch]);
+
+  const reversedRecordIds = useMemo(
+    () =>
+      new Set(
+        (ledger?.records ?? [])
+          .map((r) => r.reverses_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [ledger?.records],
+  );
+
+  const handleDownloadSkeletonPdf = async () => {
+    setDownloadingSkeletonPdf(true);
+    setErrorMessage(null);
+    try {
+      const resp = await fetch(
+        `/api/v1/projects/${projectId}/exports/preliminary-settlement-pdf?skeleton_only=true`,
+        { credentials: 'include' },
+      );
+      if (!resp.ok) {
+        let msg = `Preliminary DPR Skeleton export failed (${resp.status}).`;
+        try {
+          const payload = (await resp.json()) as { detail?: string; message?: string };
+          msg = payload.message ?? payload.detail ?? msg;
+        } catch {
+          // ignore non-JSON body
+        }
+        throw new Error(msg);
+      }
+      const blob = await resp.blob();
+      const cd = resp.headers.get('content-disposition') ?? '';
+      const match = /filename="?([^";]+)"?/i.exec(cd);
+      const filename = match?.[1] ?? `preliminary_settlement_skeleton_${projectId.slice(0, 8)}.pdf`;
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : 'Unable to download Preliminary DPR Skeleton PDF.',
+      );
+    } finally {
+      setDownloadingSkeletonPdf(false);
+    }
+  };
 
   const handleRunClustering = async () => {
     setRunningCluster(true);
@@ -349,18 +427,20 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
       aria-label="Settlement Identification and Verification Ledger"
       overline="Step 2 · Habitation & Settlement Assessment"
       title="Habitation Clustering, Two-Axis Proxy Classification & Verification Ledger"
-      subtitle="Metric DBSCAN clustering in UTM (EPSG:32644), 4-tier proxy rules, Census 2011 reconciliation, and append-only field/utility verification ledger."
+      subtitle={`Metric DBSCAN clustering in UTM${metricEpsg ? ` (EPSG:${metricEpsg})` : ''}, 4-tier proxy rules, Census 2011 reconciliation, and append-only field/utility verification ledger.`}
       icon={MapPin}
       actions={
-        <a
-          href={`/api/v1/projects/${projectId}/exports/preliminary-settlement-pdf`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-xs border border-rule-strong bg-paper text-ink hover:bg-accent-tint hover:text-accent hover:border-accent-border transition-colors"
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          leftIcon={FileDown}
+          isLoading={downloadingSkeletonPdf}
+          loadingText="Preparing Skeleton PDF…"
+          onClick={() => void handleDownloadSkeletonPdf()}
         >
-          <Icon icon={FileDown} size="xs" />
-          <span>Download Preliminary DPR Skeleton (PDF · Sections 1–5 + Map Plate)</span>
-        </a>
+          Download Preliminary DPR Skeleton (PDF · Sections 1–5 + Map Plate)
+        </Button>
       }
     >
       <div className="space-y-4">
@@ -375,115 +455,150 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
           </Callout>
         )}
 
-        {/* Configurable DBSCAN Controls */}
-        <div className="bg-paper border border-rule rounded-xs p-3 flex flex-wrap items-end justify-between gap-3">
-          <div className="flex flex-wrap items-end gap-3">
-            <Input
-              id="dbscan-eps"
-              label="DBSCAN Radius ε (m in UTM)"
-              type="number"
-              min={25}
-              max={1000}
-              step={10}
-              mono
+        {/* Habitation Grouping Controls (Simple default + collapsible advanced controls) */}
+        <div className="bg-paper border border-rule rounded-xs p-3.5 space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="flex flex-wrap items-end gap-3 flex-1 min-w-[240px]">
+              <Input
+                id="dbscan-eps"
+                label="Village Grouping Radius"
+                labelHelp={<HelpTooltip glossaryKey="dbscanClustering" />}
+                hint="Buildings within this distance (default 150 m) are grouped into one hamlet cluster."
+                type="number"
+                min={25}
+                max={1000}
+                step={10}
+                mono
+                size="sm"
+                unit="m"
+                value={epsM}
+                onChange={(e) => setEpsM(Number(e.target.value))}
+                containerClassName="w-full sm:w-64"
+              />
+            </div>
+
+            <Button
               size="sm"
-              unit="m"
-              value={epsM}
-              onChange={(e) => setEpsM(Number(e.target.value))}
-              containerClassName="w-40"
-            />
-            <Input
-              id="dbscan-min-samples"
-              label="Min Buildings (min_samples)"
-              type="number"
-              min={2}
-              max={50}
-              mono
-              size="sm"
-              value={minSamples}
-              onChange={(e) => setMinSamples(Number(e.target.value))}
-              containerClassName="w-40"
-            />
-            <Input
-              id="hh-alpha"
-              label="Household Ratio (α)"
-              type="number"
-              min={0.4}
-              max={2.0}
-              step={0.05}
-              mono
-              size="sm"
-              value={householdAlpha}
-              onChange={(e) => setHouseholdAlpha(Number(e.target.value))}
-              containerClassName="w-36"
-            />
+              variant="primary"
+              isLoading={runningCluster}
+              loadingText="Finding Village Clusters…"
+              onClick={() => {
+                if (clusters.length > 0) {
+                  setConfirmRecluster(true);
+                } else {
+                  void handleRunClustering();
+                }
+              }}
+            >
+              Group Homes into Villages
+            </Button>
           </div>
 
-          <Button
-            size="sm"
-            variant="primary"
-            isLoading={runningCluster}
-            loadingText="Running UTM DBSCAN & Classification…"
-            onClick={() => void handleRunClustering()}
-          >
-            Run Habitation Clustering
-          </Button>
+          <details className="border-t border-rule-subtle pt-2.5 text-xs">
+            <summary className="cursor-pointer font-medium text-ink-2 hover:text-ink select-none">
+              Advanced Clustering Parameters (Minimum Buildings: {minSamples} · Home Ratio: {householdAlpha})
+            </summary>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 max-w-lg">
+              <Input
+                id="dbscan-min-samples"
+                label="Minimum Buildings per Group"
+                hint="Smaller hamlets with fewer buildings stay ungrouped unless lowered."
+                type="number"
+                min={2}
+                max={50}
+                mono
+                size="sm"
+                value={minSamples}
+                onChange={(e) => setMinSamples(Number(e.target.value))}
+              />
+              <Input
+                id="hh-alpha"
+                label="Households per Building Ratio"
+                labelHelp={<HelpTooltip glossaryKey="householdMultiplier" />}
+                hint="Converts detected roofs into estimated households (default 0.90)."
+                type="number"
+                min={0.4}
+                max={2.0}
+                step={0.05}
+                mono
+                size="sm"
+                value={householdAlpha}
+                onChange={(e) => setHouseholdAlpha(Number(e.target.value))}
+              />
+            </div>
+          </details>
         </div>
 
         {/* Census 2011 Household Reconciliation Banner */}
         {rec && (
           <div
             className={`p-3 rounded-xs border text-xs flex flex-wrap items-center justify-between gap-3 ${
-              rec.divergence_exceeds_30pct
-                ? 'bg-warn-bg border-warn-border border-l-4 border-l-warn'
-                : 'bg-paper border-rule'
+              rec.census_2011_households === null || rec.census_2011_households === undefined
+                ? 'bg-paper border-rule'
+                : rec.divergence_exceeds_30pct
+                  ? 'bg-warn-bg border-warn-border border-l-4 border-l-warn'
+                  : 'bg-paper border-rule'
             }`}
           >
             <div className="space-y-1">
               <div className="font-semibold text-ink flex items-center gap-2 flex-wrap">
                 <span>
-                  Census 2011 Household Reconciliation ({rec.village_name ?? 'Village'} · PCA{' '}
-                  {rec.census2011_code ?? '428914'})
+                  Census 2011 Household Check ({rec.village_name ?? 'Study Village'} · Census Code{' '}
+                  {rec.census2011_code ?? 'Not linked'})
                 </span>
-                <QualityTag
-                  kind={rec.divergence_exceeds_30pct ? 'ASSUMED' : 'ESTIMATED'}
-                  label={
-                    rec.divergence_exceeds_30pct
-                      ? 'DIVERGENCE > 30% — SURVEY REQUIRED'
-                      : 'RECONCILED WITHIN ±30%'
-                  }
-                />
+                {rec.census_2011_households === null ||
+                rec.census_2011_households === undefined ? (
+                  <Badge variant="neutral" size="sm">
+                    No Census Baseline Linked
+                  </Badge>
+                ) : (
+                  <QualityTag
+                    kind={rec.divergence_exceeds_30pct ? 'ASSUMED' : 'ESTIMATED'}
+                    label={
+                      rec.divergence_exceeds_30pct
+                        ? 'Differs > 30% — Field Count Needed'
+                        : 'Matches Census Within ±30%'
+                    }
+                  />
+                )}
               </div>
               <p className="text-ink-2 text-[11px]">{rec.reconciliation_note}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-4 font-mono text-[11px]">
               <div>
-                <span className="text-ink-2 block">Census 2011 HH</span>
+                <span className="text-ink-2 block">Census 2011 Homes</span>
                 <span className="font-semibold text-ink">
                   {rec.census_2011_households ?? '—'}
                 </span>
               </div>
               <div>
-                <span className="text-ink-2 block">Projected Base HH</span>
+                <span className="text-ink-2 block">Projected Today</span>
                 <span className="font-semibold text-ink">
                   {rec.projected_base_year_households ?? '—'}
                 </span>
               </div>
               <div>
-                <span className="text-ink-2 block">Satellite Est. HH</span>
+                <span className="text-ink-2 block">Satellite Estimate</span>
                 <span className="font-semibold text-ink">
-                  {rec.satellite_estimated_households} ({rec.satellite_detected_buildings} bldgs)
+                  {rec.satellite_estimated_households} ({rec.satellite_detected_buildings} roofs)
                 </span>
               </div>
               <div>
-                <span className="text-ink-2 block">Delta (%)</span>
+                <span className="text-ink-2 block">Difference</span>
                 <span
                   className={`font-semibold ${
-                    rec.divergence_exceeds_30pct ? 'text-warn' : 'text-ink'
+                    rec.census_2011_households !== null &&
+                    rec.census_2011_households !== undefined &&
+                    rec.divergence_exceeds_30pct
+                      ? 'text-warn'
+                      : 'text-ink'
                   }`}
                 >
-                  {rec.delta_pct !== null && rec.delta_pct !== undefined
+                  {rec.census_2011_households !== null &&
+                  rec.census_2011_households !== undefined &&
+                  rec.delta_pct !== null &&
+                  rec.delta_pct !== undefined
                     ? `${rec.delta_pct >= 0 ? '+' : ''}${rec.delta_pct.toFixed(1)}%`
                     : '—'}
                 </span>
@@ -497,10 +612,12 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
           {/* Left 7 cols: Cluster Inventory Table */}
           <div className="lg:col-span-7 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="small-caps-heading">
-                Habitation Cluster Inventory ({filteredClusters.length}/{clusters.length}{' '}
-                Clusters · Coverage: {(settlements?.verification_coverage_pct ?? 0).toFixed(1)}
-                %)
+              <div className="small-caps-heading flex items-center gap-1.5">
+                <span>
+                  Hamlets &amp; Habitation Groups ({filteredClusters.length}/{clusters.length} ·
+                  Field Checked: {(settlements?.verification_coverage_pct ?? 0).toFixed(1)}%)
+                </span>
+                <HelpTooltip glossaryKey="proxyClassification" />
               </div>
               {(clusterSearch || proxyFilter !== 'ALL' || verificationFilter !== 'ALL') && (
                 <Button
@@ -525,20 +642,19 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                   size="sm"
                   leftIcon={Search}
                   aria-label="Filter habitation clusters by label or name"
-                  placeholder="Search cluster or village..."
+                  placeholder="Search hamlet or code..."
                   value={clusterSearch}
                   onChange={(e) => setClusterSearch(e.target.value)}
                 />
                 <Select
                   size="sm"
-                  aria-label="Filter habitation clusters by proxy class"
+                  aria-label="Filter habitation clusters by estimated status"
                   value={proxyFilter}
                   onChange={(e) =>
                     setProxyFilter(e.target.value as 'ALL' | ProxyElectrificationClass)
                   }
-                  mono
                   options={[
-                    { value: 'ALL', label: 'Axis 1: All Proxy Classes' },
+                    { value: 'ALL', label: 'All Estimated Statuses' },
                     { value: 'LIKELY_ELECTRIFIED', label: 'Likely Electrified' },
                     { value: 'POTENTIALLY_UNDERSERVED', label: 'Potentially Underserved' },
                     { value: 'POTENTIALLY_UNSERVED', label: 'Potentially Unserved' },
@@ -547,17 +663,16 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                 />
                 <Select
                   size="sm"
-                  aria-label="Filter habitation clusters by verification state"
+                  aria-label="Filter habitation clusters by field check status"
                   value={verificationFilter}
                   onChange={(e) =>
                     setVerificationFilter(e.target.value as 'ALL' | VerificationState)
                   }
-                  mono
                   options={[
-                    { value: 'ALL', label: 'Axis 2: All Verification States' },
-                    { value: 'UNVERIFIED', label: 'UNVERIFIED' },
-                    { value: 'FIELD_VERIFIED', label: 'FIELD_VERIFIED' },
-                    { value: 'UTILITY_VERIFIED', label: 'UTILITY_VERIFIED' },
+                    { value: 'ALL', label: 'All Field Check Statuses' },
+                    { value: 'UNVERIFIED', label: 'Not Field Checked Yet' },
+                    { value: 'FIELD_VERIFIED', label: 'Field Visit Verified' },
+                    { value: 'UTILITY_VERIFIED', label: 'Utility Record Verified' },
                   ]}
                 />
               </div>
@@ -567,9 +682,9 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
               <EmptyState
                 compact
                 icon={MapPin}
-                title="No Habitation Clusters Generated Yet"
-                description="Run DBSCAN clustering in local UTM coordinates after Step 1 data acquisition to identify discrete rural settlements."
-                epistemicNote="Proxy classifications are never labelled verified without Axis-2 evidence."
+                title="No Hamlets Grouped Yet"
+                description="Group buildings from Step 1 into settlement clusters to estimate which hamlets may need electricity. Satellite estimates are never marked verified without ground evidence."
+                epistemicNote="Satellite clues cannot replace a village visit or utility record."
                 action={
                   <Button
                     size="sm"
@@ -577,7 +692,7 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                     isLoading={runningCluster}
                     onClick={() => void handleRunClustering()}
                   >
-                    Run Habitation Clustering
+                    Group Village Buildings
                   </Button>
                 }
               />
@@ -585,8 +700,8 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
               <EmptyState
                 compact
                 icon={Search}
-                title="No Matching Habitation Clusters"
-                description="Adjust your search text or Axis-1/Axis-2 filter criteria."
+                title="No Matching Hamlets"
+                description="Try clearing your search or status filter."
                 action={
                   <Button
                     size="xs"
@@ -606,11 +721,11 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                 <table className="w-full text-left border-collapse text-body-sm">
                   <thead>
                     <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
-                      <th className="py-2.5 px-3">Cluster</th>
-                      <th className="py-2.5 px-3">Habitation Name</th>
-                      <th className="py-2.5 px-3">Bldgs / HH</th>
-                      <th className="py-2.5 px-3">Two-Axis Classification</th>
-                      <th className="py-2.5 px-3">Zonal Terrain</th>
+                      <th className="py-2.5 px-3">Group</th>
+                      <th className="py-2.5 px-3">Hamlet / Village</th>
+                      <th className="py-2.5 px-3">Buildings &amp; Homes</th>
+                      <th className="py-2.5 px-3">Estimated vs. Checked Status</th>
+                      <th className="py-2.5 px-3">Slope &amp; Trees</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-rule-subtle">
@@ -619,8 +734,16 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                       return (
                         <tr
                           key={c.id}
+                          tabIndex={0}
+                          aria-selected={isSelected}
                           onClick={() => onSelectCluster(c.id)}
-                          className={`cursor-pointer transition-colors ${
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onSelectCluster(c.id);
+                            }
+                          }}
+                          className={`cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus ${
                             isSelected ? 'bg-accent-tint/60' : 'hover:bg-surface-hover'
                           }`}
                         >
@@ -629,7 +752,7 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                           </td>
                           <td className="py-2.5 px-3 font-medium text-ink">{c.name}</td>
                           <td className="py-2.5 px-3 text-xs tabular-nums">
-                            {c.n_detected} bldgs · <strong>{c.est_households} HH</strong>
+                            {c.n_detected} bldgs · <strong>{c.est_households} homes</strong>
                           </td>
                           <td className="py-2.5 px-3 space-y-1">
                             <ClassificationBadge
@@ -638,13 +761,20 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                             />
                             {c.verified_class && (
                               <div className="text-xs font-medium text-ok">
-                                Axis-2 Verified Class: {c.verified_class}
+                                Confirmed Status:{' '}
+                                {c.verified_class === 'ELECTRIFIED'
+                                  ? 'Electrified'
+                                  : c.verified_class === 'UNDERSERVED'
+                                    ? 'Underserved'
+                                    : c.verified_class === 'UNSERVED'
+                                      ? 'Unserved'
+                                      : c.verified_class}
                               </div>
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-xs text-ink-2 tabular-nums">
                             {c.slope_mean_deg.toFixed(1)}° · {(c.canopy_share * 100).toFixed(0)}%
-                            canopy
+                            trees
                           </td>
                         </tr>
                       );
@@ -655,14 +785,14 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
             )}
           </div>
 
-          {/* Right 5 cols: Selected Cluster Inspector & Field/Utility Verification Form */}
+          {/* Right 5 cols: Selected Hamlet Inspector & Field Check Form */}
           <div className="lg:col-span-5 bg-paper border border-rule-subtle rounded-xs p-4 space-y-3.5">
             {selectedCluster ? (
               <>
                 <div className="border-b border-rule pb-2.5 flex items-center justify-between gap-2">
                   <div>
                     <span className="small-caps-heading block">
-                      Selected Cluster Inspector
+                      Selected Hamlet Details
                     </span>
                     <h4 className="text-base font-semibold text-ink">
                       {selectedCluster.label} · {selectedCluster.name}
@@ -674,25 +804,28 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                         ? 'VERIFIED'
                         : 'PROXY'
                     }
-                    label={`CONFIDENCE: ${
+                    label={
                       selectedCluster.verification_state !== 'UNVERIFIED'
-                        ? 'HIGH (VERIFIED)'
-                        : selectedCluster.proxy_confidence
-                    }`}
+                        ? 'Field Confirmed'
+                        : `Estimate Confidence: ${selectedCluster.proxy_confidence}`
+                    }
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5 text-xs bg-sheet p-3 border border-rule-subtle rounded-xs">
                   <div>
-                    <span className="text-ink-2 block">Axis-1 Proxy Class</span>
-                    <span className="font-mono font-semibold text-ink">
-                      {selectedCluster.proxy_class}
+                    <span className="text-ink-2 block">Satellite Estimate</span>
+                    <span className="font-semibold text-ink">
+                      {selectedCluster.proxy_class
+                        .replace(/_/g, ' ')
+                        .toLowerCase()
+                        .replace(/\b\w/g, (m) => m.toUpperCase())}
                     </span>
                   </div>
                   <div>
-                    <span className="text-ink-2 block">Axis-2 Verification</span>
-                    <span className="font-mono font-semibold text-ink">
-                      {selectedCluster.verification_state}
+                    <span className="text-ink-2 block">Field Check Status</span>
+                    <span className="font-semibold text-ink">
+                      {formatVerificationStateLabel(selectedCluster.verification_state)}
                       {selectedCluster.verified_class
                         ? ` (${selectedCluster.verified_class})`
                         : ''}
@@ -700,42 +833,49 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                   </div>
                   <div>
                     <span className="text-ink-2 block">Nearest Road / Slope</span>
-                    <span className="text-ink">
-                      {selectedCluster.d_road_m ?? 0} m · {selectedCluster.slope_mean_deg}°
+                    <span className="text-ink tabular-nums">
+                      {Math.round(selectedCluster.d_road_m ?? 0)} m ·{' '}
+                      {selectedCluster.slope_mean_deg.toFixed(1)}°
                     </span>
                   </div>
                   <div>
-                    <span className="text-ink-2 block">HREA Lightscore</span>
-                    <span className="text-ink">
+                    <span className="text-ink-2 flex items-center gap-1">
+                      Nighttime Brightness
+                      <HelpTooltip glossaryKey="viirsNighttimeLight" />
+                    </span>
+                    <span className="text-ink tabular-nums">
                       {selectedCluster.evidence?.['nl_lightscore'] !== undefined &&
                       selectedCluster.evidence?.['nl_lightscore'] !== null
                         ? String(selectedCluster.evidence['nl_lightscore'])
-                        : 'Not recorded'}
+                        : selectedCluster.evidence?.['nightlights_available'] === false
+                          ? 'Unavailable (No VIIRS)'
+                          : 'Not recorded'}
                     </span>
                   </div>
                 </div>
 
-                <p className="text-[11px] text-ink-2 italic">
+                <p className="text-xs text-ink-2 italic">
                   {String(
                     selectedCluster.evidence?.['rationale'] ??
-                      'Proxy classification derived from VIIRS/HREA nightlights and OSM road proximity.',
+                      'Satellite estimate based on outdoor nighttime brightness and distance to the nearest road.',
                   )}
                 </p>
 
-                {/* Inline Verification Form */}
+                {/* Inline Field Verification Form */}
                 <form
                   onSubmit={(e) => void handleRecordVerification(e)}
                   className="space-y-2.5 pt-1"
                 >
                   <div className="small-caps-heading border-t border-rule pt-2 flex items-center gap-1.5">
                     <Icon icon={ClipboardCheck} size="xs" className="text-accent" />
-                    <span>Record Field / Utility Verification (Axis 2)</span>
+                    <span>Log Field Visit or Utility Confirmation</span>
+                    <HelpTooltip glossaryKey="verificationStatus" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <Select
                       id="ver-state"
-                      label="Verification State"
+                      label="Check Type"
                       size="sm"
                       value={verState}
                       onChange={(e) =>
@@ -743,26 +883,25 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                           e.target.value as 'FIELD_VERIFIED' | 'UTILITY_VERIFIED',
                         )
                       }
-                      mono
                       options={[
-                        { value: 'FIELD_VERIFIED', label: 'FIELD_VERIFIED' },
-                        { value: 'UTILITY_VERIFIED', label: 'UTILITY_VERIFIED' },
+                        { value: 'FIELD_VERIFIED', label: 'Field Visit Verified' },
+                        { value: 'UTILITY_VERIFIED', label: 'Utility / DISCOM Confirmed' },
                       ]}
                     />
 
                     <Select
                       id="ver-class"
-                      label="Verified Status Class"
+                      label="Confirmed Power Status"
                       size="sm"
                       value={verClass}
                       onChange={(e) => setVerClass(e.target.value)}
                       options={[
-                        { value: 'POTENTIALLY_UNSERVED', label: 'UNSERVED / OFF-GRID' },
+                        { value: 'UNSERVED', label: 'Unserved (No Grid Supply)' },
                         {
-                          value: 'POTENTIALLY_UNDERSERVED',
-                          label: 'UNDERSERVED (WEAK TAIL-END)',
+                          value: 'UNDERSERVED',
+                          label: 'Underserved (Weak / Irregular)',
                         },
-                        { value: 'LIKELY_ELECTRIFIED', label: 'ELECTRIFIED (ADEQUATE)' },
+                        { value: 'ELECTRIFIED', label: 'Electrified (Adequate Supply)' },
                       ]}
                     />
                   </div>
@@ -770,28 +909,30 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                   <div className="grid grid-cols-2 gap-2">
                     <Select
                       id="ver-evidence"
-                      label="Evidence Source"
+                      label="Proof / Evidence Source"
                       size="sm"
                       value={evidenceType}
                       onChange={(e) => setEvidenceType(e.target.value)}
-                      mono
                       options={[
-                        { value: 'FIELD_SURVEY', label: 'FIELD_SURVEY' },
-                        { value: 'UTILITY_LEDGER', label: 'UTILITY_LEDGER' },
-                        { value: 'GRAM_SABHA_RESOLUTION', label: 'GRAM_SABHA_RESOLUTION' },
-                        { value: 'GEO_TAGGED_PHOTO', label: 'GEO_TAGGED_PHOTO' },
-                      ]}
+                        'FIELD_SURVEY',
+                        'UTILITY_LEDGER',
+                        'GRAM_SABHA_RESOLUTION',
+                        'GEO_TAGGED_PHOTO',
+                      ].map((code) => ({
+                        value: code,
+                        label: formatEvidenceSourceLabel(code),
+                      }))}
                     />
 
                     <Input
                       id="ver-hh"
-                      label="Verified Households"
+                      label="Counted Homes"
                       size="sm"
                       type="number"
                       min={0}
                       max={10000}
                       mono
-                      unit="HH"
+                      unit="homes"
                       placeholder={String(selectedCluster.est_households)}
                       value={verHouseholds}
                       onChange={(e) => setVerHouseholds(e.target.value)}
@@ -801,17 +942,18 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                   <div className="grid grid-cols-2 gap-2">
                     <Input
                       id="ver-verifier"
-                      label="Verifier Name & Designation"
+                      label="Verifier Name &amp; Role"
                       size="sm"
                       type="text"
                       required
+                      placeholder="e.g., Field Surveyor or Block Engineer name"
                       value={verifierName}
                       onChange={(e) => setVerifierName(e.target.value)}
                     />
 
                     <Input
                       id="ver-date"
-                      label="Observation Date"
+                      label="Visit / Record Date"
                       size="sm"
                       type="date"
                       required
@@ -823,10 +965,10 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
 
                   <Input
                     id="ver-note"
-                    label="Audit Note"
+                    label="Notes from Visit or Record"
                     size="sm"
                     type="text"
-                    placeholder="e.g., Confirmed 0 LT poles in hamlet via Gram Sabha survey"
+                    placeholder="e.g., Visited hamlet; saw 0 poles or low voltage at tail end"
                     value={verNote}
                     onChange={(e) => setVerNote(e.target.value)}
                   />
@@ -836,10 +978,10 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                     size="sm"
                     variant="primary"
                     isLoading={submittingVer}
-                    loadingText="Appending to Ledger…"
+                    loadingText="Saving Check…"
                     fullWidth
                   >
-                    Append Verification for {selectedCluster.label}
+                    Save Field Check for {selectedCluster.label}
                   </Button>
                 </form>
               </>
@@ -847,26 +989,27 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
               <EmptyState
                 compact
                 icon={ClipboardCheck}
-                title="No Cluster Selected"
-                description="Select a habitation cluster from the inventory table to inspect proxy diagnostics and record Axis-2 verification evidence."
+                title="No Hamlet Selected"
+                description="Click any hamlet in the table on the left to inspect its satellite clues and log a field check or utility record."
               />
             )}
           </div>
         </div>
 
-        {/* Append-Only Verification Audit Ledger & CSV Batch Import */}
+        {/* Permanent Field Verification Log & CSV Batch Import */}
         <div className="border-t border-rule pt-3 space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <span className="small-caps-heading flex items-center gap-1.5">
                 <Icon icon={History} size="xs" className="text-ink-2" />
                 <span>
-                  Append-Only Verification Audit Ledger ({ledger?.records.length ?? 0} Entries)
+                  Permanent Field Check Log ({ledger?.records.length ?? 0} Entries)
                 </span>
+                <HelpTooltip glossaryKey="verificationStatus" />
               </span>
-              <p className="text-[11px] text-ink-2">
-                Database triggers forbid UPDATE or DELETE on verification records. Corrections
-                append a linked reversal record.
+              <p className="text-xs text-ink-2">
+                Saved field visits and utility records stay permanently in this log. To correct
+                a mistake, reverse the entry and add a new check.
               </p>
             </div>
 
@@ -876,20 +1019,41 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                   type="search"
                   size="sm"
                   leftIcon={Search}
-                  aria-label="Filter verification audit ledger"
-                  placeholder="Filter audit entries..."
+                  aria-label="Filter field check log"
+                  placeholder="Search log entries..."
                   value={ledgerSearch}
                   onChange={(e) => setLedgerSearch(e.target.value)}
                   containerClassName="w-52"
                 />
               )}
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                leftIcon={Download}
+                onClick={() => {
+                  const csv = [
+                    'cluster_label,verification_state,verified_class,verified_households,evidence_type,verifier_name,observed_on,note',
+                    'C-01,FIELD_VERIFIED,UNSERVED,42,FIELD_SURVEY,Block Survey Team,2026-04-01,Confirmed 0 LT poles in hamlet',
+                  ].join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'sample_field_survey_checks.csv';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                Sample Survey CSV
+              </Button>
               <label className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium bg-paper border border-rule-strong rounded-xs cursor-pointer hover:bg-sheet transition-colors">
                 <Icon icon={Upload} size="xs" className="text-ink-2" />
-                <span>{csvUploading ? 'Importing CSV…' : 'Import Field Survey CSV'}</span>
+                <span>{csvUploading ? 'Importing CSV…' : 'Upload Field Survey CSV'}</span>
                 <input
                   type="file"
                   accept=".csv"
-                  aria-label="Import Field Survey CSV"
+                  aria-label="Upload Field Survey CSV"
                   disabled={csvUploading}
                   onChange={(e) => void handleCsvUpload(e)}
                   className="sr-only"
@@ -904,11 +1068,11 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                 <table className="w-full text-left border-collapse text-body-sm">
                   <thead>
                     <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
-                      <th className="py-2 px-2.5">Cluster</th>
-                      <th className="py-2 px-2.5">Evidence</th>
-                      <th className="py-2 px-2.5">Verifier &amp; Date</th>
-                      <th className="py-2 px-2.5">State Transition (Axis 2)</th>
-                      <th className="py-2 px-2.5">Audit Note</th>
+                      <th className="py-2 px-2.5">Group</th>
+                      <th className="py-2 px-2.5">Proof Type</th>
+                      <th className="py-2 px-2.5">Checked By &amp; Date</th>
+                      <th className="py-2 px-2.5">Status Change</th>
+                      <th className="py-2 px-2.5">Notes</th>
                       <th className="py-2 px-2.5 text-right">Action</th>
                     </tr>
                   </thead>
@@ -924,6 +1088,14 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                         recItem.new_value?.['verified_class'] ?? '',
                       );
                       const isReversal = Boolean(recItem.reverses_id);
+                      const readableNextClass =
+                        nextClass === 'UNSERVED'
+                          ? 'Unserved'
+                          : nextClass === 'UNDERSERVED'
+                            ? 'Underserved'
+                            : nextClass === 'ELECTRIFIED'
+                              ? 'Electrified'
+                              : nextClass;
                       return (
                         <tr key={recItem.id} className="hover:bg-surface-hover">
                           <td className="py-2 px-2.5 font-mono font-semibold text-xs">
@@ -931,7 +1103,7 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                           </td>
                           <td className="py-2 px-2.5 text-xs">
                             <Badge variant={isReversal ? 'warn' : 'neutral'} size="sm">
-                              {recItem.evidence_type}
+                              {formatEvidenceSourceLabel(recItem.evidence_type)}
                             </Badge>
                           </td>
                           <td className="py-2 px-2.5 text-xs">
@@ -939,14 +1111,15 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                             <div className="tabular-nums text-ink-2">{recItem.observed_on}</div>
                           </td>
                           <td className="py-2 px-2.5 text-xs">
-                            {prevState} → <strong>{nextState}</strong>
-                            {nextClass ? ` (${nextClass})` : ''}
+                            {formatVerificationStateLabel(prevState)} →{' '}
+                            <strong>{formatVerificationStateLabel(nextState)}</strong>
+                            {readableNextClass ? ` (${readableNextClass})` : ''}
                           </td>
                           <td className="py-2 px-2.5 text-xs text-ink-2">
                             {recItem.note}
                           </td>
                           <td className="py-1.5 px-2.5 text-right">
-                            {!isReversal && (
+                            {!isReversal && !reversedRecordIds.has(recItem.id) && (
                               <Button
                                 size="xs"
                                 variant="danger-outline"
@@ -955,6 +1128,9 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                               >
                                 {reversingId === recItem.id ? 'Reversing…' : 'Reverse Entry'}
                               </Button>
+                            )}
+                            {!isReversal && reversedRecordIds.has(recItem.id) && (
+                              <span className="text-2xs text-ink-3">Reversed</span>
                             )}
                           </td>
                         </tr>
@@ -967,8 +1143,8 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
               <EmptyState
                 compact
                 icon={Search}
-                title="No Matching Audit Ledger Entries"
-                description="Clear the ledger filter to view all verification records."
+                title="No Matching Log Entries"
+                description="Clear the search box to see all saved field checks."
                 action={
                   <Button
                     size="xs"
@@ -984,14 +1160,14 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
             <EmptyState
               compact
               icon={History}
-              title="No Verification Records Logged Yet"
-              description="Select a cluster above or upload a field survey CSV to record Axis-2 verification evidence."
+              title="No Field Checks Logged Yet"
+              description="Click a hamlet above or upload a survey CSV to record a field visit or utility confirmation."
             />
           )}
         </div>
       </div>
 
-      {/* Confirmation Dialog for Append-Only Verification Reversal */}
+      {/* Confirmation Dialog for Field Check Reversal */}
       <ConfirmDialog
         open={pendingReversalRecord !== null}
         onClose={() => setPendingReversalRecord(null)}
@@ -1001,28 +1177,44 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
           setPendingReversalRecord(null);
           void handleReverseVerification(targetId);
         }}
-        title="Confirm Append-Only Verification Reversal"
+        title="Confirm Field Check Reversal"
         description={
           pendingReversalRecord ? (
             <div className="space-y-1.5">
               <p>
-                Append a reversal entry for cluster{' '}
+                Add a reversal entry for hamlet{' '}
                 <strong className="font-mono">
                   {pendingReversalRecord.cluster_label ??
                     pendingReversalRecord.target_id.slice(0, 8)}
                 </strong>{' '}
-                ({pendingReversalRecord.evidence_type}, {pendingReversalRecord.observed_on})?
+                ({formatEvidenceSourceLabel(pendingReversalRecord.evidence_type)},{' '}
+                {pendingReversalRecord.observed_on})?
               </p>
-              <p className="text-2xs text-ink-3 font-mono">
-                Original entry stays permanently in the immutable ledger; cluster verification
-                state reverts to its prior status.
+              <p className="text-xs text-ink-3">
+                The original entry stays safely in the log, and the hamlet returns to its
+                previous check status.
               </p>
             </div>
           ) : null
         }
-        confirmLabel="Append Reversal Entry"
+        confirmLabel="Add Reversal Entry"
         variant="danger"
         isLoading={reversingId !== null}
+      />
+
+      {/* Confirmation Dialog for Re-Running Building Grouping */}
+      <ConfirmDialog
+        open={confirmRecluster}
+        onClose={() => setConfirmRecluster(false)}
+        onConfirm={() => {
+          setConfirmRecluster(false);
+          void handleRunClustering();
+        }}
+        title="Re-Group Village Buildings?"
+        description={`Grouping buildings again with a ${epsM} m radius (at least ${minSamples} buildings, ${householdAlpha} homes per building) will rebuild the hamlet list and refresh demand and wiring plans.`}
+        confirmLabel="Re-Group Buildings"
+        variant="danger"
+        isLoading={runningCluster}
       />
     </Panel>
   );

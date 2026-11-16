@@ -56,6 +56,34 @@ export const MAP_MIN_ZOOM = 5.0;
  */
 export const MAP_MAX_ZOOM = 20.0;
 
+/**
+ * Generates an approximate geodesic circular/polygonal buffer around a center point
+ * using local WGS 84 spherical earth radii (distinguishable from rectangular AOI boxes).
+ */
+export function buildMetricBufferPolygon(
+  centerLon: number,
+  centerLat: number,
+  radiusMeters: number,
+  vertices = 24,
+): GeoJSON.Polygon {
+  const earthRadiusM = 6378137.0;
+  const latRad = (centerLat * Math.PI) / 180;
+  const cosLat = Math.max(0.1, Math.cos(latRad));
+  const ring: [number, number][] = [];
+  for (let i = 0; i < vertices; i += 1) {
+    const theta = (2 * Math.PI * i) / vertices;
+    const dLatDeg = ((radiusMeters * Math.sin(theta)) / earthRadiusM) * (180 / Math.PI);
+    const dLonDeg =
+      ((radiusMeters * Math.cos(theta)) / (earthRadiusM * cosLat)) * (180 / Math.PI);
+    ring.push([
+      Number((centerLon + dLonDeg).toFixed(6)),
+      Number((centerLat + dLatDeg).toFixed(6)),
+    ]);
+  }
+  ring.push(ring[0]!);
+  return { type: 'Polygon', coordinates: [ring] };
+}
+
 export interface SearchableLocationItem {
   id: string;
   label: string;
@@ -156,55 +184,47 @@ export const VIIRS_PERIOD_OPTIONS: Array<{
 }> = [
   {
     id: '2024_ANNUAL',
-    label: '2024 Reference Scenario (1.00× Scale)',
+    label: '2024 Baseline Estimate',
     compositeNote:
-      'Illustrative AOI radiance surface (1.00× baseline scale; SYNTHETIC_PLACEHOLDER) paired with Koraput 2024 reference cluster values',
+      'Illustrative nighttime radiance preview (1.00× baseline scale) paired with Koraput 2024 cluster points',
     radianceField: 'viirs_radiance_2024_nw',
-    observationWindow:
-      'Illustrative Pre-Feasibility Scenario (1.00× · SYNTHETIC_PLACEHOLDER)',
+    observationWindow: 'Illustrative Pre-Feasibility Scenario (1.00× baseline)',
     sensorResolution:
-      '~500 m VIIRS DNB Scale · Local AOI Proxy PNG (not live satellite feed)',
-    provenanceLabel:
-      'Koraput REFERENCE_DEMO Points + SYNTHETIC_PLACEHOLDER AOI Surface',
+      '~500 m VIIRS DNB Scale · Local Screening Preview (not live satellite feed)',
+    provenanceLabel: 'Koraput Sample Points + Illustrative Nighttime Surface',
   },
   {
     id: '2023_POST_MONSOON',
-    label: '2023 High-Contrast Scenario (1.08× Scale)',
+    label: '2023 Bright Sensitivity (+8%)',
     compositeNote:
-      'Illustrative AOI radiance surface (1.08× synthetic scaling; SYNTHETIC_PLACEHOLDER) paired with Koraput 2023 reference cluster values',
+      'Illustrative nighttime radiance sensitivity view (+8% scaling) paired with Koraput 2023 cluster points',
     radianceField: 'viirs_radiance_2023_nw',
-    observationWindow:
-      'Illustrative Pre-Feasibility Scenario (1.08× · SYNTHETIC_PLACEHOLDER)',
+    observationWindow: 'Illustrative Pre-Feasibility Scenario (1.08× sensitivity)',
     sensorResolution:
-      '~500 m VIIRS DNB Scale · Local AOI Proxy PNG (not live satellite feed)',
-    provenanceLabel:
-      'Koraput REFERENCE_DEMO Points + SYNTHETIC_PLACEHOLDER AOI Surface',
+      '~500 m VIIRS DNB Scale · Local Screening Preview (not live satellite feed)',
+    provenanceLabel: 'Koraput Sample Points + Illustrative Nighttime Surface',
   },
   {
     id: '2022_ANNUAL',
-    label: '2022 Mid-Trend Scenario (0.88× Scale)',
+    label: '2022 Mid-Trend Sensitivity (−12%)',
     compositeNote:
-      'Illustrative AOI radiance surface (0.88× synthetic scaling; SYNTHETIC_PLACEHOLDER) paired with Koraput 2022 reference cluster values',
+      'Illustrative nighttime radiance sensitivity view (−12% scaling) paired with Koraput 2022 cluster points',
     radianceField: 'viirs_radiance_2022_nw',
-    observationWindow:
-      'Illustrative Pre-Feasibility Scenario (0.88× · SYNTHETIC_PLACEHOLDER)',
+    observationWindow: 'Illustrative Pre-Feasibility Scenario (0.88× sensitivity)',
     sensorResolution:
-      '~500 m VIIRS DNB Scale · Local AOI Proxy PNG (not live satellite feed)',
-    provenanceLabel:
-      'Koraput REFERENCE_DEMO Points + SYNTHETIC_PLACEHOLDER AOI Surface',
+      '~500 m VIIRS DNB Scale · Local Screening Preview (not live satellite feed)',
+    provenanceLabel: 'Koraput Sample Points + Illustrative Nighttime Surface',
   },
   {
     id: '2020_BASELINE',
-    label: '2020 Lower-Radiance Scenario (0.72× Scale)',
+    label: '2020 Dim Baseline (−28%)',
     compositeNote:
-      'Illustrative AOI radiance surface (0.72× synthetic scaling; SYNTHETIC_PLACEHOLDER) paired with Koraput 2020 reference cluster values',
+      'Illustrative nighttime radiance sensitivity view (−28% scaling) paired with Koraput 2020 cluster points',
     radianceField: 'viirs_radiance_2020_nw',
-    observationWindow:
-      'Illustrative Pre-Feasibility Scenario (0.72× · SYNTHETIC_PLACEHOLDER)',
+    observationWindow: 'Illustrative Pre-Feasibility Scenario (0.72× sensitivity)',
     sensorResolution:
-      '~500 m VIIRS DNB Scale · Local AOI Proxy PNG (not live satellite feed)',
-    provenanceLabel:
-      'Koraput REFERENCE_DEMO Points + SYNTHETIC_PLACEHOLDER AOI Surface',
+      '~500 m VIIRS DNB Scale · Local Screening Preview (not live satellite feed)',
+    provenanceLabel: 'Koraput Sample Points + Illustrative Nighttime Surface',
   },
 ];
 
@@ -341,6 +361,20 @@ export const DEFAULT_EXISTING_POWER_INFRA_FC: GeoJSON.FeatureCollection = {
     {
       type: 'Feature',
       properties: {
+        id: 'osm-twr-33-02',
+        name: 'TWR-33-02 (33 kV Lattice Steel Support Tower)',
+        infra_category: 'TOWER',
+        osm_tag: 'power=tower',
+        voltage_kv: 33.0,
+        provenance: 'OSM_MAPPED',
+        quality_tag: 'ESTIMATED',
+        epistemic_note: 'Mapped 33 kV lattice steel support structure at Nandapur S/S approach.',
+      },
+      geometry: { type: 'Point', coordinates: [82.692, 18.538] },
+    },
+    {
+      type: 'Feature',
+      properties: {
         id: 'osm-twr-33-03',
         name: 'TWR-33-03 (33 kV Lattice Steel Support Tower)',
         infra_category: 'TOWER',
@@ -380,6 +414,20 @@ export const DEFAULT_EXISTING_POWER_INFRA_FC: GeoJSON.FeatureCollection = {
           'Mapped 11 kV pole along Nandapur–Bheja spur; unmapped poles elsewhere do not imply absence of LT network.',
       },
       geometry: { type: 'Point', coordinates: [82.701, 18.545] },
+    },
+    {
+      type: 'Feature',
+      properties: {
+        id: 'osm-pole-11-02',
+        name: 'POLE-11-02 (11 kV 8m PSC Distribution Pole)',
+        infra_category: 'POLE',
+        osm_tag: 'power=pole',
+        voltage_kv: 11.0,
+        provenance: 'OSM_MAPPED',
+        quality_tag: 'ESTIMATED',
+        epistemic_note: 'Mapped 11 kV pole at Padwa Junction DT-02.',
+      },
+      geometry: { type: 'Point', coordinates: [82.709833, 18.55195] },
     },
     {
       type: 'Feature',
@@ -429,18 +477,7 @@ export const DEFAULT_VILLAGE_ELECTRIFICATION_FC: GeoJSON.FeatureCollection = {
         missing_data_notice:
           'Current household meter count requires DISCOM (TPSODL) consumer billing ledger or Gram Sabha field survey verification.',
       },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [82.695, 18.535],
-            [82.765, 18.535],
-            [82.765, 18.595],
-            [82.695, 18.595],
-            [82.695, 18.535],
-          ],
-        ],
-      },
+      geometry: buildMetricBufferPolygon(82.73, 18.565, 3200.0),
     },
     {
       type: 'Feature',
@@ -470,18 +507,7 @@ export const DEFAULT_VILLAGE_ELECTRIFICATION_FC: GeoJSON.FeatureCollection = {
         missing_data_notice:
           'Feeder-level outage frequency and tail-end voltage drop require DISCOM DT metering logs.',
       },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [82.62, 18.48],
-            [82.68, 18.48],
-            [82.68, 18.53],
-            [82.62, 18.53],
-            [82.62, 18.48],
-          ],
-        ],
-      },
+      geometry: buildMetricBufferPolygon(82.65, 18.505, 2800.0),
     },
     {
       type: 'Feature',
@@ -509,20 +535,9 @@ export const DEFAULT_VILLAGE_ELECTRIFICATION_FC: GeoJSON.FeatureCollection = {
         data_source: 'Census of India 2011 DCHB (0 hrs supply) + VIIRS DNB (0.05 nW/cm²/sr)',
         verification_state: 'UNVERIFIED',
         missing_data_notice:
-          'Official boundary polygon unavailable; shown as approximate buffer. Requires Gram Sabha field verification to check if standalone solar home systems (SHS) were installed post-2018.',
+          'Official boundary polygon unavailable; shown as 1.5 km metric buffer. Requires Gram Sabha field verification to check if standalone solar home systems (SHS) were installed post-2018.',
       },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [82.742, 18.572],
-            [82.768, 18.572],
-            [82.768, 18.596],
-            [82.742, 18.596],
-            [82.742, 18.572],
-          ],
-        ],
-      },
+      geometry: buildMetricBufferPolygon(82.755, 18.584, 1500.0),
     },
   ],
 };
@@ -848,22 +863,26 @@ export function computePolylineLengthMeters(pts: Array<[number, number]>): numbe
   return total;
 }
 
-/** Compute approximate polygon area in square meters using local equirectangular projection */
+/** Compute geodesic polygon area in square meters using spherical excess (Chamberlain & Duquette, JPL Pub 07-3) */
 export function computePolygonAreaM2(pts: Array<[number, number]>): number {
   if (pts.length < 3) return 0;
-  const R = 6371008.8;
+  const closed =
+    pts[0]![0] === pts[pts.length - 1]![0] &&
+    pts[0]![1] === pts[pts.length - 1]![1]
+      ? pts
+      : [...pts, pts[0]!];
+  const R = 6378137.0;
   const toRad = (deg: number) => (deg * Math.PI) / 180.0;
-  const meanLatRad =
-    toRad(pts.reduce((acc, p) => acc + p[1], 0) / pts.length);
-  const proj = pts.map(([lon, lat]) => [
-    R * toRad(lon) * Math.cos(meanLatRad),
-    R * toRad(lat),
-  ]);
-  let area2 = 0;
-  for (let i = 0; i < proj.length; i++) {
-    const j = (i + 1) % proj.length;
-    area2 += proj[i]![0]! * proj[j]![1]! - proj[j]![0]! * proj[i]![1]!;
+  let total = 0;
+  for (let i = 0; i < closed.length - 1; i += 1) {
+    const p1 = closed[i]!;
+    const p2 = closed[i + 1]!;
+    const lon1 = toRad(p1[0]);
+    const lat1 = toRad(p1[1]);
+    const lon2 = toRad(p2[0]);
+    const lat2 = toRad(p2[1]);
+    total += (lon2 - lon1) * (2 + Math.sin(lat1) + Math.sin(lat2));
   }
-  return Math.abs(area2) / 2.0;
+  return Math.abs((total * R * R) / 2.0);
 }
 

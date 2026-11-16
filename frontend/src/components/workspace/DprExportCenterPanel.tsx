@@ -16,6 +16,7 @@
 
 import React, { useMemo, useState } from 'react';
 import {
+  ArrowRight,
   FileCheck2,
   FileSpreadsheet,
   FileText,
@@ -24,6 +25,7 @@ import {
   Search,
   ShieldAlert,
 } from 'lucide-react';
+import { formatScenarioLabel } from '../../lib/beginnerGlossary';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Callout } from '../ui/Callout';
@@ -33,6 +35,7 @@ import { Panel } from '../ui/Panel';
 import { QualityTag } from '../ui/QualityTag';
 import { Select } from '../ui/Select';
 import { StatTile } from '../ui/StatTile';
+import { HelpTooltip } from '../ui/Tooltip';
 
 export interface PreFlightCheckItemDto {
   check_code: string;
@@ -90,11 +93,36 @@ export interface ProjectExportListDto {
   items: ProjectExportRecordDto[];
 }
 
+type FixableSectionKey = 'data' | 'settlements' | 'infrastructure' | 'network' | 'cost';
+
+function resolveStepNavigation(checkCode: string): {
+  section: FixableSectionKey;
+  label: string;
+} {
+  if (/SYNTHETIC|AOI|LAYER|RASTER|DATA|INGEST/i.test(checkCode)) {
+    return { section: 'data', label: 'Fix in Step 1' };
+  }
+  if (/CLUSTER|SETTLEMENT|CENSUS|VERIF|AXIS_2/i.test(checkCode)) {
+    return { section: 'settlements', label: 'Fix in Step 2' };
+  }
+  if (/TIE_?IN|INFRA|DEMAND|GAP|EXISTING/i.test(checkCode)) {
+    return { section: 'infrastructure', label: 'Fix in Step 3' };
+  }
+  if (/CEA|VOLTAGE|NETWORK|SCENARIO|ROUT|LINE|TRANSFORMER/i.test(checkCode)) {
+    return { section: 'network', label: 'Fix in Step 4' };
+  }
+  if (/BOQ|RATE|SOR|COST|ECON|FINANC/i.test(checkCode)) {
+    return { section: 'cost', label: 'Fix in Step 5' };
+  }
+  return { section: 'data', label: 'Review Step 1' };
+}
+
 interface DprExportCenterPanelProps {
   projectId: string;
   preflight: PreFlightReportDto | null;
   exportLog: ProjectExportListDto | null;
   onRefreshAuditAndLogs: () => Promise<void>;
+  onNavigateSection?: (section: FixableSectionKey) => void;
 }
 
 export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
@@ -102,10 +130,15 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
   preflight,
   exportLog,
   onRefreshAuditAndLogs,
+  onNavigateSection,
 }) => {
   const [activeTab, setActiveTab] = useState<'checks' | 'sections' | 'exports'>('checks');
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [downloadingArtifact, setDownloadingArtifact] = useState<
+    'dpr-pdf' | 'boq-xlsx' | 'gis-package' | null
+  >(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [checkStatusFilter, setCheckStatusFilter] = useState<'ALL' | 'FAIL' | 'WARN' | 'PASS'>(
     'ALL',
   );
@@ -150,26 +183,83 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
     }
   };
 
+  const handleDownloadArtifact = async (
+    artifact: 'dpr-pdf' | 'boq-xlsx' | 'gis-package',
+    fallbackFilename: string,
+  ) => {
+    setDownloadingArtifact(artifact);
+    setDownloadError(null);
+    try {
+      const resp = await fetch(`/api/v1/projects/${projectId}/exports/${artifact}`, {
+        credentials: 'include',
+      });
+      if (!resp.ok) {
+        let msg = `Export '${artifact}' failed (HTTP ${resp.status}).`;
+        try {
+          const payload = (await resp.json()) as {
+            detail?: string | { message?: string };
+            message?: string;
+            error?: { message?: string; code?: string };
+          };
+          const detailMsg =
+            typeof payload.detail === 'string'
+              ? payload.detail
+              : payload.detail?.message;
+          msg = payload.error?.message ?? payload.message ?? detailMsg ?? msg;
+        } catch {
+          // ignore non-JSON body
+        }
+        throw new Error(msg);
+      }
+      const blob = await resp.blob();
+      const cd = resp.headers.get('content-disposition') ?? '';
+      const match = /filename="?([^";]+)"?/i.exec(cd);
+      const filename = match?.[1] ?? fallbackFilename;
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+      await handleRefresh();
+    } catch (err) {
+      setDownloadError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to download export artifact. Check pre-flight audit and session status.',
+      );
+    } finally {
+      setDownloadingArtifact(null);
+    }
+  };
+
   if (!preflight) {
     return (
       <Panel
         as="section"
-        aria-label="Complete 24-Section DPR Pre-Flight Audit and Export Center"
-        overline="Step 6 · Pre-Flight Integrity Gate & Export"
-        title="Complete 24-Section DPR, Live-Formula Excel BOQ & GIS Export Center"
+        aria-label="Final Report and Cost Workbook Download"
+        overline="Step 6 · Final Checks &amp; Report Download"
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            Final Report &amp; Cost Workbook Download
+            <HelpTooltip glossaryKey="dpr" />
+          </span>
+        }
         icon={FileCheck2}
       >
         {refreshError && (
-          <Callout tone="error" title="Pre-Flight Audit Error" className="mb-3">
+          <Callout tone="error" title="Readiness Check Failed" className="mb-3">
             {refreshError}
           </Callout>
         )}
         <EmptyState
           icon={FileCheck2}
-          overline="Pre-Flight Integrity Gate"
-          title="DPR Pre-Flight Audit Not Computed Yet"
-          description="Run the automated pre-flight integrity gate to inspect hard blockers, soft warnings, Schedule of Rates completeness, and the 24-section DPR compilation index."
-          epistemicNote="All exported 24-section DPRs carry mandatory preliminary engineering watermarks unless field verification is 100% complete."
+          overline="Export Readiness Gate"
+          title="Final Readiness Check Not Run Yet"
+          description="Check which planning steps are complete, whether all item prices are filled in, and how many of the 24 report sections have real data."
+          epistemicNote="Exported reports carry a preliminary watermark unless field verification reaches 100%."
           action={
             <Button
               type="button"
@@ -179,7 +269,7 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
               isLoading={refreshing}
               onClick={() => void handleRefresh()}
             >
-              {refreshing ? 'Auditing…' : 'Run Pre-Flight Audit'}
+              {refreshing ? 'Checking…' : 'Check Readiness Now'}
             </Button>
           }
         />
@@ -196,18 +286,34 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
   return (
     <Panel
       as="section"
-      aria-label="Complete 24-Section DPR Pre-Flight Audit and Export Center"
-      overline="Step 6 · Pre-Flight Integrity Gate & Export"
-      title="Complete 24-Section DPR, Live-Formula Excel BOQ & GIS Export Center"
+      aria-label="Final Report and Cost Workbook Download"
+      overline="Step 6 · Final Checks &amp; Report Download"
+      title={
+        <span className="inline-flex items-center gap-1.5">
+          Final Report &amp; Cost Workbook Download
+          <HelpTooltip glossaryKey="dpr" />
+        </span>
+      }
       subtitle={
         <>
-          Active Scenario:{' '}
-          <strong className="font-mono text-ink">{preflight.active_scenario_key}</strong> ·
-          Watermark: <code className="text-xs">{preflight.watermark_text}</code>
+          Selected Plan:{' '}
+          <strong className="text-ink">
+            {formatScenarioLabel(preflight.active_scenario_key)}
+          </strong>{' '}
+          · Report Stamp: <span className="text-ink-2">{preflight.watermark_text}</span>
         </>
       }
       icon={FileCheck2}
-      badge={<QualityTag kind={preflight.can_export ? 'VERIFIED' : 'ASSUMED'} />}
+      badge={
+        <QualityTag
+          kind={preflight.can_export ? 'ESTIMATED' : 'ASSUMED'}
+          label={
+            preflight.can_export
+              ? 'Ready to Export'
+              : `Steps Needed (${preflight.hard_blockers_failed})`
+          }
+        />
+      }
       actions={
         <Button
           type="button"
@@ -217,54 +323,66 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
           isLoading={refreshing}
           onClick={() => void handleRefresh()}
         >
-          {refreshing ? 'Auditing…' : 'Re-Run Pre-Flight Audit'}
+          {refreshing ? 'Checking…' : 'Re-Check Readiness'}
         </Button>
       }
     >
       <div className="space-y-5">
         {/* Deliverable Download Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-subtle border border-rule-subtle rounded-xs">
-          <div className="text-xs text-ink-2 space-y-1">
+          <div className="text-xs text-ink-2 space-y-1 max-w-xl">
             <div className="font-semibold text-ink">
-              Export Deliverables (Snapshot v{preflight.project_version} ·{' '}
+              Downloadable Project Files (Saved Version {preflight.project_version} ·{' '}
               <span className="font-mono text-xs tabular-nums">
                 {preflight.snapshot_hash.slice(0, 12)}…
               </span>
               )
             </div>
-            <p className="text-xs">
-              PDF &amp; Excel BOQ downloads unlock once all hard blockers pass; GeoPackage/GeoJSON
-              ZIP remains downloadable for GIS review at any stage.
+            <p className="text-xs leading-relaxed">
+              The <strong>24-Section PDF Report</strong> and{' '}
+              <strong>Excel Cost Workbook (.xlsx)</strong> unlock once all required steps
+              pass. You can download the <strong>Map Files (.zip)</strong> for review at any
+              time.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {preflight.can_export ? (
               <>
-                <a
-                  href={`/api/v1/projects/${projectId}/exports/dpr-pdf`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => {
-                    setTimeout(() => void handleRefresh(), 1500);
-                  }}
-                  className="inline-flex items-center gap-1.5 h-9 px-3.5 text-xs font-medium bg-accent text-white rounded-xs hover:opacity-95 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  leftIcon={FileText}
+                  isLoading={downloadingArtifact === 'dpr-pdf'}
+                  loadingText="Building 24-Section PDF…"
+                  disabled={downloadingArtifact !== null}
+                  onClick={() =>
+                    void handleDownloadArtifact(
+                      'dpr-pdf',
+                      `electrimap_dpr_${projectId.slice(0, 8)}.pdf`,
+                    )
+                  }
                 >
-                  <FileText className="w-3.5 h-3.5" aria-hidden="true" />
-                  Download 24-Section DPR (.pdf)
-                </a>
-                <a
-                  href={`/api/v1/projects/${projectId}/exports/boq-xlsx`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => {
-                    setTimeout(() => void handleRefresh(), 1500);
-                  }}
-                  className="inline-flex items-center gap-1.5 h-9 px-3.5 text-xs font-medium bg-navy-900 text-ink-inverse rounded-xs hover:bg-navy-800 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                  Download 24-Section Report (.pdf)
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={FileSpreadsheet}
+                  isLoading={downloadingArtifact === 'boq-xlsx'}
+                  loadingText="Building Excel Workbook…"
+                  disabled={downloadingArtifact !== null}
+                  onClick={() =>
+                    void handleDownloadArtifact(
+                      'boq-xlsx',
+                      `electrimap_boq_${projectId.slice(0, 8)}.xlsx`,
+                    )
+                  }
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5" aria-hidden="true" />
-                  Download Formula BOQ (.xlsx)
-                </a>
+                  Download Cost Workbook (.xlsx)
+                </Button>
               </>
             ) : (
               <Button
@@ -273,29 +391,49 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
                 variant="danger-outline"
                 leftIcon={ShieldAlert}
                 disabled
-                title="Resolve hard blockers in Pre-Flight Checklist to enable PDF and Excel BOQ export."
+                title="Resolve required items in Readiness Checks below to unlock PDF and Excel downloads."
               >
-                PDF &amp; Excel Export Blocked ({preflight.hard_blockers_failed} Hard Blocker)
+                PDF &amp; Excel Locked ({preflight.hard_blockers_failed}{' '}
+                {preflight.hard_blockers_failed === 1 ? 'Step' : 'Steps'} Needed)
               </Button>
             )}
 
-            <a
-              href={`/api/v1/projects/${projectId}/exports/gis-package`}
-              target="_blank"
-              rel="noreferrer"
-              onClick={() => {
-                setTimeout(() => void handleRefresh(), 1500);
-              }}
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 text-xs font-medium border border-accent text-accent bg-accent-tint/30 rounded-xs hover:bg-accent-tint/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              leftIcon={FolderArchive}
+              isLoading={downloadingArtifact === 'gis-package'}
+              loadingText="Preparing Map ZIP…"
+              disabled={downloadingArtifact !== null}
+              onClick={() =>
+                void handleDownloadArtifact(
+                  'gis-package',
+                  `electrimap_gis_${projectId.slice(0, 8)}.zip`,
+                )
+              }
             >
-              <FolderArchive className="w-3.5 h-3.5" aria-hidden="true" />
-              Download Cleaned GIS Package (.zip)
-            </a>
+              Download Map Files (.zip)
+            </Button>
           </div>
         </div>
 
+        {downloadError && (
+          <Callout
+            tone="error"
+            title="File Download Failed"
+            action={
+              <Button size="xs" variant="ghost" onClick={() => setDownloadError(null)}>
+                Dismiss
+              </Button>
+            }
+          >
+            {downloadError}
+          </Callout>
+        )}
+
         {refreshError && (
-          <Callout tone="error" title="Pre-Flight Audit Refresh Failed">
+          <Callout tone="error" title="Could Not Refresh Readiness Check">
             {refreshError}
           </Callout>
         )}
@@ -303,7 +441,12 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
         {!preflight.can_export && (
           <Callout
             tone="error"
-            title="DPR & Excel BOQ Export Blocked by Pre-Flight Hard Blocker (Core Principle #4)"
+            title={
+              <span className="inline-flex items-center gap-1.5">
+                Complete Required Steps Before Exporting PDF or Excel
+                <HelpTooltip glossaryKey="exportReadinessGate" />
+              </span>
+            }
           >
             {preflight.checks
               .filter((c) => c.category === 'HARD_BLOCKER' && c.status === 'FAIL')
@@ -315,42 +458,53 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
         {preflight.requires_not_field_verified_watermark && preflight.can_export && (
           <Callout
             tone="warn"
-            title="Mandatory Preliminary Engineering & Unverified Watermark Active (FR-10.3)"
+            title={
+              <span className="inline-flex items-center gap-1.5">
+                Preliminary Engineering Watermark Active
+                <HelpTooltip glossaryKey="preliminaryDisclaimer" />
+              </span>
+            }
           >
-            Axis-2 field verification coverage is below 100%. Every page of the exported 24-section
-            PDF DPR carries the diagonal watermark{' '}
-            <code>{preflight.watermark_text}</code> so satellite proxy classifications are never
-            mistaken for physical utility meter inspection.
+            Field verification is below 100%, so every page of the exported PDF carries the
+            diagonal note <code>{preflight.watermark_text}</code>. This prevents satellite
+            estimates from being mistaken for inspected home meters.
           </Callout>
         )}
 
         {/* Summary KPI Strip */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <StatTile
-            label="Pre-Flight Integrity Gate"
-            value={preflight.can_export ? 'READY TO EXPORT' : 'BLOCKED'}
-            quality={preflight.can_export ? 'VERIFIED' : 'ASSUMED'}
-            subtitle={`${preflight.hard_blockers_failed} Hard Blockers · ${preflight.soft_warnings_count} Soft Warnings`}
+            label="Export Readiness"
+            value={preflight.can_export ? 'Ready to Export' : 'Steps Needed'}
+            quality={preflight.can_export ? 'ESTIMATED' : 'ASSUMED'}
+            subtitle={`${preflight.hard_blockers_failed} required · ${preflight.soft_warnings_count} advisories`}
           />
           <StatTile
-            label="24-Section DPR Coverage"
-            value={`${preflight.sections.length}/24`}
-            unit="Sections"
-            quality="VERIFIED"
-            subtitle={`${populatedCount} populated · ${explicitNoDataCount} explicit 'No data available' notes`}
+            label="24-Section Report Outline"
+            value={
+              failChecksCount > 0
+                ? `${populatedCount}/24 Populated`
+                : `${preflight.sections.length}/24 Ready`
+            }
+            quality={failChecksCount > 0 && populatedCount === 0 ? 'UNSET' : 'ESTIMATED'}
+            subtitle={
+              failChecksCount > 0
+                ? `Complete Steps 1–5 to fill remaining ${explicitNoDataCount} sections`
+                : `${populatedCount} data-backed · ${explicitNoDataCount} marked "No data yet"`
+            }
           />
           <StatTile
-            label="Snapshot SHA-256 Digest"
+            label="Verification Fingerprint"
             value={`${preflight.snapshot_hash.slice(0, 12)}…`}
-            quality="VERIFIED"
-            subtitle={`Version v${preflight.project_version} · ${preflight.active_scenario_key}`}
+            quality="ESTIMATED"
+            subtitle={`Saved v${preflight.project_version} · ${formatScenarioLabel(preflight.active_scenario_key)}`}
           />
           <StatTile
-            label="Logged Export Artifacts"
+            label="Downloaded Files Log"
             value={String(exportLog?.total_exports ?? 0)}
             unit="files"
             quality="ESTIMATED"
-            subtitle="Append-only SHA-256 export audit trail"
+            subtitle="Permanent file verification history"
           />
         </div>
 
@@ -362,7 +516,7 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
             variant={activeTab === 'checks' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('checks')}
           >
-            1. Pre-Flight Audit Checklist ({preflight.checks.length})
+            1. Readiness Checks ({preflight.checks.length})
           </Button>
           <Button
             type="button"
@@ -370,7 +524,7 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
             variant={activeTab === 'sections' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('sections')}
           >
-            2. 24-Section DPR Compilation Index ({preflight.sections.length})
+            2. 24 Report Sections ({preflight.sections.length})
           </Button>
           <Button
             type="button"
@@ -378,7 +532,7 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
             variant={activeTab === 'exports' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('exports')}
           >
-            3. Cryptographic SHA-256 Export Audit Log ({exportLog?.total_exports ?? 0})
+            3. Download History ({exportLog?.total_exports ?? 0})
           </Button>
         </div>
 
@@ -386,13 +540,13 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-subtle border border-rule-subtle rounded-xs">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-medium text-ink-2 mr-1">Filter Status:</span>
+                <span className="text-xs font-medium text-ink-2 mr-1">Filter:</span>
                 {(
                   [
                     { key: 'ALL', label: `All (${preflight.checks.length})` },
-                    { key: 'FAIL', label: `Fail (${failChecksCount})` },
-                    { key: 'WARN', label: `Warn (${warnChecksCount})` },
-                    { key: 'PASS', label: `Pass (${passChecksCount})` },
+                    { key: 'FAIL', label: `Action Needed (${failChecksCount})` },
+                    { key: 'WARN', label: `Advisories (${warnChecksCount})` },
+                    { key: 'PASS', label: `Passed (${passChecksCount})` },
                   ] as const
                 ).map((opt) => (
                   <Button
@@ -414,8 +568,8 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
             {filteredChecks.length === 0 ? (
               <EmptyState
                 compact
-                title="No Pre-Flight Checks Match Filter"
-                description={`No checks currently have status "${checkStatusFilter}".`}
+                title="No Checks Match Filter"
+                description={`No checks currently match "${checkStatusFilter}".`}
                 action={
                   <Button
                     type="button"
@@ -432,43 +586,67 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
                 <table className="w-full text-left border-collapse text-body-sm">
                   <thead>
                     <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
-                      <th className="p-3">Rule Code</th>
-                      <th className="p-3">Category</th>
+                      <th className="p-3">Rule</th>
+                      <th className="p-3">Priority</th>
                       <th className="p-3">Status</th>
-                      <th className="p-3">Check Title &amp; Finding</th>
-                      <th className="p-3">Planner Remediation</th>
+                      <th className="p-3">What Was Checked</th>
+                      <th className="p-3">How to Fix</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-rule-subtle">
-                    {filteredChecks.map((chk) => (
-                      <tr key={chk.check_code} className="hover:bg-subtle/60">
-                        <td className="p-3 font-mono font-semibold text-ink whitespace-nowrap text-xs">
-                          {chk.check_code}
-                        </td>
-                        <td className="p-3 text-xs text-ink-2 whitespace-nowrap">
-                          {chk.category}
-                        </td>
-                        <td className="p-3">
-                          <Badge
-                            variant={
-                              chk.status === 'PASS'
-                                ? 'ok'
+                    {filteredChecks.map((chk) => {
+                      const stepTarget = resolveStepNavigation(chk.check_code);
+                      return (
+                        <tr key={chk.check_code} className="hover:bg-subtle/60">
+                          <td className="p-3 font-mono font-semibold text-ink whitespace-nowrap text-xs">
+                            {chk.check_code}
+                          </td>
+                          <td className="p-3 text-xs text-ink-2 whitespace-nowrap">
+                            {chk.category === 'HARD_BLOCKER'
+                              ? 'Required for Export'
+                              : chk.category === 'SOFT_WARNING'
+                                ? 'Advisory'
+                                : chk.category}
+                          </td>
+                          <td className="p-3">
+                            <Badge
+                              variant={
+                                chk.status === 'PASS'
+                                  ? 'ok'
+                                  : chk.status === 'WARN'
+                                    ? 'warn'
+                                    : 'error'
+                              }
+                              size="sm"
+                            >
+                              {chk.status === 'PASS'
+                                ? 'Passed'
                                 : chk.status === 'WARN'
-                                  ? 'warn'
-                                  : 'error'
-                            }
-                            size="sm"
-                          >
-                            {chk.status}
-                          </Badge>
-                        </td>
-                        <td className="p-3 text-ink">
-                          <div className="font-medium text-xs">{chk.title}</div>
-                          <div className="text-xs text-ink-2 mt-0.5">{chk.detail}</div>
-                        </td>
-                        <td className="p-3 text-xs text-ink-2">{chk.remediation}</td>
-                      </tr>
-                    ))}
+                                  ? 'Advisory'
+                                  : 'Needed'}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-ink">
+                            <div className="font-medium text-xs">{chk.title}</div>
+                            <div className="text-xs text-ink-2 mt-0.5">{chk.detail}</div>
+                          </td>
+                          <td className="p-3 text-xs text-ink-2 space-y-1.5">
+                            <div>{chk.remediation}</div>
+                            {chk.status !== 'PASS' && onNavigateSection && (
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant={chk.status === 'FAIL' ? 'primary' : 'secondary'}
+                                rightIcon={ArrowRight}
+                                onClick={() => onNavigateSection(stepTarget.section)}
+                              >
+                                {stepTarget.label}
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -482,9 +660,9 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
               <div className="sm:col-span-6">
                 <Input
                   size="sm"
-                  label="Search 24 DPR Sections"
+                  label="Search 24 Report Sections"
                   leftIcon={Search}
-                  placeholder="Section #, part, title, or disclosure note…"
+                  placeholder="Section #, part, title, or note…"
                   value={sectionSearch}
                   onChange={(e) => setSectionSearch(e.target.value)}
                 />
@@ -492,8 +670,8 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
               <div className="sm:col-span-4">
                 <Select
                   size="sm"
-                  label="Compilation Status"
-                  aria-label="Filter DPR sections by status"
+                  label="Section Data Status"
+                  aria-label="Filter report sections by status"
                   value={sectionFilter}
                   onChange={(e) =>
                     setSectionFilter(e.target.value as 'ALL' | 'POPULATED' | 'NO_DATA')
@@ -505,11 +683,11 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
                     },
                     {
                       value: 'POPULATED',
-                      label: `Populated (${populatedCount})`,
+                      label: `Data Ready (${populatedCount})`,
                     },
                     {
                       value: 'NO_DATA',
-                      label: `Explicit No Data (${explicitNoDataCount})`,
+                      label: `No Data Yet (${explicitNoDataCount})`,
                     },
                   ]}
                 />
@@ -534,8 +712,8 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
             {filteredSections.length === 0 ? (
               <EmptyState
                 compact
-                title="No DPR Sections Match Filters"
-                description="Try clearing the search query or status filter to inspect all 24 sections."
+                title="No Report Sections Match Filters"
+                description="Clear your search text or status filter to see all 24 sections."
                 action={
                   <Button
                     type="button"
@@ -546,7 +724,7 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
                       setSectionFilter('ALL');
                     }}
                   >
-                    Reset Section Filters
+                    Reset Filters
                   </Button>
                 }
               />
@@ -556,10 +734,10 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
                   <thead className="sticky top-0 bg-subtle border-b border-rule text-xs font-semibold text-ink-2 z-10">
                     <tr>
                       <th className="p-3">Sec #</th>
-                      <th className="p-3">DPR Part</th>
+                      <th className="p-3">Report Part</th>
                       <th className="p-3">Section Title</th>
-                      <th className="p-3">Compilation Status</th>
-                      <th className="p-3">Data / Epistemic Disclosure Note</th>
+                      <th className="p-3">Data Status</th>
+                      <th className="p-3">Data &amp; Disclaimer Note</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-rule-subtle">
@@ -577,7 +755,7 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
                             variant={sec.is_populated ? 'ok' : 'warn'}
                             size="sm"
                           >
-                            {sec.is_populated ? 'POPULATED' : 'EXPLICIT_NO_DATA_NOTE'}
+                            {sec.is_populated ? 'Data Ready' : 'No Data Yet'}
                           </Badge>
                         </td>
                         <td className="p-3 text-xs text-ink-2">{sec.data_status_note}</td>
@@ -596,20 +774,20 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
               <EmptyState
                 compact
                 icon={FileText}
-                title="No Export Artifacts Logged Yet"
-                description="No export artifacts have been downloaded in this session yet. Click one of the export actions above to generate a cryptographically hashed PDF DPR, Excel BOQ, or GIS ZIP bundle."
+                title="No Downloads Recorded Yet"
+                description="Use the buttons above to download your PDF report, Excel cost workbook, or GIS map package."
               />
             ) : (
               <div className="table-scroll-container">
                 <table className="w-full text-left border-collapse text-body-sm">
                   <thead>
                     <tr className="bg-subtle border-b border-rule text-xs font-semibold text-ink-2">
-                      <th className="p-3">Export Kind</th>
+                      <th className="p-3">File Type</th>
                       <th className="p-3">Filename</th>
-                      <th className="p-3">Scenario</th>
+                      <th className="p-3">Plan Option</th>
                       <th className="p-3 text-right">Size (KB)</th>
-                      <th className="p-3">File SHA-256</th>
-                      <th className="p-3">Snapshot SHA-256</th>
+                      <th className="p-3">File Checksum</th>
+                      <th className="p-3">Version Checksum</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-rule-subtle font-mono text-xs tabular-nums">
@@ -617,7 +795,9 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
                       <tr key={exp.id} className="hover:bg-subtle/60">
                         <td className="p-3 font-semibold text-ink">{exp.export_kind}</td>
                         <td className="p-3 text-ink">{exp.filename}</td>
-                        <td className="p-3 text-ink-2">{exp.scenario_key}</td>
+                        <td className="p-3 font-sans text-ink-2">
+                          {formatScenarioLabel(exp.scenario_key)}
+                        </td>
                         <td className="p-3 text-right text-ink">
                           {(exp.file_size_bytes / 1024).toFixed(1)} KB
                         </td>

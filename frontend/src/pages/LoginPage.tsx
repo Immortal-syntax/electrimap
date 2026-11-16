@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, EyeOff, Lock, Mail, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Eye, EyeOff, Lock, Mail, ShieldCheck } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -25,20 +25,27 @@ import { Icon } from '../components/ui/Icon';
 import { Input } from '../components/ui/Input';
 
 export const LoginPage: React.FC = () => {
-  const { login, isLoading, error } = useSessionStore();
+  const { login, clearError, isLoading, error } = useSessionStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const [email, setEmail] = useState('planner@electrimap.in');
-  const [password, setPassword] = useState('ElectriMap#2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    clearError();
+  }, [clearError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await login(email, password);
+      await login(email.trim(), password);
       const nextUrl = searchParams.get('next');
-      navigate(nextUrl && nextUrl.startsWith('/') ? nextUrl : '/projects');
+      const isSafeRelative = Boolean(
+        nextUrl && nextUrl.startsWith('/') && !nextUrl.startsWith('//'),
+      );
+      navigate(isSafeRelative && nextUrl ? nextUrl : '/projects');
     } catch {
       // Error is stored in sessionStore.error
     }
@@ -47,25 +54,32 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="flex-1 flex items-center justify-center p-4 sm:p-8 survey-grid-bg">
       <div className="w-full max-w-[440px] bg-sheet border border-rule rounded-lg shadow-overlay overflow-hidden">
-        <div className="bg-subtle/70 border-b border-rule-subtle px-7 py-5 space-y-2">
+        <div className="bg-subtle/70 border-b border-rule-subtle px-7 py-5 space-y-2.5">
           <div className="flex items-center justify-between gap-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-2">
-              <Icon icon={ShieldCheck} size="xs" className="text-accent" />
-              <span>Planner Access · ElectriMap DPR</span>
-            </div>
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent-hover transition-colors"
+            >
+              <Icon icon={ArrowLeft} size="xs" />
+              <span>Back to Sample Study Overview</span>
+            </Link>
             <Badge variant="primary" size="sm">
-              CSRF Protected
+              Secure Session
             </Badge>
+          </div>
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-2 pt-0.5">
+            <Icon icon={ShieldCheck} size="xs" className="text-accent" />
+            <span>ElectriMap DPR Sign-In</span>
           </div>
           <h1 className="heading-xl">Sign in to ElectriMap DPR</h1>
           <p className="text-xs text-ink-2 leading-relaxed">
-            Session-authenticated GIS workbench for rural &amp; tribal electrification DPRs.
+            Sign in with your account email and password to access village studies, GIS layers, and project reports.
           </p>
         </div>
 
         <div className="p-7 space-y-4">
           {error && (
-            <Callout tone="error" title="Authentication Failed">
+            <Callout tone="error" title="Sign-In Failed">
               {error}
             </Callout>
           )}
@@ -73,13 +87,16 @@ export const LoginPage: React.FC = () => {
           <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
             <Input
               id="login-email"
-              label="Official / Planner Email"
+              label="Email address"
               type="email"
               required
               autoComplete="email"
               leftIcon={Mail}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                if (error) clearError();
+                setEmail(e.target.value);
+              }}
             />
 
             <div className="space-y-1">
@@ -104,37 +121,27 @@ export const LoginPage: React.FC = () => {
                 autoComplete="current-password"
                 leftIcon={Lock}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  if (error) clearError();
+                  setPassword(e.target.value);
+                }}
               />
             </div>
 
-            <div className="pt-1 flex flex-col gap-2">
+            <div className="pt-1">
               <Button
                 type="submit"
                 variant="primary"
                 isLoading={isLoading}
                 fullWidth
               >
-                Sign In to Workbench
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setEmail('planner@electrimap.in');
-                  setPassword('ElectriMap#2026');
-                }}
-                fullWidth
-              >
-                Fill Default Demo Planner Credentials
+                Sign In
               </Button>
             </div>
           </form>
 
           <div className="pt-3 border-t border-rule-subtle text-xs text-ink-3 leading-relaxed">
-            Security: Argon2id password verification · HttpOnly SameSite=Lax session cookie ·
-            X-CSRF-Token mutation guard.
+            Protected project data requires an active authenticated session. Sign out when you finish using a shared device.
           </div>
         </div>
       </div>

@@ -259,9 +259,44 @@ def evaluate_dpr_preflight(
     total_capex_inr: float,
     npc_inr: float,
     lcoe_inr_kwh: float,
+    synthetic_fallback_layers: list[str] | tuple[str, ...] = (),
 ) -> PreFlightReport:
     """Run all hard-blocker and soft-warning pre-flight checks for DPR export."""
     checks: list[PreFlightCheckItem] = []
+
+    # 0. Hard Blocker: Real GIS/terrain inputs (never export offline synthetic placeholder layers)
+    fallback_list = sorted({str(k) for k in synthetic_fallback_layers if str(k).strip()})
+    if not fallback_list:
+        checks.append(
+            PreFlightCheckItem(
+                check_code="SYNTHETIC_FALLBACK_DATA",
+                title="Geospatial Layer Authenticity (No Synthetic Fallback Placeholders)",
+                category="HARD_BLOCKER",
+                status="PASS",
+                detail=(
+                    "Active vector and terrain inputs come from local extracts "
+                    "or uploaded GIS files."
+                ),
+                remediation="None required.",
+            )
+        )
+    else:
+        checks.append(
+            PreFlightCheckItem(
+                check_code="SYNTHETIC_FALLBACK_DATA",
+                title="Geospatial Layer Authenticity (No Synthetic Fallback Placeholders)",
+                category="HARD_BLOCKER",
+                status="FAIL",
+                detail=(
+                    "Active layers rely on offline synthetic placeholders outside the bundled "
+                    f"reference extract: {', '.join(fallback_list)}."
+                ),
+                remediation=(
+                    "Upload verified GeoJSON buildings and OSM layers in Step 1 (Data Manager) "
+                    "to replace synthetic fallback layers before exporting a DPR."
+                ),
+            )
+        )
 
     # 1. Hard Blocker: Habitation clusters present
     if clusters_count > 0:
@@ -310,7 +345,7 @@ def evaluate_dpr_preflight(
                 detail=f"Required BOQ items have UNSET unit rates: {codes_str}.",
                 remediation=(
                     "Enter valid INR unit rates and citations for all UNSET items in "
-                    "Step 6 (Cost & BOQ) or reset to the Odisha SoR catalog."
+                    "Step 5 (Cost & BOQ) or reset to the Odisha SoR catalog."
                 ),
             )
         )
@@ -426,6 +461,22 @@ def evaluate_dpr_preflight(
                 remediation="Upload official revenue village cadastral boundary if available.",
             )
         )
+    elif boundary_source == "UNSET":
+        checks.append(
+            PreFlightCheckItem(
+                check_code="AOI_BOUNDARY_PROVENANCE",
+                title="Administrative Boundary Polygon Provenance",
+                category="SOFT_WARNING",
+                status="WARN",
+                detail=(
+                    "AOI boundary provenance is UNSET "
+                    "(no validated administrative boundary saved)."
+                ),
+                remediation=(
+                    "Define or upload an official village boundary in Step 0 / New Project AOI."
+                ),
+            )
+        )
     else:
         checks.append(
             PreFlightCheckItem(
@@ -439,8 +490,24 @@ def evaluate_dpr_preflight(
         )
 
     # 7. Soft Warning: Census 2011 vs Satellite Footprint Divergence
-    delta_abs = abs(census_delta_pct or 0.0)
-    if delta_abs > 30.0:
+    if census_delta_pct is None:
+        checks.append(
+            PreFlightCheckItem(
+                check_code="CENSUS_RECONCILIATION_DELTA",
+                title="Census 2011 Household Reconciliation Divergence",
+                category="SOFT_WARNING",
+                status="WARN",
+                detail=(
+                    "Census 2011 household reconciliation is unavailable because no Census/LGD "
+                    "village record is linked to this AOI."
+                ),
+                remediation=(
+                    "Link an LGD / Census 2011 village code or verify household counts manually "
+                    "during Gram Sabha walk-through."
+                ),
+            )
+        )
+    elif abs(census_delta_pct) > 30.0:
         checks.append(
             PreFlightCheckItem(
                 check_code="CENSUS_RECONCILIATION_DELTA",
@@ -466,7 +533,7 @@ def evaluate_dpr_preflight(
                 status="PASS",
                 detail=(
                     f"Satellite vs. projected Census 2011 household delta is "
-                    f"{(census_delta_pct or 0.0):+.1f}% (within ±30% tolerance)."
+                    f"{census_delta_pct:+.1f}% (within ±30% tolerance)."
                 ),
                 remediation="None required.",
             )
@@ -541,6 +608,7 @@ def evaluate_dpr_preflight(
             "verified_records_count": verified_records_count,
             "has_existing_infra": has_existing_infra,
             "boundary_source": boundary_source,
+            "synthetic_fallback_layers": fallback_list,
             "total_capex_inr": round(total_capex_inr, 2),
             "npc_inr": round(npc_inr, 2),
             "lcoe_inr_kwh": round(lcoe_inr_kwh, 4),

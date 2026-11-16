@@ -22,7 +22,6 @@
 
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.services.seed_service import (
     DEFAULT_PLANNER_EMAIL,
     DEFAULT_PLANNER_PASSWORD,
@@ -40,8 +39,11 @@ def _login_and_get_csrf(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": csrf_token}
 
 
-def test_m5_engineering_constants_and_scenario_lifecycle() -> None:
-    with TestClient(app) as client:
+def test_m5_engineering_constants_and_scenario_lifecycle(
+    seeded_client: TestClient,
+) -> None:
+    client = seeded_client
+    if True:
         headers = _login_and_get_csrf(client)
 
         # 1. Verify engineering constants endpoint

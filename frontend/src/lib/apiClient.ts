@@ -108,13 +108,43 @@ export async function apiRequest<T>(
   }
 
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith('/api/v1/auth/')) {
+      setCsrfToken(null);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('electrimap:unauthorized'));
+      }
+    }
+
     const errObj =
       body && typeof body === 'object' && 'error' in body
         ? (body as { error: ApiErrorDetail }).error
         : null;
+
+    let detailMessage: string | null = null;
+    if (!errObj && body && typeof body === 'object' && 'detail' in body) {
+      const rawDetail = (body as { detail: unknown }).detail;
+      if (typeof rawDetail === 'string') {
+        detailMessage = rawDetail;
+      } else if (Array.isArray(rawDetail)) {
+        detailMessage = rawDetail
+          .map((item) => {
+            if (item && typeof item === 'object') {
+              const obj = item as { loc?: unknown[]; msg?: unknown };
+              const loc = Array.isArray(obj.loc)
+                ? obj.loc.filter((part) => part !== 'body').join('.')
+                : '';
+              const msg = typeof obj.msg === 'string' ? obj.msg : JSON.stringify(item);
+              return loc ? `${loc}: ${msg}` : msg;
+            }
+            return String(item);
+          })
+          .join('; ');
+      }
+    }
+
     throw new ApiClientError(
       errObj?.code ?? `HTTP_${response.status}`,
-      errObj?.message ?? `Request failed with status ${response.status}`,
+      errObj?.message ?? detailMessage ?? `Request failed with status ${response.status}`,
       response.status,
       errObj?.details ?? {},
     );

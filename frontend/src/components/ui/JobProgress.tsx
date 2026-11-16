@@ -14,6 +14,7 @@
 
 import React from 'react'
 import { Button } from './Button'
+import { formatJobStatusLabel, formatJobTypeLabel } from '../../lib/beginnerGlossary'
 
 export interface JobStatusDto {
   id: string
@@ -59,11 +60,11 @@ export const JobProgress: React.FC<JobProgressProps> = ({ job, onCancel }) => {
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="font-mono font-semibold text-ink uppercase">
-            {job.job_type}
+          <span className="font-medium text-ink">
+            {formatJobTypeLabel(job.job_type)}
           </span>
           <span
-            className={`font-mono text-[10px] px-2 py-0.5 rounded-full border ${
+            className={`font-sans text-[11px] font-medium px-2 py-0.5 rounded-full border ${
               isSucceeded
                 ? 'border-ok-border text-ok bg-ok-bg'
                 : isFailed
@@ -73,7 +74,7 @@ export const JobProgress: React.FC<JobProgressProps> = ({ job, onCancel }) => {
                     : 'border-accent-border text-accent bg-accent-tint'
             }`}
           >
-            {job.status}
+            {formatJobStatusLabel(job.status)}
           </span>
         </div>
 
@@ -96,11 +97,11 @@ export const JobProgress: React.FC<JobProgressProps> = ({ job, onCancel }) => {
         />
       </div>
 
-      {job.stage && <div className="font-mono text-2xs text-ink-2">{job.stage}</div>}
+      {job.stage && <div className="text-xs text-ink-2">{job.stage}</div>}
 
       {isFailed && job.error && (
-        <div className="font-mono text-2xs text-error bg-error-bg border border-error-border p-1.5 rounded-xs">
-          [JOB_ERROR] {job.error}
+        <div className="text-xs text-error bg-error-bg border border-error-border p-2 rounded-xs">
+          Step could not finish: {job.error}
         </div>
       )}
     </div>

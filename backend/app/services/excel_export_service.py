@@ -151,7 +151,12 @@ def generate_project_boq_xlsx(
             "Net Utility / Community Outlay (INR)",
             round(active_boq.economics.net_utility_capex_inr, 2),
         ],
-        ["10-Year Net Present Cost — NPC (INR)", round(active_boq.economics.npc_inr, 2)],
+        [
+            f"{active_boq.horizon_years}-Year Net Present Cost — NPC (INR)",
+            "WITHHELD (UNSET)"
+            if active_boq.has_unset_rates
+            else round(active_boq.economics.npc_inr, 2),
+        ],
         ["Levelized Cost of Energy — LCOE (INR/kWh)", round(active_boq.economics.lcoe_inr_kwh, 2)],
         ["Cryptographic Snapshot SHA-256", snapshot_hash],
     ]
@@ -203,8 +208,8 @@ def generate_project_boq_xlsx(
         [
             "TOTAL",
             f"{len(settlements.items)} Habitations",
-            f"=SUM(C2:C{cl_end_row})",
-            f"=SUM(D2:D{cl_end_row})",
+            f"=SUM(C2:C{cl_end_row})" if cl_end_row >= 2 else 0,
+            f"=SUM(D2:D{cl_end_row})" if cl_end_row >= 2 else 0,
             "—",
             "—",
             f"{settlements.verification_coverage_pct:.1f}% Verified",
@@ -220,12 +225,12 @@ def generate_project_boq_xlsx(
             "Category Key",
             "Consumer Category",
             "Consumer Count",
-            "Connected Load (kW)",
+            "Base Connected Load (kW)",
             "Demand Factor",
-            "Max Demand (kW)",
-            "Daily Energy (kWh/day)",
-            "Annual Energy (MWh/yr)",
-            "Horizon Growth",
+            "Base Max Demand (kW)",
+            "Base Daily Energy (kWh/day)",
+            "Base Annual Energy (MWh/yr)",
+            "Horizon Design Basis",
         ]
     )
     for col_i in range(1, 10):
@@ -234,6 +239,7 @@ def generate_project_boq_xlsx(
         c.font = header_font
 
     cat_start_row = ws_dem.max_row + 1
+    growth_mult = round((1.0 + demand.annual_growth_rate) ** demand.horizon_years, 4)
     for cat in demand.category_totals:
         ws_dem.append(
             [
@@ -245,20 +251,47 @@ def generate_project_boq_xlsx(
                 round(cat.max_demand_kw, 2),
                 round(cat.energy_kwh_day, 2),
                 round(cat.annual_energy_mwh, 3),
-                f"+{demand.horizon_years} Yrs",
+                f"+{demand.horizon_years} Yrs @ {demand.annual_growth_rate * 100.0:.1f}%/yr",
             ]
         )
     cat_end_row = ws_dem.max_row
+    has_cats = cat_end_row >= cat_start_row
     ws_dem.append(
         [
-            "TOTAL_DEMAND",
-            "Project Sum / Coincident Peak",
-            f"=SUM(C{cat_start_row}:C{cat_end_row})",
-            f"=SUM(D{cat_start_row}:D{cat_end_row})",
+            "SUBTOTAL_BASE_NON_COINC",
+            "Sum of Un-diversified Base Category Demands",
+            f"=SUM(C{cat_start_row}:C{cat_end_row})" if has_cats else 0,
+            f"=SUM(D{cat_start_row}:D{cat_end_row})" if has_cats else 0,
             "—",
-            f"=SUM(F{cat_start_row}:F{cat_end_row})",
-            f"=SUM(G{cat_start_row}:G{cat_end_row})",
-            f"=SUM(H{cat_start_row}:H{cat_end_row})",
+            f"=SUM(F{cat_start_row}:F{cat_end_row})" if has_cats else 0,
+            f"=SUM(G{cat_start_row}:G{cat_end_row})" if has_cats else 0,
+            f"=SUM(H{cat_start_row}:H{cat_end_row})" if has_cats else 0,
+            "Before Cluster Coincidence Factor",
+        ]
+    )
+    ws_dem.append(
+        [
+            "COINCIDENT_BASE",
+            "Base Year Coincident Project Peak & Energy",
+            "—",
+            "—",
+            "—",
+            round(demand.peak_kw_base, 2),
+            round(demand.energy_kwh_day_base, 2),
+            round(demand.annual_energy_mwh_base, 3),
+            f"Peak Base: {demand.peak_kva_base:.2f} kVA",
+        ]
+    )
+    ws_dem.append(
+        [
+            "HORIZON_DESIGN",
+            f"Horizon (+{demand.horizon_years} Yrs) Coincident Design Load",
+            "—",
+            "—",
+            growth_mult,
+            round(demand.peak_kw_horizon, 2),
+            round(demand.energy_kwh_day_horizon, 2),
+            round(demand.annual_energy_mwh_horizon, 3),
             f"Peak Horizon: {demand.peak_kva_horizon:.2f} kVA",
         ]
     )
@@ -312,23 +345,24 @@ def generate_project_boq_xlsx(
             ]
         )
     eng_end = 1 + len(active_scenario.clusters)
+    has_eng = eng_end >= 2
     ws_eng.append(
         [
             "TOTAL",
             active_scenario.name,
             active_scenario.scenario_key,
-            f"=SUM(D2:D{eng_end})",
-            f"=SUM(E2:E{eng_end})",
-            f"=SUM(F2:F{eng_end})",
-            f"=SUM(G2:G{eng_end})",
-            f"=SUM(H2:H{eng_end})",
-            f"=SUM(I2:I{eng_end})",
-            f"=MAX(J2:J{eng_end})",
-            f"=MAX(K2:K{eng_end})",
-            f"=SUM(L2:L{eng_end})",
-            f"=SUM(M2:M{eng_end})",
-            f"=SUM(N2:N{eng_end})",
-            f"=SUM(O2:O{eng_end})",
+            f"=SUM(D2:D{eng_end})" if has_eng else 0,
+            f"=SUM(E2:E{eng_end})" if has_eng else 0,
+            f"=SUM(F2:F{eng_end})" if has_eng else 0,
+            f"=SUM(G2:G{eng_end})" if has_eng else 0,
+            f"=SUM(H2:H{eng_end})" if has_eng else 0,
+            f"=SUM(I2:I{eng_end})" if has_eng else 0,
+            f"=MAX(J2:J{eng_end})" if has_eng else 0.0,
+            f"=MAX(K2:K{eng_end})" if has_eng else 0.0,
+            f"=SUM(L2:L{eng_end})" if has_eng else 0.0,
+            f"=SUM(M2:M{eng_end})" if has_eng else 0.0,
+            f"=SUM(N2:N{eng_end})" if has_eng else 0.0,
+            f"=SUM(O2:O{eng_end})" if has_eng else 0,
         ]
     )
 
@@ -365,9 +399,9 @@ def generate_project_boq_xlsx(
                 ln.category,
                 round(ln.quantity, 4),
                 ln.unit,
-                round(ln.rate_inr or 0.0, 2),
-                f"=ROUND(D{row_num}*F{row_num},2)",
-                round(ln.amount_inr, 2),
+                "UNSET" if ln.rate_inr is None else round(ln.rate_inr, 2),
+                "UNSET" if ln.is_unset else f"=ROUND(D{row_num}*F{row_num},2)",
+                "UNSET" if ln.is_unset else round(ln.amount_inr, 2),
                 ln.rate_source_type,
                 ln.citation,
             ]
@@ -385,6 +419,7 @@ def generate_project_boq_xlsx(
         (active_boq.contingency_pct + active_boq.pmc_overhead_pct) / 100.0, 6
     )
 
+    has_lines = line_end_row >= line_start_row
     ws_boq.append(
         [
             "SUB-A",
@@ -393,7 +428,7 @@ def generate_project_boq_xlsx(
             1.0,
             "INR",
             round(active_boq.base_equipment_inr, 2),
-            f"=ROUND(SUM(G{line_start_row}:G{line_end_row}),2)",
+            f"=ROUND(SUM(G{line_start_row}:G{line_end_row}),2)" if has_lines else 0.0,
             round(active_boq.base_equipment_inr, 2),
             "COMPUTED_FORMULA",
             "Sum of BOQ Equipment & Material Lines",
@@ -402,7 +437,7 @@ def generate_project_boq_xlsx(
     ws_boq.append(
         [
             "SUB-B",
-            "Difficult Hilly/Forest Terrain Erection Premium",
+            "Difficult Hilly/Forest Terrain Erection Premium (Civil & Line Works Only)",
             "SUBTOTAL",
             1.0,
             "INR",
@@ -410,7 +445,7 @@ def generate_project_boq_xlsx(
             f"=ROUND(D{sub_b_row}*F{sub_b_row},2)",
             round(active_boq.terrain_premium_inr, 2),
             "COMPUTED_TERRAIN",
-            "REC Hilly/Canopy/River Crossing Erection Multiplier",
+            "Applied only to HT_11KV, LT_415V, CIVIL_EARTHING & Control Room Works",
         ]
     )
     ws_boq.append(
@@ -424,7 +459,7 @@ def generate_project_boq_xlsx(
             f"=ROUND((G{sub_a_row}+G{sub_b_row})*{gst_fraction},2)",
             round(active_boq.gst_amount_inr, 2),
             "STATUTORY_GST",
-            "Composite EPC Turnkey GST Rate",
+            "Composite EPC Turnkey GST Rate (Col H = Sum of Per-Cluster Rounded Totals)",
         ]
     )
     ws_boq.append(
@@ -482,7 +517,7 @@ def generate_project_boq_xlsx(
             "Total CAPEX (Lakhs)",
             "Scheme Grant (INR)",
             "Net Utility Outlay (INR)",
-            "10-Yr NPC (INR)",
+            f"{active_boq.horizon_years}-Yr NPC (INR)",
             "LCOE (INR/kWh)",
             "Cost per HH (INR)",
             "Avoided CO2 (tCO2/yr)",
@@ -519,11 +554,11 @@ def generate_project_boq_xlsx(
             "Estimated HH",
             "Active Modality",
             "Grid CAPEX (INR)",
-            "Grid 10-Yr NPC (INR)",
+            f"Grid {active_boq.horizon_years}-Yr NPC (INR)",
             "Mini-Grid CAPEX (INR)",
-            "Mini-Grid 10-Yr NPC (INR)",
+            f"Mini-Grid {active_boq.horizon_years}-Yr NPC (INR)",
             "SHS CAPEX (INR)",
-            "SHS 10-Yr NPC (INR)",
+            f"SHS {active_boq.horizon_years}-Yr NPC (INR)",
             "Least-Cost NPC Modality",
         ]
     )

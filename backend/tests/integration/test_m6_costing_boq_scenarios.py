@@ -22,7 +22,6 @@
 
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.services.seed_service import (
     DEFAULT_PLANNER_EMAIL,
     DEFAULT_PLANNER_PASSWORD,
@@ -43,9 +42,12 @@ def _login_and_get_csrf(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": csrf_token}
 
 
-def test_m6_rates_boq_scenario_comparison_and_pdf_export() -> None:
+def test_m6_rates_boq_scenario_comparison_and_pdf_export(
+    seeded_client: TestClient,
+) -> None:
     """Verify full M6 workflow including UNSET rate export-block and scenario pinning."""
-    with TestClient(app) as client:
+    client = seeded_client
+    if True:
         headers = _login_and_get_csrf(client)
 
         # Ensure clean baseline rates and scenarios for DEMO_PROJECT_ID

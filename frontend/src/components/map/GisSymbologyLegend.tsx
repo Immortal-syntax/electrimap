@@ -16,8 +16,8 @@ import React, { useState } from 'react';
 import { Layers, ChevronUp, ChevronDown, ShieldAlert } from 'lucide-react';
 import { Badge, LayerSourceBadge } from '../ui/Badge';
 import { QualityTag } from '../ui/QualityTag';
+import { HelpTooltip } from '../ui/Tooltip';
 import {
-  GIS_SYMBOLOGY,
   RASTER_LEGEND_SPECS,
   SATELLITE_SOURCES_ATTRIBUTION,
 } from './symbology';
@@ -190,19 +190,23 @@ export const GisSymbologyLegend: React.FC<GisSymbologyLegendProps> = ({
               </div>
               <ul className="space-y-1.5 text-xs text-ink-2">
                 <li className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full inline-block bg-[#1B6E3A] shrink-0" />
+                  <span className="w-3 h-3 rounded-full inline-block bg-[#009E73] border-2 border-[#0F172A] shrink-0" />
+                  <span>Survey Verified Settlement (Axis-2 Evidence · Solid Ring)</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full inline-block bg-[#0072B2] border-2 border-dashed border-white shrink-0" />
                   <span>Likely Electrified (Proxy: Grid &lt;500m + VIIRS)</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full inline-block bg-[#B35300] shrink-0" />
+                  <span className="w-3 h-3 rounded-full inline-block bg-[#E69F00] border-2 border-dashed border-white shrink-0" />
                   <span>Potentially Underserved (Partial / Low Supply)</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full inline-block bg-[#A61B1B] shrink-0" />
+                  <span className="w-3 h-3 rounded-full inline-block bg-[#D55E00] border-2 border-dashed border-white shrink-0" />
                   <span>Potentially Unserved Gap (&gt;1.5 km from 11 kV)</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full inline-block bg-[#475569] shrink-0" />
+                  <span className="w-3 h-3 rounded-full inline-block bg-[#64748B] border-2 border-dashed border-white shrink-0" />
                   <span>Unknown / Insufficient Evidence</span>
                 </li>
                 <li className="flex items-center gap-2 pt-1.5 border-t border-rule-subtle">
@@ -222,39 +226,81 @@ export const GisSymbologyLegend: React.FC<GisSymbologyLegendProps> = ({
 
             {/* Column 4: NASA VIIRS Nighttime Illumination & Rasters */}
             <div className="p-3.5 bg-paper/75 border border-rule-subtle rounded-md space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-1.5">
                 <span className="text-xs font-semibold text-ink">
                   4. VIIRS Radiance (Layer B)
                 </span>
                 <QualityTag kind="ESTIMATED" label="nW/cm²/sr" />
               </div>
-              <div className="space-y-1 text-xs text-ink-2">
-                {GIS_SYMBOLOGY.viirsPrintRamp.map((stop) => (
-                  <div key={stop.label} className="flex items-center gap-2">
-                    <span
-                      className="w-3.5 h-3 inline-block rounded-xs border border-rule shrink-0"
-                      style={{ backgroundColor: stop.color }}
-                    />
-                    <span className="truncate">{stop.label}</span>
+              <div className="space-y-1">
+                <div
+                  aria-label="VIIRS Radiance Continuous Colorbar"
+                  className="h-2 w-full rounded-full border border-rule-subtle"
+                  style={{
+                    background: `linear-gradient(to right, ${RASTER_LEGEND_SPECS.nightlights.stops
+                      .map((s) => s.color)
+                      .join(', ')})`,
+                  }}
+                />
+                <div className="flex items-center justify-between text-[10px] font-mono tabular-nums text-ink-3">
+                  <span>{RASTER_LEGEND_SPECS.nightlights.stops[0]?.rangeText}</span>
+                  <span>
+                    {(() => {
+                      const lastRange =
+                        RASTER_LEGEND_SPECS.nightlights.stops[
+                          RASTER_LEGEND_SPECS.nightlights.stops.length - 1
+                        ]?.rangeText ?? '> 2.5';
+                      return lastRange.endsWith('nW')
+                        ? `${lastRange}/cm²/sr`
+                        : `${lastRange} nW/cm²/sr`;
+                    })()}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-1.5 text-xs text-ink-2">
+                {RASTER_LEGEND_SPECS.nightlights.stops.map((stop) => (
+                  <div key={stop.rangeText} className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-3.5 h-3 inline-block rounded-xs border border-rule shrink-0"
+                        style={{ backgroundColor: stop.color }}
+                      />
+                      <span className="truncate">
+                        <span className="font-mono tabular-nums">{stop.rangeText}</span> ·{' '}
+                        <strong className="text-ink font-medium">{stop.label}</strong>
+                      </span>
+                    </div>
+                    {stop.interpretation && (
+                      <div className="text-[11px] text-ink-3 leading-snug pl-5">
+                        {stop.interpretation}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
               {activeRasterOverlay !== 'none' &&
                 activeRasterOverlay !== 'nightlights' && (
-                  <div className="pt-1.5 border-t border-rule-subtle space-y-1 text-xs text-ink-2">
+                  <div className="pt-1.5 border-t border-rule-subtle space-y-1.5 text-xs text-ink-2">
                     <div className="font-semibold text-ink">
                       Active Raster: {RASTER_LEGEND_SPECS[activeRasterOverlay].title}
                     </div>
                     {RASTER_LEGEND_SPECS[activeRasterOverlay].stops.map((st) => (
-                      <div key={st.rangeText} className="flex items-center gap-1.5">
-                        <span
-                          className="w-3 h-2.5 inline-block rounded-xs border border-rule shrink-0"
-                          style={{ backgroundColor: st.color }}
-                        />
-                        <span className="truncate">
-                          <span className="font-mono tabular-nums">{st.rangeText}</span> ·{' '}
-                          {st.label}
-                        </span>
+                      <div key={st.rangeText} className="space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="w-3 h-2.5 inline-block rounded-xs border border-rule shrink-0"
+                            style={{ backgroundColor: st.color }}
+                          />
+                          <span className="truncate">
+                            <span className="font-mono tabular-nums">{st.rangeText}</span> ·{' '}
+                            <strong className="text-ink font-medium">{st.label}</strong>
+                          </span>
+                        </div>
+                        {st.interpretation && (
+                          <div className="text-[11px] text-ink-3 leading-snug pl-4">
+                            {st.interpretation}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -348,16 +394,16 @@ export const GisSymbologyLegend: React.FC<GisSymbologyLegendProps> = ({
           </span>
           {showSettlementProxyPills && (
             <>
-              <span className="inline-flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full inline-block bg-[#1B6E3A]" />
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-full inline-block bg-[#0072B2]" />
                 Likely Electrified (Proxy)
               </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full inline-block bg-[#B35300]" />
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-full inline-block bg-[#E69F00]" />
                 Underserved (Proxy)
               </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full inline-block bg-[#A61B1B]" />
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-full inline-block bg-[#D55E00]" />
                 Unserved Gap (Proxy)
               </span>
             </>
@@ -384,19 +430,29 @@ export const GisSymbologyLegend: React.FC<GisSymbologyLegendProps> = ({
           )}
           <span
             className="px-2 py-0.5 rounded-xs bg-sheet border border-rule text-ink-2"
-            title="Active Layers Enabled"
+            title="Active Data Layers Loaded and Visible"
           >
-            Layers: <strong className="font-mono tabular-nums text-ink">{activeLayerCount}/{totalLayerCount}</strong>
+            {activeLayerCount > 0 ? (
+              <>
+                Layers On:{' '}
+                <strong className="font-mono tabular-nums text-ink">
+                  {activeLayerCount}/{totalLayerCount}
+                </strong>
+              </>
+            ) : (
+              <span>No Data Layers Loaded</span>
+            )}
           </span>
           <span
-            className="px-2 py-0.5 rounded-xs bg-sheet border border-rule text-ink-2 hidden sm:inline-block"
-            title="Metric Engineering Computation Projection"
+            className="px-2 py-0.5 rounded-xs bg-sheet border border-rule text-ink-2 hidden sm:inline-flex items-center gap-1"
+            title="Flat meter-accurate grid projection used automatically for distance measurements"
           >
-            CRS: <strong className="text-ink">{metricCrsLabel}</strong>
+            <span>Map Grid: <strong className="text-ink">{metricCrsLabel}</strong></span>
+            <HelpTooltip glossaryKey="crsEpsgUtm" placement="top" />
           </span>
-          <span className="font-mono tabular-nums">
-            <strong className="text-ink">{lon.toFixed(5)}°E</strong> ·{' '}
-            <strong className="text-ink">{lat.toFixed(5)}°N</strong>
+          <span className="font-mono tabular-nums" title="Cursor Latitude & Longitude">
+            Lat <strong className="text-ink">{lat.toFixed(4)}°N</strong> · Lon{' '}
+            <strong className="text-ink">{lon.toFixed(4)}°E</strong>
           </span>
           <span className="font-mono tabular-nums">Zoom {zoom.toFixed(1)}</span>
           {statusText && (

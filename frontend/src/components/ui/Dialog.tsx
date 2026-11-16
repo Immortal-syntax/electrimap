@@ -65,11 +65,37 @@ export function Dialog({
       }
     }
 
+    const handleFocusTrap = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !dialogRef.current) return
+      const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      if (focusables.length === 0) {
+        e.preventDefault()
+        dialogRef.current.focus()
+        return
+      }
+      const first = focusables[0]!
+      const last = focusables[focusables.length - 1]!
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     document.addEventListener('keydown', handleKeyDown)
+    document.addEventListener('keydown', handleFocusTrap)
     dialogRef.current?.focus()
 
     return () => {
+      document.body.style.overflow = prevOverflow
       document.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('keydown', handleFocusTrap)
       previousFocused?.focus?.()
     }
   }, [open, onClose])
@@ -92,9 +118,9 @@ export function Dialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className={`w-full ${DIALOG_SIZE_CLASSES[size]} bg-sheet border border-rule rounded-lg shadow-overlay overflow-hidden focus:outline-none`}
+        className={`w-full ${DIALOG_SIZE_CLASSES[size]} max-h-[90vh] flex flex-col bg-sheet border border-rule rounded-lg shadow-overlay overflow-hidden focus:outline-none`}
       >
-        <header className="px-5 py-4 bg-subtle/60 border-b border-rule-subtle flex items-start justify-between gap-3">
+        <header className="px-5 py-4 bg-subtle/60 border-b border-rule-subtle flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
             {overline && <div className="heading-overline mb-0.5">{overline}</div>}
             <h2 id={titleId} className="text-sm font-semibold text-ink tracking-tight">
@@ -115,10 +141,14 @@ export function Dialog({
           />
         </header>
 
-        {children && <div className="p-4 text-body-sm text-ink space-y-3">{children}</div>}
+        {children && (
+          <div className="p-4 text-body-sm text-ink space-y-3 overflow-y-auto flex-1 min-h-0">
+            {children}
+          </div>
+        )}
 
         {footer && (
-          <footer className="px-4 py-2.5 bg-subtle border-t border-rule flex items-center justify-end gap-2">
+          <footer className="px-4 py-2.5 bg-subtle border-t border-rule flex items-center justify-end gap-2 shrink-0">
             {footer}
           </footer>
         )}
@@ -153,7 +183,9 @@ export function ConfirmDialog({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (!isLoading) onClose()
+      }}
       title={title}
       size="sm"
       footer={

@@ -21,23 +21,29 @@ import zipfile
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
-from app.main import app
-from app.services.seed_service import DEMO_PROJECT_ID
+from app.services.seed_service import (
+    DEFAULT_PLANNER_EMAIL,
+    DEFAULT_PLANNER_PASSWORD,
+    DEMO_PROJECT_ID,
+)
 
 
 def _login_and_get_csrf(client: TestClient) -> dict[str, str]:
     resp = client.post(
         "/api/v1/auth/login",
-        json={"email": "planner@electrimap.in", "password": "ElectriMap#2026"},
+        json={"email": DEFAULT_PLANNER_EMAIL, "password": DEFAULT_PLANNER_PASSWORD},
     )
     assert resp.status_code == 200
     csrf_token = resp.json()["csrf_token"]
     return {"X-CSRF-Token": csrf_token}
 
 
-def test_m7_preflight_24_section_dpr_excel_boq_and_gis_package() -> None:
+def test_m7_preflight_24_section_dpr_excel_boq_and_gis_package(
+    seeded_client: TestClient,
+) -> None:
     """Verify pre-flight audit, 24-section PDF DPR, formula Excel BOQ, GIS ZIP, and SHA-256 logs."""
-    with TestClient(app) as client:
+    client = seeded_client
+    if True:
         headers = _login_and_get_csrf(client)
 
         # Ensure standard Odisha SoR rates are active

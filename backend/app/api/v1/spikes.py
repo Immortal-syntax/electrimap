@@ -19,8 +19,10 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Response
+from shapely.geometry import mapping
 
 from app.core.config import get_settings
+from app.domain.gis.boundary import create_approximate_village_buffer_wgs84
 from app.domain.gis.layer_processing import render_raster_layer_png
 
 router = APIRouter(prefix="/api/v1/spikes", tags=["Spikes"])
@@ -206,6 +208,16 @@ def _build_osm_existing_power_infra() -> dict[str, Any]:
     return {"type": "FeatureCollection", "features": features}
 
 
+def _village_buffer_geojson(lon: float, lat: float, radius_m: float) -> dict[str, Any]:
+    multipoly, _, _ = create_approximate_village_buffer_wgs84(
+        lon=lon,
+        lat=lat,
+        radius_m=radius_m,
+    )
+    geom: dict[str, Any] = mapping(multipoly)
+    return geom
+
+
 def _build_village_electrification_layer() -> dict[str, Any]:
     """Return Layer C: Village Electrification Status & Census 2011 DCHB attributes."""
     return {
@@ -243,18 +255,7 @@ def _build_village_electrification_layer() -> dict[str, Any]:
                         "billing ledger or Gram Sabha field survey verification."
                     ),
                 },
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [
-                        [
-                            [82.695, 18.535],
-                            [82.765, 18.535],
-                            [82.765, 18.595],
-                            [82.695, 18.595],
-                            [82.695, 18.535],
-                        ]
-                    ],
-                },
+                "geometry": _village_buffer_geojson(82.730, 18.565, 3200.0),
             },
             {
                 "type": "Feature",
@@ -286,18 +287,7 @@ def _build_village_electrification_layer() -> dict[str, Any]:
                         "DISCOM DT metering logs."
                     ),
                 },
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [
-                        [
-                            [82.62, 18.48],
-                            [82.68, 18.48],
-                            [82.68, 18.53],
-                            [82.62, 18.53],
-                            [82.62, 18.48],
-                        ]
-                    ],
-                },
+                "geometry": _village_buffer_geojson(82.650, 18.505, 2800.0),
             },
             {
                 "type": "Feature",
@@ -334,18 +324,7 @@ def _build_village_electrification_layer() -> dict[str, Any]:
                         "home systems (SHS) were distributed post-2018."
                     ),
                 },
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [
-                        [
-                            [82.742, 18.572],
-                            [82.768, 18.572],
-                            [82.768, 18.596],
-                            [82.742, 18.596],
-                            [82.742, 18.572],
-                        ]
-                    ],
-                },
+                "geometry": _village_buffer_geojson(82.755, 18.584, 1500.0),
             },
         ],
     }

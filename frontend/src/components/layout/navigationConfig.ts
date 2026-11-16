@@ -53,19 +53,19 @@ export interface WorkspaceSectionMeta {
 export const WORKSPACE_SECTIONS: WorkspaceSectionMeta[] = [
   {
     key: 'overview',
-    shortLabel: 'Workbench Overview',
-    title: 'Project Workbench & Spatial Overview',
-    subtitle: 'Full 6-stage engineering sheet, study area summary, and interactive GIS map.',
-    nonGisHint: 'Start here to inspect the village boundary, summary indicators, and complete planning workflow.',
+    shortLabel: 'Overview',
+    title: 'Project Overview & Progress',
+    subtitle: 'Summary of your study area, progress across all 6 steps, and interactive map.',
+    nonGisHint: 'Start here to see village highlights, map layers, and what to do next.',
     targetDomId: 'step-section-overview',
     icon: LayoutDashboard,
   },
   {
     key: 'map',
-    shortLabel: 'Interactive GIS Map',
-    title: 'Geospatial Infrastructure & Illumination Map',
-    subtitle: 'Inspect power lines, transformers, nighttime light radiance, and habitation clusters.',
-    nonGisHint: 'Pan, zoom, switch satellite/terrain basemaps, and click any village or power line for details.',
+    shortLabel: 'Interactive Map',
+    title: 'Interactive Village & Power Line Map',
+    subtitle: 'Explore nighttime light, trees, terrain slope, buildings, and power lines.',
+    nonGisHint: 'Move around the map, switch satellite views, and click any house cluster or line.',
     targetDomId: 'step-section-map',
     icon: Map,
   },
@@ -73,9 +73,9 @@ export const WORKSPACE_SECTIONS: WorkspaceSectionMeta[] = [
     key: 'data',
     stepNumber: 1,
     shortLabel: '1. Study Area & Data',
-    title: 'Step 1 · Study Area Layers & Dataset Provenance',
-    subtitle: 'Ingested satellite building footprints, terrain slope, solar resource, and licences.',
-    nonGisHint: 'Verify which satellite and terrain datasets are loaded and toggle map overlays.',
+    title: 'Step 1 · Get Your Map Ready',
+    subtitle: 'Prepare buildings, terrain, land cover, and solar data for your study boundary.',
+    nonGisHint: 'Fetch map data for your study area or upload surveyed files, then move to Step 2.',
     targetDomId: 'step-section-data',
     icon: Database,
   },
@@ -83,9 +83,9 @@ export const WORKSPACE_SECTIONS: WorkspaceSectionMeta[] = [
     key: 'settlements',
     stepNumber: 2,
     shortLabel: '2. Villages & Habitations',
-    title: 'Step 2 · Habitation Clustering & Field Verification',
-    subtitle: 'Two-axis electrification proxy classification, Census 2011 reconciliation, and audit ledger.',
-    nonGisHint: 'Review detected village clusters and record ground-truth Gram Sabha or utility verifications.',
+    title: 'Step 2 · Village Hamlets & Ground Check',
+    subtitle: 'Group houses into hamlets, check against Census counts, and log field visits.',
+    nonGisHint: 'Review detected hamlets and record what ground surveys or records show.',
     targetDomId: 'step-section-settlements',
     icon: Home,
   },
@@ -93,39 +93,39 @@ export const WORKSPACE_SECTIONS: WorkspaceSectionMeta[] = [
     key: 'infrastructure',
     stepNumber: 3,
     shortLabel: '3. Grid & Demand',
-    title: 'Step 3 · Existing Grid Infrastructure, Gaps & Demand Forecast',
-    subtitle: 'Existing 11 kV/LT assets, terrain-penalized distance gaps, and 7-category load forecast.',
-    nonGisHint: 'Register existing power lines or place an assumed 11 kV tie-in point and calculate kW demand.',
+    title: 'Step 3 · Nearest Grid Connection & Electricity Demand',
+    subtitle: 'Mark existing grid tie-in poles, measure distances, and estimate peak village demand.',
+    nonGisHint: 'Record existing lines or click the map to mark where new power lines could connect.',
     targetDomId: 'step-section-infrastructure',
     icon: UtilityPole,
   },
   {
     key: 'network',
     stepNumber: 4,
-    shortLabel: '4. Network & SLD',
-    title: 'Step 4 · Network Routing, Voltage Drop & Off-Grid Sizing',
-    subtitle: 'Least-cost 11 kV/LT routing, CEA voltage regulation checks, and Single-Line Diagram (SLD).',
-    nonGisHint: 'Generate grid extension, solar mini-grid, or standalone SHS engineering layouts.',
+    shortLabel: '4. Network Design',
+    title: 'Step 4 · Power Line Routes & Off-Grid Solar',
+    subtitle: 'Design 11 kV / street wire paths, transformer sizes, or off-grid solar systems.',
+    nonGisHint: 'Generate line routes and solar options, then verify voltage stays within CEA limits.',
     targetDomId: 'step-section-network',
     icon: GitBranch,
   },
   {
     key: 'cost',
     stepNumber: 5,
-    shortLabel: '5. Cost, BOQ & Scenarios',
-    title: 'Step 5 · Schedule of Rates, Itemized BOQ & Scenario Comparison',
-    subtitle: 'Traceable unit rates, bill of quantities, 20-year Net Present Cost (NPC), and LCOE.',
-    nonGisHint: 'Compare 4 electrification scenarios side by side and manage Schedule of Rates unit prices.',
+    shortLabel: '5. Costs & Scenarios',
+    title: 'Step 5 · Equipment Prices, Itemized Costs & Options',
+    subtitle: 'Enter or review unit prices, inspect itemized quantities, and compare supply options.',
+    nonGisHint: 'Confirm unit prices for poles, wire, and solar kits, then pick the best scenario.',
     targetDomId: 'step-section-cost',
     icon: Calculator,
   },
   {
     key: 'reports',
     stepNumber: 6,
-    shortLabel: '6. Pre-Flight & DPR',
-    title: 'Step 6 · Pre-Flight Audit & 24-Section DPR Export Center',
-    subtitle: 'Mandatory pre-flight integrity checks, 24-section PDF DPR, formula Excel BOQ, and GIS bundle.',
-    nonGisHint: 'Run quality checks and download the complete Detailed Project Report (PDF, Excel, and GIS ZIP).',
+    shortLabel: '6. Final Check & Report',
+    title: 'Step 6 · Final Safety Check & Report Download',
+    subtitle: 'Fix any missing items and export your 24-section PDF report, Excel BOQ, and GIS files.',
+    nonGisHint: 'Review readiness checks and download your preliminary report and cost workbook.',
     targetDomId: 'step-section-dpr',
     icon: FileCheck2,
   },
@@ -168,11 +168,11 @@ export function resolveRouteContext(
     return {
       breadcrumbs: [
         { label: 'ElectriMap DPR' },
-        { label: 'Reference Study & Demo Overview' },
+        { label: 'Sample Study Overview' },
       ],
-      pageTitle: 'Reference Study & Interactive GIS Demo',
+      pageTitle: 'Sample Village Study & Map Preview',
       contextHint:
-        'Pre-feasibility rural & tribal electrification assessment — Koraput District, Odisha',
+        'Explore how ElectriMap plans rural electrification using Koraput, Odisha as a pre-loaded example.',
       activeProjectId: null,
       activeSection: null,
     }
@@ -180,9 +180,9 @@ export function resolveRouteContext(
 
   if (pathname === '/login') {
     return {
-      breadcrumbs: [{ label: 'ElectriMap DPR', to: '/' }, { label: 'Planner Sign In' }],
-      pageTitle: 'Planner Authentication',
-      contextHint: 'Session-authenticated access to the ElectriMap DPR engineering workbench',
+      breadcrumbs: [{ label: 'ElectriMap DPR', to: '/' }, { label: 'Sign In' }],
+      pageTitle: 'Sign In to ElectriMap DPR',
+      contextHint: 'Sign in to create your own village projects and save progress.',
       activeProjectId: null,
       activeSection: null,
     }
@@ -192,11 +192,11 @@ export function resolveRouteContext(
     return {
       breadcrumbs: [
         { label: 'ElectriMap DPR', to: '/' },
-        { label: 'Projects Portfolio' },
+        { label: 'My Projects' },
       ],
-      pageTitle: 'Projects Portfolio Register',
+      pageTitle: 'My Electrification Projects',
       contextHint:
-        'Manage rural & tribal electrification DPR studies, AOI boundaries, and revisions',
+        'Open a saved village project, copy an existing study, or start a new boundary.',
       activeProjectId: null,
       activeSection: null,
     }
@@ -206,12 +206,12 @@ export function resolveRouteContext(
     return {
       breadcrumbs: [
         { label: 'ElectriMap DPR', to: '/' },
-        { label: 'All Projects', to: '/projects' },
-        { label: 'New Project & AOI Wizard' },
+        { label: 'My Projects', to: '/projects' },
+        { label: 'New Project' },
       ],
-      pageTitle: 'New Project & Study Boundary Wizard',
+      pageTitle: 'Start a New Village Electrification Study',
       contextHint:
-        'Define project metadata and establish a validated Area of Interest (LGD village, drawn polygon, or GIS upload)',
+        'Step 1: Name your study and choose a service level. Step 2: Pick a village, draw on map, or upload a boundary.',
       activeProjectId: null,
       activeSection: null,
     }
@@ -228,11 +228,11 @@ export function resolveRouteContext(
       projectName ??
       (projectId === DEMO_PROJECT_ID
         ? 'Koraput — Bheja Reference Study'
-        : `Project ${projectId.slice(0, 8)}`)
+        : 'Active Study')
 
     return {
       breadcrumbs: [
-        { label: 'All Projects', to: '/projects' },
+        { label: 'My Projects', to: '/projects' },
         {
           label: displayProject,
           to:
@@ -252,7 +252,7 @@ export function resolveRouteContext(
   return {
     breadcrumbs: [{ label: 'ElectriMap DPR', to: '/' }],
     pageTitle: 'ElectriMap DPR Workbench',
-    contextHint: 'Geospatial Rural Electrification Planning Platform',
+    contextHint: 'Rural & tribal village electrification planning workbench',
     activeProjectId: null,
     activeSection: null,
   }
@@ -261,20 +261,20 @@ export function resolveRouteContext(
 export const SIDEBAR_PORTFOLIO_LINKS = [
   {
     to: '/',
-    label: 'Reference Demo Study',
-    description: 'Koraput GIS preview & methodology',
+    label: 'Sample Study',
+    description: 'Explore pre-loaded Koraput example & guide',
     icon: Compass,
   },
   {
     to: '/projects',
-    label: 'Saved Projects Register',
-    description: 'Browse & manage DPR studies',
+    label: 'My Projects',
+    description: 'Open, copy, or manage saved village studies',
     icon: FolderKanban,
   },
   {
     to: '/projects/new',
-    label: 'Create Project Wizard',
-    description: 'Define new village AOI boundary',
+    label: 'New Project',
+    description: 'Start a study for your own village boundary',
     icon: PlusCircle,
   },
 ] as const

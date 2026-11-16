@@ -58,7 +58,14 @@ def login(
         user_agent=user_agent,
     )
 
+    # Revoke any previously active session cookie on this browser before issuing the new one
+    # so switching accounts never leaves an orphaned session cookie reusable.
+    old_token = request.cookies.get(settings.session_cookie_name)
+    if old_token:
+        revoke_session(db, old_token)
+
     is_secure = settings.effective_cookie_secure
+    response.headers["Cache-Control"] = "no-store"
     response.set_cookie(
         key=settings.session_cookie_name,
         value=raw_session_token,
@@ -86,18 +93,27 @@ def logout(
     settings = get_settings()
     raw_token = request.cookies.get(settings.session_cookie_name)
     revoke_session(db, raw_token)
-    response.delete_cookie(key=settings.session_cookie_name, path="/")
+    response.headers["Cache-Control"] = "no-store"
+    response.delete_cookie(
+        key=settings.session_cookie_name,
+        path="/",
+        httponly=True,
+        secure=settings.effective_cookie_secure,
+        samesite="lax",
+    )
     return {"status": "logged_out"}
 
 
 @router.get("/me", response_model=AuthSessionResponse)
 def get_me(
     request: Request,
+    response: Response,
     pair: tuple[User, UserSession] = Depends(get_current_session_and_user),
     db: Session = Depends(get_db),
 ) -> AuthSessionResponse:
     """Return currently authenticated user profile, issuing a fresh CSRF token if requested."""
     user, session_row = pair
+    response.headers["Cache-Control"] = "no-store"
     csrf_token: str | None = None
     if request.query_params.get("issue_csrf") == "1":
         csrf_token = generate_secure_token(32)

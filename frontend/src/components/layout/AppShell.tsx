@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   ChevronRight,
@@ -24,10 +24,13 @@ import {
   X,
   Zap,
 } from 'lucide-react'
+import { apiRequest } from '../../lib/apiClient'
+import { useActiveProjectStore } from '../../stores/activeProjectStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { QualityTag } from '../ui/QualityTag'
+import { HelpTooltip } from '../ui/Tooltip'
 import {
   DEMO_PROJECT_ID,
   SIDEBAR_PORTFOLIO_LINKS,
@@ -42,27 +45,62 @@ export interface AppShellProps {
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const { user, logout } = useSessionStore()
+  const { projectsById, setProjectMeta } = useActiveProjectStore()
   const location = useLocation()
   const navigate = useNavigate()
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const mobileNavTriggerRef = useRef<HTMLButtonElement>(null)
+  const mobileDrawerRef = useRef<HTMLDivElement>(null)
+  const mobileDrawerCloseRef = useRef<HTMLButtonElement>(null)
+  const wasMobileNavOpenRef = useRef(false)
 
   // Close mobile navigation drawer automatically on route change
   useEffect(() => {
     setMobileNavOpen(false)
   }, [location.pathname, location.search])
 
-  // Close mobile drawer on Escape key
+  // Close mobile drawer on Escape key, trap Tab focus, and restore trigger focus
   useEffect(() => {
-    if (!mobileNavOpen) return
+    if (!mobileNavOpen) {
+      if (wasMobileNavOpenRef.current) {
+        wasMobileNavOpenRef.current = false
+        mobileNavTriggerRef.current?.focus()
+      }
+      return
+    }
+    wasMobileNavOpenRef.current = true
+    const focusTimer = window.setTimeout(() => {
+      mobileDrawerCloseRef.current?.focus()
+    }, 0)
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMobileNavOpen(false)
+        return
+      }
+      if (e.key === 'Tab' && mobileDrawerRef.current) {
+        const focusables = mobileDrawerRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )
+        if (focusables.length === 0) return
+        const first = focusables[0]
+        const last = focusables[focusables.length - 1]
+        if (!first || !last) return
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
       }
     }
     document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    return () => {
+      window.clearTimeout(focusTimer)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [mobileNavOpen])
 
   const handleLogout = async () => {
@@ -70,10 +108,35 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     navigate('/login')
   }
 
-  const routeContext = resolveRouteContext(location.pathname)
-  const targetProjectId = routeContext.activeProjectId ?? DEMO_PROJECT_ID
-  const isInsideProject = routeContext.activeProjectId !== null
+  const baseRouteContext = resolveRouteContext(location.pathname)
+  const activeProjectId = baseRouteContext.activeProjectId
+  const cachedProjectName = activeProjectId ? projectsById[activeProjectId]?.name : null
+  const routeContext = resolveRouteContext(location.pathname, cachedProjectName)
+  const isInsideProject = activeProjectId !== null
   const isLoginRoute = location.pathname === '/login'
+
+  useEffect(() => {
+    if (!activeProjectId || cachedProjectName || !user) return
+    let active = true
+    apiRequest<{ name: string; target_district?: string | null; target_state?: string | null }>(
+      `/api/v1/projects/${activeProjectId}`,
+    )
+      .then((proj) => {
+        if (active && proj?.name) {
+          setProjectMeta(activeProjectId, {
+            name: proj.name,
+            district: proj.target_district,
+            state: proj.target_state,
+          })
+        }
+      })
+      .catch(() => {
+        // Fallback label handled smoothly by resolveRouteContext
+      })
+    return () => {
+      active = false
+    }
+  }, [activeProjectId, cachedProjectName, user, setProjectMeta])
 
   const getSectionHref = (projectId: string, sectionKey: WorkspaceSectionKey) =>
     sectionKey === 'overview'
@@ -83,11 +146,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const renderSidebarContent = (isCompact: boolean) => (
     <div className="flex flex-col h-full justify-between select-none">
       <div className="p-3 space-y-5 overflow-y-auto">
-        {/* Section 1: Platform & Portfolio Navigation */}
+        {/* Section 1: Main Navigation */}
         <div>
           {!isCompact && (
             <div className="px-2.5 pb-2 text-xs font-semibold text-ink-3">
-              Platform &amp; Portfolio
+              Navigation
             </div>
           )}
           <nav aria-label="Portfolio navigation" className="space-y-1">
@@ -121,67 +184,88 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           </nav>
         </div>
 
-        {/* Section 2: 6-Stage Project Planning Workflow */}
+        {/* Section 2: 6-Stage Project Planning Workflow (Shown Only Inside Active Study) */}
         <div className="pt-3 border-t border-rule-subtle">
           {!isCompact && (
             <div className="px-2.5 pb-2 flex items-center justify-between gap-2">
               <span className="text-xs font-semibold text-ink-3">
-                Planning Workflow
+                {isInsideProject ? '6-Step Plan' : 'Planning Steps (1–6)'}
               </span>
-              <span className="text-2xs font-medium text-ink-3">
-                {isInsideProject ? 'Active' : 'Demo'}
-              </span>
+              {isInsideProject && (
+                <span className="text-2xs font-medium text-accent">
+                  {activeProjectId === DEMO_PROJECT_ID ? 'Sample' : 'Project'}
+                </span>
+              )}
             </div>
           )}
 
-          <nav aria-label="Project planning workflow" className="space-y-1">
-            {WORKSPACE_SECTIONS.map((sec) => {
-              const href = getSectionHref(targetProjectId, sec.key)
-              const isSectionActive =
-                isInsideProject && routeContext.activeSection === sec.key
+          {isInsideProject && activeProjectId ? (
+            <nav aria-label="Project planning workflow" className="space-y-1">
+              {WORKSPACE_SECTIONS.map((sec) => {
+                const href = getSectionHref(activeProjectId, sec.key)
+                const isSectionActive = routeContext.activeSection === sec.key
 
-              return (
-                <Link
-                  key={sec.key}
-                  to={href}
-                  title={isCompact ? `${sec.shortLabel} — ${sec.subtitle}` : sec.nonGisHint}
-                  aria-current={isSectionActive ? 'page' : undefined}
-                  className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-xs text-body-sm transition-colors duration-100 border-l-2 ${
-                    isSectionActive
-                      ? 'border-l-accent bg-accent-tint/70 text-accent font-semibold'
-                      : 'border-l-transparent text-ink-2 hover:bg-surface-hover hover:text-ink'
-                  } ${isCompact ? 'justify-center px-0 py-2' : ''}`.trim()}
-                >
-                  <Icon
-                    icon={sec.icon}
-                    size="sm"
-                    className={
+                return (
+                  <Link
+                    key={sec.key}
+                    to={href}
+                    title={isCompact ? `${sec.shortLabel} — ${sec.subtitle}` : sec.nonGisHint}
+                    aria-current={isSectionActive ? 'page' : undefined}
+                    className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-xs text-body-sm transition-colors duration-100 border-l-2 ${
                       isSectionActive
-                        ? 'text-accent'
-                        : 'text-ink-3 group-hover:text-ink'
-                    }
-                  />
-                  {!isCompact && (
-                    <span className="truncate flex-1 leading-snug">
-                      {sec.shortLabel}
-                    </span>
-                  )}
+                        ? 'border-l-accent bg-accent-tint/70 text-accent font-semibold'
+                        : 'border-l-transparent text-ink-2 hover:bg-surface-hover hover:text-ink'
+                    } ${isCompact ? 'justify-center px-0 py-2' : ''}`.trim()}
+                  >
+                    <Icon
+                      icon={sec.icon}
+                      size="sm"
+                      className={
+                        isSectionActive
+                          ? 'text-accent'
+                          : 'text-ink-3 group-hover:text-ink'
+                      }
+                    />
+                    {!isCompact && (
+                      <span className="truncate flex-1 leading-snug">
+                        {sec.shortLabel}
+                      </span>
+                    )}
+                  </Link>
+                )
+              })}
+            </nav>
+          ) : (
+            !isCompact && (
+              <div className="mx-1.5 rounded-md border border-rule-subtle bg-subtle/60 p-3 space-y-2 text-xs text-ink-2">
+                <p className="leading-relaxed">
+                  Open a project in <strong className="text-ink">My Projects</strong> — or explore the pre-loaded sample — to use all 6 planning steps and interactive GIS tools.
+                </p>
+                <Link
+                  to={`/projects/${DEMO_PROJECT_ID}/workspace`}
+                  className="inline-flex items-center gap-1 font-semibold text-accent hover:underline"
+                >
+                  <Icon icon={Compass} size="xs" />
+                  <span>Open Sample Study →</span>
                 </Link>
-              )
-            })}
-          </nav>
+              </div>
+            )
+          )}
         </div>
       </div>
 
-      {/* Sidebar Epistemic Footer */}
+      {/* Sidebar Plain-Language Accuracy Note */}
       {!isCompact && (
         <div className="p-3 border-t border-rule bg-subtle/40 text-xs text-ink-2 space-y-1">
-          <div className="flex items-center gap-1.5 font-semibold text-ink">
-            <Icon icon={ShieldAlert} size="xs" className="text-warn" />
-            <span>Epistemic Policy</span>
+          <div className="flex items-center justify-between gap-1.5">
+            <div className="flex items-center gap-1.5 font-semibold text-ink">
+              <Icon icon={ShieldAlert} size="xs" className="text-warn" />
+              <span>Satellite Check Note</span>
+            </div>
+            <HelpTooltip glossaryKey="proxyClassification" placement="right" />
           </div>
           <p className="leading-relaxed text-xs text-ink-2">
-            Remote sensing proxies are never labeled verified without ground survey records.
+            Satellite tags are screening clues only — verify real connections on the ground.
           </p>
         </div>
       )}
@@ -199,12 +283,13 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       </a>
 
       {/* Deep Navy Primary Command Header */}
-      <header className="h-12 bg-navy-950 text-white border-b border-navy-800 px-3 sm:px-4 flex items-center justify-between gap-3 shrink-0 z-30">
+      <header className="min-h-14 h-14 bg-navy-950 text-white border-b border-navy-800 px-3 sm:px-4 flex items-center justify-between gap-3 shrink-0 z-30">
         <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
           {!isLoginRoute && (
             <>
               {/* Mobile Navigation Trigger */}
               <button
+                ref={mobileNavTriggerRef}
                 type="button"
                 aria-label={
                   mobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'
@@ -251,10 +336,10 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             |
           </span>
 
-          {/* Primary Top Navigation */}
+          {/* Primary Top Navigation (Matches Sidebar Labels 1:1) */}
           <nav
             aria-label="Primary navigation"
-            className="hidden md:flex items-center gap-1.5 text-body-sm"
+            className="hidden md:flex items-center gap-1.5 text-body-sm whitespace-nowrap"
           >
             <Link
               to="/"
@@ -265,7 +350,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   : 'text-slate-300 hover:text-white hover:bg-navy-800'
               }`}
             >
-              Overview &amp; Demo
+              Sample Study
             </Link>
             <Link
               to="/projects"
@@ -276,7 +361,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   : 'text-slate-300 hover:text-white hover:bg-navy-800'
               }`}
             >
-              Projects Portfolio
+              My Projects
             </Link>
             <Link
               to="/projects/new"
@@ -289,20 +374,28 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   : 'text-slate-300 hover:text-white hover:bg-navy-800'
               }`}
             >
-              + New Project &amp; AOI
+              + New Project
             </Link>
           </nav>
         </div>
 
-        {/* Right Controls: Workbench Tag & Session Auth */}
+        {/* Right Controls: Preliminary Mode Tag & Session Auth */}
         <div className="flex items-center gap-2.5 text-xs shrink-0">
-          <span className="hidden sm:inline-flex">
-            <QualityTag kind="ESTIMATED" label="Pre-Feasibility Workbench" />
+          <span className="hidden lg:inline-flex items-center gap-1.5">
+            <QualityTag kind="ESTIMATED" label="Screening Tool" />
+            <HelpTooltip
+              glossaryKey="preliminaryDisclaimer"
+              tone="inverted"
+              placement="bottom"
+            />
           </span>
           {user ? (
-            <div className="flex items-center gap-2.5">
-              <span className="hidden xl:inline text-slate-300 text-xs">
-                {user.display_name} ({user.role})
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span
+                data-testid="authenticated-user-name"
+                className="text-slate-200 text-xs font-medium truncate max-w-[120px] sm:max-w-[200px]"
+              >
+                {user.display_name}
               </span>
               <Button
                 size="sm"
@@ -363,15 +456,15 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             </ol>
           </nav>
 
-          <div className="flex items-center gap-3 text-xs text-ink-2">
-            <span className="hidden xl:inline text-ink-3">{routeContext.contextHint}</span>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-ink-2">
+            <span className="text-ink-2 leading-snug">{routeContext.contextHint}</span>
             {!isInsideProject && (
               <Link
                 to={`/projects/${DEMO_PROJECT_ID}/workspace`}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent-tint/70 text-accent hover:bg-accent-tint font-semibold transition-colors"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent-tint/70 text-accent hover:bg-accent-tint font-semibold transition-colors shrink-0"
               >
                 <Icon icon={Compass} size="xs" />
-                <span>Koraput Demo Workbench →</span>
+                <span>Explore Sample Study →</span>
               </Link>
             )}
           </div>
@@ -404,12 +497,16 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               className="fixed inset-0 bg-navy-950/55 backdrop-blur-sm"
               onClick={() => setMobileNavOpen(false)}
             />
-            <div className="relative z-50 w-72 max-w-[85vw] bg-sheet border-r border-rule h-full flex flex-col shadow-overlay rounded-r-md overflow-hidden">
+            <div
+              ref={mobileDrawerRef}
+              className="relative z-50 w-72 max-w-[85vw] bg-sheet border-r border-rule h-full flex flex-col shadow-overlay rounded-r-md overflow-hidden"
+            >
               <div className="p-3.5 bg-navy-900 text-white flex items-center justify-between border-b border-navy-800">
                 <span className="text-sm font-semibold tracking-tight">
                   ElectriMap Navigation
                 </span>
                 <button
+                  ref={mobileDrawerCloseRef}
                   type="button"
                   aria-label="Close mobile navigation"
                   onClick={() => setMobileNavOpen(false)}

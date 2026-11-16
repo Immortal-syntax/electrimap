@@ -28,8 +28,9 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.db.models.auth import User
+from app.db.models.infrastructure import InfrastructureAsset
 from app.db.models.ops import AuditEvent, Job
-from app.db.models.project import ProjectAoi
+from app.db.models.project import Project, ProjectAoi
 from app.db.models.reference import AdminUnit, CensusVillage
 from app.db.models.settlement import (
     ClusterRun,
@@ -47,6 +48,7 @@ from app.domain.gis.clustering import (
     BuildingFootprintInput,
     run_dbscan_habitation_clustering,
 )
+from app.domain.gis.crs import project_geometry
 from app.schemas.settlement import (
     BuildingCreateRequest,
     BuildingPatchRequest,
@@ -61,7 +63,10 @@ from app.schemas.settlement import (
     VerificationRecordResponse,
     VerificationReversalRequest,
 )
-from app.services.data_service import run_project_data_acquisition_pipeline
+from app.services.data_service import (
+    load_reference_terrain_arrays_for_aoi,
+    run_project_data_acquisition_pipeline,
+)
 from app.services.job_service import (
     enqueue_job,
     execute_job_synchronously,
@@ -70,6 +75,8 @@ from app.services.job_service import (
 )
 from app.services.project_service import get_owned_project_or_404
 from app.worker import register_job_handler
+
+DEMO_PROJECT_ID = "00000000-0000-4000-8000-000000000001"
 
 DEFAULT_KORAPUT_CLUSTER_NAMES: dict[str, str] = {
     "CL-01": "Bheja Main Village Core",
@@ -81,8 +88,12 @@ DEFAULT_KORAPUT_CLUSTER_NAMES: dict[str, str] = {
 }
 
 
-def _default_cluster_name(label: str, is_isolated: bool) -> str:
-    if label in DEFAULT_KORAPUT_CLUSTER_NAMES:
+def _default_cluster_name(
+    label: str,
+    is_isolated: bool,
+    project_id: str | None = None,
+) -> str:
+    if project_id == DEMO_PROJECT_ID and label in DEFAULT_KORAPUT_CLUSTER_NAMES:
         return DEFAULT_KORAPUT_CLUSTER_NAMES[label]
     if is_isolated:
         return f"Dispersed Homesteads ({label})"
@@ -91,8 +102,10 @@ def _default_cluster_name(label: str, is_isolated: bool) -> str:
 
 def _serialize_cluster(row: SettlementCluster) -> ClusterResponse:
     pt = row.centroid
-    lon = round(float(pt.x), 6) if pt is not None else 82.732
-    lat = round(float(pt.y), 6) if pt is not None else 18.567
+    fallback_lon = 82.732 if row.project_id == DEMO_PROJECT_ID else 0.0
+    fallback_lat = 18.567 if row.project_id == DEMO_PROJECT_ID else 0.0
+    lon = round(float(pt.x), 6) if pt is not None else fallback_lon
+    lat = round(float(pt.y), 6) if pt is not None else fallback_lat
     geom_dict = dict(mapping(row.geom)) if row.geom is not None else {}
     return ClusterResponse(
         id=row.id,
@@ -257,9 +270,12 @@ def execute_settlement_clustering_pipeline(
             ),
         )
 
+    proj_row = db.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
+    metric_epsg = proj_row.metric_epsg if proj_row is not None else 32644
+
     clustering_res = run_dbscan_habitation_clustering(
         footprint_inputs,
-        metric_epsg=32644,
+        metric_epsg=metric_epsg,
         eps_m=eps_m_val,
         min_samples=min_samples_val,
         household_alpha=household_alpha_val,
@@ -285,6 +301,17 @@ def execute_settlement_clustering_pipeline(
     )
     road_geoms = [r.geom for r in osm_roads if r.geom is not None]
 
+    infra_rows = (
+        db.execute(
+            select(InfrastructureAsset).where(InfrastructureAsset.project_id == project_id)
+        )
+        .scalars()
+        .all()
+    )
+    infra_geoms = [a.geom for a in infra_rows if a.geom is not None]
+    dt_geoms = [a.geom for a in infra_rows if a.geom is not None and a.asset_type == "DT"]
+    dem_arr, wc_arr, raster_bounds = load_reference_terrain_arrays_for_aoi(aoi_row.geom)
+
     thresholds = ClassificationThresholds(
         nl_electrified_min=nl_electrified_min_val,
         nl_unserved_max=nl_unserved_max_val,
@@ -294,11 +321,57 @@ def execute_settlement_clustering_pipeline(
         clustering_res.clusters,
         aoi_geom=aoi_row.geom,
         road_geoms_wgs84=road_geoms,
-        metric_epsg=32644,
+        infra_geoms_wgs84=infra_geoms,
+        dt_geoms_wgs84=dt_geoms,
+        metric_epsg=metric_epsg,
         thresholds=thresholds,
+        dem_elev_wgs84=dem_arr,
+        worldcover_wgs84=wc_arr,
+        raster_bounds_wgs84=raster_bounds,
+        cell_size_m=30.0,
+        radiance_wgs84=None,
     )
 
-    # Mark prior ClusterRuns as not current and clear old unverified clusters
+    # Snapshot verified Axis-2 states and custom cluster names before regenerating clusters
+    prior_clusters = (
+        db.execute(select(SettlementCluster).where(SettlementCluster.project_id == project_id))
+        .scalars()
+        .all()
+    )
+    preserved_snapshots: list[dict[str, Any]] = []
+    for old_c in prior_clusters:
+        is_verified = old_c.verification_state in {"FIELD_VERIFIED", "UTILITY_VERIFIED"}
+        default_nm = _default_cluster_name(old_c.label, old_c.is_isolated_group, project_id)
+        has_custom_name = old_c.name != default_nm
+        if (is_verified or has_custom_name) and old_c.centroid is not None:
+            old_utm = project_geometry(old_c.centroid, source_epsg=4326, target_epsg=metric_epsg)
+            preserved_snapshots.append(
+                {
+                    "old_id": old_c.id,
+                    "utm_centroid": old_utm.centroid,
+                    "is_verified": is_verified,
+                    "verification_state": old_c.verification_state,
+                    "verified_class": old_c.verified_class,
+                    "custom_name": old_c.name if has_custom_name else None,
+                    "used": False,
+                }
+            )
+
+    # Mark prior ClusterRuns as not current and clear downstream & old clusters
+    from app.services.invalidation import invalidate_downstream_from_stage
+
+    invalidate_downstream_from_stage(
+        db,
+        project_id=project_id,
+        stage="clustering",
+        drop_clusters=False,
+        bump_version=False,
+    )
+    db.execute(
+        update(Building)
+        .where(Building.project_id == project_id)
+        .values(cluster_run_id=None, cluster_id=None)
+    )
     db.execute(
         update(ClusterRun)
         .where(ClusterRun.project_id == project_id)
@@ -324,7 +397,7 @@ def execute_settlement_clustering_pipeline(
             cluster_run_id=run_row.id,
             project_id=project_id,
             label=c.label,
-            name=_default_cluster_name(c.label, c.is_isolated_group),
+            name=_default_cluster_name(c.label, c.is_isolated_group, project_id),
             geom=c.geom,
             centroid=c.centroid,
             is_isolated_group=c.is_isolated_group,
@@ -347,6 +420,38 @@ def execute_settlement_clustering_pipeline(
         new_clusters.append(sc)
 
     db.flush()
+    preserved_verifications_count = 0
+    if preserved_snapshots:
+        for sc in new_clusters:
+            if sc.centroid is None:
+                continue
+            sc_utm = project_geometry(sc.centroid, source_epsg=4326, target_epsg=metric_epsg)
+            best_snap: dict[str, Any] | None = None
+            best_dist = 150.0
+            for snap in preserved_snapshots:
+                if snap["used"]:
+                    continue
+                d_m = float(sc_utm.centroid.distance(snap["utm_centroid"]))
+                if d_m <= best_dist:
+                    best_dist = d_m
+                    best_snap = snap
+            if best_snap is not None:
+                best_snap["used"] = True
+                if best_snap["custom_name"]:
+                    sc.name = str(best_snap["custom_name"])
+                if best_snap["is_verified"]:
+                    sc.verification_state = str(best_snap["verification_state"])
+                    sc.verified_class = best_snap["verified_class"]
+                    preserved_verifications_count += 1
+                    db.execute(
+                        update(VerificationRecord)
+                        .where(
+                            VerificationRecord.project_id == project_id,
+                            VerificationRecord.target_id == str(best_snap["old_id"]),
+                        )
+                        .values(target_id=sc.id)
+                    )
+
     for sc, item in zip(new_clusters, classified_list, strict=True):
         cluster_id_by_idx[item.cluster.cluster_index] = sc.id
 
@@ -362,6 +467,7 @@ def execute_settlement_clustering_pipeline(
         "clusters_detected": len(new_clusters),
         "total_estimated_households": sum(c.est_households for c in new_clusters),
         "excluded_buildings": clustering_res.excluded_count,
+        "preserved_verifications_count": preserved_verifications_count,
     }
 
 
@@ -553,6 +659,14 @@ def update_project_building(
         bld.is_excluded = req.is_excluded
     if req.size_class is not None:
         bld.size_class = req.size_class
+    from app.services.invalidation import invalidate_downstream_from_stage
+
+    invalidate_downstream_from_stage(
+        db,
+        project_id=proj.id,
+        stage="boq_only",
+        bump_version=True,
+    )
     db.commit()
     return {
         "id": bld.id,
@@ -594,6 +708,14 @@ def create_project_building(
         is_excluded=False,
     )
     db.add(bld)
+    from app.services.invalidation import invalidate_downstream_from_stage
+
+    invalidate_downstream_from_stage(
+        db,
+        project_id=proj.id,
+        stage="boq_only",
+        bump_version=True,
+    )
     db.commit()
     db.refresh(bld)
     return {
@@ -685,6 +807,17 @@ def create_cluster_verification(
     db.commit()
     db.refresh(rec)
 
+    from app.services.invalidation import resync_downstream_after_upstream_change
+
+    resync_downstream_after_upstream_change(
+        db,
+        project_id=proj.id,
+        user=user,
+        recompute_gap=True,
+        recompute_demand=True,
+        recompute_scenarios=True,
+    )
+
     return VerificationRecordResponse(
         id=rec.id,
         project_id=rec.project_id,
@@ -771,6 +904,17 @@ def reverse_cluster_verification(
 
     db.commit()
     db.refresh(rev_rec)
+
+    from app.services.invalidation import resync_downstream_after_upstream_change
+
+    resync_downstream_after_upstream_change(
+        db,
+        project_id=proj.id,
+        user=user,
+        recompute_gap=True,
+        recompute_demand=True,
+        recompute_scenarios=True,
+    )
 
     return VerificationRecordResponse(
         id=rev_rec.id,
@@ -870,15 +1014,43 @@ def import_verifications_csv(
             unmatched_labels.append(label_raw or f"row_{row_count}")
             continue
 
-        v_state = (row.get("verification_state") or "FIELD_VERIFIED").strip().upper()
+        v_state_raw = (row.get("verification_state") or "").strip().upper()
+        v_state = v_state_raw or "FIELD_VERIFIED"
         if v_state not in {"FIELD_VERIFIED", "UTILITY_VERIFIED"}:
-            v_state = "FIELD_VERIFIED"
+            unmatched += 1
+            unmatched_labels.append(
+                f"Row {row_count} ({label_raw}): invalid verification_state '{v_state_raw}'"
+            )
+            continue
 
-        v_class = (
-            row.get("verified_class") or cluster.proxy_class
-        ).strip().upper()
+        v_class = (row.get("verified_class") or "").strip().upper()
+        allowed_verified_classes = {
+            "LIKELY_ELECTRIFIED",
+            "POTENTIALLY_UNDERSERVED",
+            "POTENTIALLY_UNSERVED",
+            "ELECTRIFIED",
+            "GRID_CONNECTED",
+            "UNDERSERVED",
+            "UNSERVED",
+        }
+        if not v_class or v_class not in allowed_verified_classes:
+            unmatched += 1
+            unmatched_labels.append(
+                f"Row {row_count} ({label_raw}): invalid or missing verified_class '{v_class}'"
+            )
+            continue
+
         hh_str = (row.get("est_households") or row.get("verified_households") or "").strip()
-        new_hh = int(hh_str) if hh_str.isdigit() else cluster.est_households
+        if hh_str:
+            if not hh_str.isdigit() or not (0 <= int(hh_str) <= 50_000):
+                unmatched += 1
+                unmatched_labels.append(
+                    f"Row {row_count} ({label_raw}): invalid est_households '{hh_str}'"
+                )
+                continue
+            new_hh = int(hh_str)
+        else:
+            new_hh = cluster.est_households
 
         ev_type = (row.get("evidence_type") or "FIELD_SURVEY").strip().upper()
         verifier = (row.get("verifier_name") or user.display_name).strip()
@@ -931,6 +1103,18 @@ def import_verifications_csv(
     }
     db.commit()
     db.refresh(imp)
+
+    if matched > 0:
+        from app.services.invalidation import resync_downstream_after_upstream_change
+
+        resync_downstream_after_upstream_change(
+            db,
+            project_id=proj.id,
+            user=user,
+            recompute_gap=True,
+            recompute_demand=True,
+            recompute_scenarios=True,
+        )
 
     return VerificationImportResponse(
         id=imp.id,

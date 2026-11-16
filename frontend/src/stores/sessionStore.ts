@@ -15,7 +15,8 @@
  */
 
 import { create } from 'zustand';
-import { apiRequest, getCsrfToken, setCsrfToken } from '../lib/apiClient';
+import { ApiClientError, apiRequest, getCsrfToken, setCsrfToken } from '../lib/apiClient';
+import { useActiveProjectStore } from './activeProjectStore';
 
 export interface UserProfile {
   id: string;
@@ -38,6 +39,7 @@ interface SessionState {
   checkSession: () => Promise<void>;
   login: (email: string, password: string) => Promise<UserProfile>;
   logout: () => Promise<void>;
+  clearError: () => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -55,9 +57,18 @@ export const useSessionStore = create<SessionState>((set) => ({
       if (data.csrf_token) {
         setCsrfToken(data.csrf_token);
       }
-      set({ user: data.user, isInitialized: true, isLoading: false });
-    } catch {
-      set({ user: null, isInitialized: true, isLoading: false });
+      set({ user: data.user, isInitialized: true, isLoading: false, error: null });
+    } catch (err) {
+      if (err instanceof ApiClientError && (err.status === 401 || err.status === 403)) {
+        setCsrfToken(null);
+        set({ user: null, isInitialized: true, isLoading: false, error: null });
+      } else {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : 'Unable to reach server to verify planner session.';
+        set({ user: null, isInitialized: true, isLoading: false, error: msg });
+      }
     }
   },
 
@@ -68,6 +79,7 @@ export const useSessionStore = create<SessionState>((set) => ({
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
+      useActiveProjectStore.getState().resetUserProjects();
       if (data.csrf_token) {
         setCsrfToken(data.csrf_token);
       }
@@ -85,8 +97,11 @@ export const useSessionStore = create<SessionState>((set) => ({
       await apiRequest('/api/v1/auth/logout', { method: 'POST' });
     } finally {
       setCsrfToken(null);
-      set({ user: null, error: null });
+      useActiveProjectStore.getState().resetUserProjects();
+      set({ user: null, isInitialized: true, error: null });
     }
   },
+
+  clearError: () => set({ error: null }),
 }));
 

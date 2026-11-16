@@ -60,7 +60,7 @@ export function Panel({
     >
       {hasHeader && (
         <header
-          className={`px-5 py-3 flex flex-wrap items-center justify-between gap-3 ${HEADER_TONE_CLASSES[headerTone]}`}
+          className={`px-4 sm:px-5 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3 ${HEADER_TONE_CLASSES[headerTone]}`}
         >
           <div className="min-w-0 flex-1">
             {overline && (
@@ -97,7 +97,7 @@ export function Panel({
               </p>
             )}
           </div>
-          {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+          {actions && <div className="flex flex-wrap items-center gap-2 lg:shrink-0 max-w-full">{actions}</div>}
         </header>
       )}
       <div className={noPadding ? 'flex-1' : 'p-4 flex-1'}>{children}</div>

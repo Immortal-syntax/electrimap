@@ -252,6 +252,44 @@ class ProjectDemandSummary:
     clusters: list[ClusterDemandResult]
 
 
+LOAD_TIER_ASSUMPTION_PRESETS: dict[str, dict[str, float]] = {
+    "TIER_2_SUBSISTENCE": {
+        "bpl_connected_load_kw": 0.15,
+        "apl_connected_load_kw": 0.40,
+        "domestic_hours_per_day": 4.0,
+        "micro_enterprise_kw_per_40hh": 1.85,
+    },
+    "TIER_3_STANDARD": {
+        "bpl_connected_load_kw": 0.25,
+        "apl_connected_load_kw": 0.75,
+        "domestic_hours_per_day": 5.0,
+        "micro_enterprise_kw_per_40hh": 3.70,
+    },
+    "TIER_4_PRODUCTIVE": {
+        "bpl_connected_load_kw": 0.50,
+        "apl_connected_load_kw": 1.50,
+        "domestic_hours_per_day": 8.0,
+        "micro_enterprise_kw_per_40hh": 7.50,
+    },
+}
+
+
+def get_assumptions_for_load_tier(load_tier: str | None = None) -> dict[str, float]:
+    """Return baseline demand assumption defaults adjusted for the selected MTF Load Tier."""
+    cfg = get_default_assumptions_map()
+    if not load_tier:
+        return cfg
+    tier_norm = load_tier.strip().upper()
+    if tier_norm.startswith("TIER_2"):
+        preset = LOAD_TIER_ASSUMPTION_PRESETS["TIER_2_SUBSISTENCE"]
+    elif tier_norm.startswith("TIER_4"):
+        preset = LOAD_TIER_ASSUMPTION_PRESETS["TIER_4_PRODUCTIVE"]
+    else:
+        preset = LOAD_TIER_ASSUMPTION_PRESETS.get(tier_norm, {})
+    cfg.update(preset)
+    return cfg
+
+
 def get_default_assumptions_map() -> dict[str, float]:
     """Return a dictionary of default assumption values keyed by setting key."""
     return {spec.key: spec.default_value for spec in DEFAULT_PROJECT_ASSUMPTIONS}
@@ -293,7 +331,11 @@ def compute_cluster_demand(
     apl_kwh_day = round(apl_max_kw * dom_hours, 3)
 
     # 3. Community & Public Institutions
-    inst_units = max(1 if hh >= 12 else 0, math.ceil(hh / 50.0) + int(n_non_residential > 0))
+    inst_units = (
+        max(1 if hh >= 12 else 0, math.ceil(hh / 50.0) + int(n_non_residential > 0))
+        if hh >= 5
+        else (1 if (hh >= 3 and n_non_residential > 0) else 0)
+    )
     inst_conn_kw = round(inst_units * cfg["institutional_load_kw_per_50hh"], 3) if hh > 0 else 0.0
     inst_df = 0.70
     inst_hours = 6.0

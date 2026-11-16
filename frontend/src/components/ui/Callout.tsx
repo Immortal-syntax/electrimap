@@ -52,7 +52,7 @@ const TONE_CONFIG: Record<
 
 export interface CalloutProps {
   tone?: CalloutTone
-  title: string
+  title: React.ReactNode
   children: React.ReactNode
   action?: React.ReactNode
   actions?: React.ReactNode
@@ -73,7 +73,7 @@ export function Callout({
   return (
     <div
       role={tone === 'error' ? 'alert' : 'region'}
-      aria-label={title}
+      aria-label={typeof title === 'string' ? title : undefined}
       className={`p-4 rounded-md text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 ${cfg.container} ${className}`.trim()}
     >
       <div className="flex items-start gap-3 min-w-0">

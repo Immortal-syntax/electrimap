@@ -20,8 +20,11 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.services.seed_service import DEMO_PROJECT_ID
+from app.services.seed_service import (
+    DEFAULT_PLANNER_EMAIL,
+    DEFAULT_PLANNER_PASSWORD,
+    DEMO_PROJECT_ID,
+)
 
 
 def _login(client: TestClient, email: str, password: str) -> dict[str, str]:
@@ -33,9 +36,12 @@ def _login(client: TestClient, email: str, password: str) -> dict[str, str]:
     return {"X-CSRF-Token": resp.json()["csrf_token"]}
 
 
-def test_m8_system_benchmark_security_headers_and_tile_etag_caching() -> None:
+def test_m8_system_benchmark_security_headers_and_tile_etag_caching(
+    seeded_client: TestClient,
+) -> None:
     """Verify M8-1 benchmark telemetry, tile ETag 304 caching, and M8-4 security headers."""
-    with TestClient(app) as client:
+    client = seeded_client
+    if True:
         bench_resp = client.get("/api/v1/system/benchmark")
         assert bench_resp.status_code == 200
         # Verify HTTP security headers
@@ -53,7 +59,7 @@ def test_m8_system_benchmark_security_headers_and_tile_etag_caching() -> None:
         assert all(stage["passed"] for stage in bench_data["benchmarks"])
 
         # Verify Vector Tile ETag caching & 304 Not Modified response
-        _login(client, "planner@electrimap.in", "ElectriMap#2026")
+        _login(client, DEFAULT_PLANNER_EMAIL, DEFAULT_PLANNER_PASSWORD)
         t_resp1 = client.get(
             f"/api/v1/tiles/{DEMO_PROJECT_ID}/buildings/14/11955/7290.mvt"
         )
@@ -93,10 +99,13 @@ def test_m8_system_benchmark_security_headers_and_tile_etag_caching() -> None:
 
 
 
-def test_m8_complete_end_to_end_user_journey_new_project_to_exports() -> None:
+def test_m8_complete_end_to_end_user_journey_new_project_to_exports(
+    seeded_client: TestClient,
+) -> None:
     """Verify E2E journey: New Project -> AOI -> Data -> Clusters -> Verify -> Infra -> DPR."""
-    with TestClient(app) as client:
-        headers = _login(client, "planner@electrimap.in", "ElectriMap#2026")
+    client = seeded_client
+    if True:
+        headers = _login(client, DEFAULT_PLANNER_EMAIL, DEFAULT_PLANNER_PASSWORD)
 
         # Step 1: Create a brand-new project
         create_resp = client.post(
@@ -222,9 +231,12 @@ def test_m8_complete_end_to_end_user_journey_new_project_to_exports() -> None:
         assert exp_list.json()["total_exports"] == 3
 
 
-def test_m8_security_penetration_csrf_idor_and_upload_fuzzing() -> None:
+def test_m8_security_penetration_csrf_idor_and_upload_fuzzing(
+    seeded_client: TestClient,
+) -> None:
     """Verify M8-4 security controls: unauthenticated 401, CSRF 403, IDOR, and upload fuzzing."""
-    with TestClient(app) as anon_client:
+    anon_client = seeded_client
+    if True:
         # 1. Unauthenticated requests to protected endpoints must return 401
         assert anon_client.get(f"/api/v1/projects/{DEMO_PROJECT_ID}").status_code == 401
         assert (
@@ -240,8 +252,9 @@ def test_m8_security_penetration_csrf_idor_and_upload_fuzzing() -> None:
             == 401
         )
 
-    with TestClient(app) as client:
-        headers = _login(client, "planner@electrimap.in", "ElectriMap#2026")
+    client = seeded_client
+    if True:
+        headers = _login(client, DEFAULT_PLANNER_EMAIL, DEFAULT_PLANNER_PASSWORD)
 
         # 2. State-mutating POST without X-CSRF-Token must be rejected with 403
         no_csrf_resp = client.post(

@@ -26,14 +26,17 @@ from sqlalchemy.orm import Session
 from app.core.errors import AppError
 from app.db.models.auth import User
 from app.db.models.costing import ProjectRateItem, ScenarioBoqLine
-from app.db.models.infrastructure import ClusterGapAnalysis
+from app.db.models.infrastructure import ClusterGapAnalysis, ProjectDemandEstimate
 from app.db.models.planning import ClusterEngineeringLayout, PlanningScenario
 from app.db.models.project import Project
+from app.db.models.reference import EngineeringConstant
 from app.db.models.settlement import SettlementCluster
+from app.db.models.spatial import SolarResource
 from app.domain.costing.boq import (
     ClusterBoqInput,
     ClusterCostBreakdown,
     ScenarioBoqSummary,
+    compute_cluster_boq,
     compute_scenario_boq,
 )
 from app.domain.costing.rates import (
@@ -44,7 +47,17 @@ from app.domain.costing.rates import (
     export_sor_to_csv,
     parse_and_validate_sor_csv,
 )
-from app.domain.engineering.economics import EconomicParameters, LifecycleEconomicResult
+from app.domain.engineering.calculations import (
+    compute_annual_technical_losses,
+    compute_solar_minigrid_sizing,
+    compute_standalone_shs_sizing,
+)
+from app.domain.engineering.constants import get_default_constants_map
+from app.domain.engineering.economics import (
+    EconomicParameters,
+    LifecycleEconomicResult,
+    resolve_scheme_grant_policy,
+)
 from app.schemas.costing import (
     BoqLineItemResponse,
     ClusterBoqBreakdownResponse,
@@ -59,6 +72,7 @@ from app.schemas.costing import (
     ScenarioComparisonCard,
     SorCsvImportResponse,
 )
+from app.services.concurrency import acquire_pg_xact_lock, project_lock
 from app.services.planning_service import (
     SCENARIO_LABELS,
     generate_or_update_scenario,
@@ -69,6 +83,12 @@ from app.services.project_service import get_owned_project_or_404
 
 def ensure_project_rates_seeded(db: Session, project_id: str) -> list[ProjectRateItem]:
     """Ensure the project has all 18 Schedule of Rates items seeded."""
+    with project_lock(db, project_id):
+        acquire_pg_xact_lock(db, f"project:{project_id}")
+        return _ensure_project_rates_seeded_locked(db, project_id)
+
+
+def _ensure_project_rates_seeded_locked(db: Session, project_id: str) -> list[ProjectRateItem]:
     rows = list(
         db.execute(
             select(ProjectRateItem)
@@ -202,6 +222,14 @@ def update_project_rate_item(
     if payload.citation and payload.citation.strip():
         row.citation = payload.citation.strip()
     row.is_user_edited = True
+    from app.services.invalidation import invalidate_downstream_from_stage
+
+    invalidate_downstream_from_stage(
+        db,
+        project_id=project_id,
+        stage="boq_only",
+        bump_version=True,
+    )
     db.commit()
 
     rows = ensure_project_rates_seeded(db, project_id)
@@ -212,6 +240,14 @@ def reset_project_rates(db: Session, project_id: str, user: User) -> ProjectRate
     """Reset all project Schedule of Rates items back to the verified public reference template."""
     get_owned_project_or_404(db, project_id, user)
     db.execute(delete(ProjectRateItem).where(ProjectRateItem.project_id == project_id))
+    from app.services.invalidation import invalidate_downstream_from_stage
+
+    invalidate_downstream_from_stage(
+        db,
+        project_id=project_id,
+        stage="boq_only",
+        bump_version=True,
+    )
     db.commit()
     rows = ensure_project_rates_seeded(db, project_id)
     return _serialize_rate_list(project_id, rows)
@@ -278,6 +314,14 @@ def import_project_rates_csv(
                     is_user_edited=True,
                 )
             )
+    from app.services.invalidation import invalidate_downstream_from_stage
+
+    invalidate_downstream_from_stage(
+        db,
+        project_id=project_id,
+        stage="boq_only",
+        bump_version=True,
+    )
     db.commit()
 
     updated_rows = ensure_project_rates_seeded(db, project_id)
@@ -312,10 +356,9 @@ def export_project_rates_csv(db: Session, project_id: str, user: User) -> str:
     return export_sor_to_csv(specs)
 
 
-def _build_economic_params_for_project(project: Project) -> EconomicParameters:
-    scheme_upper = (project.scheme or "").upper()
-    subsidy_pct = 90.0 if ("JANMAN" in scheme_upper or "DA-JGUA" in scheme_upper) else 60.0
-    return EconomicParameters(
+def _build_economic_params_for_project(project: Project) -> tuple[EconomicParameters, str]:
+    subsidy_pct, grant_policy_note = resolve_scheme_grant_policy(project.scheme)
+    params = EconomicParameters(
         discount_rate=float(project.discount_rate or 0.08),
         horizon_years=int(project.horizon_years or 10),
         gst_pct=18.0,
@@ -323,6 +366,7 @@ def _build_economic_params_for_project(project: Project) -> EconomicParameters:
         pmc_overhead_pct=5.0,
         capital_subsidy_pct=subsidy_pct,
     )
+    return params, grant_policy_note
 
 
 def _build_rates_map(rows: list[ProjectRateItem]) -> dict[str, RateItemSpec]:
@@ -389,7 +433,11 @@ def _build_cluster_boq_inputs_for_scenario(
         slope_deg = (
             float(gap_obj.slope_mean_deg)
             if gap_obj is not None
-            else (float(cl_obj.slope_mean_deg) if cl_obj and cl_obj.slope_mean_deg else 4.0)
+            else (
+                float(cl_obj.slope_mean_deg)
+                if cl_obj is not None and cl_obj.slope_mean_deg is not None
+                else 4.0
+            )
         )
         forest_cnt = (
             1
@@ -399,11 +447,13 @@ def _build_cluster_boq_inputs_for_scenario(
         water_cnt = int(gap_obj.water_crossings_count) if gap_obj is not None else 0
 
         details = row.details or {}
-        placed_dts = details.get("placed_dts", [])
-        dt_ratings = [int(dt.get("rating_kva", 25)) for dt in placed_dts]
-        if not dt_ratings and row.dt_count > 0:
-            avg_kva = max(16, int(round(row.total_dt_rating_kva / max(1, row.dt_count))))
-            dt_ratings = [avg_kva] * row.dt_count
+        dt_ratings: list[int] = []
+        if row.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"}:
+            placed_dts = details.get("placed_dts", [])
+            dt_ratings = [int(dt.get("rating_kva", 25)) for dt in placed_dts]
+            if not dt_ratings and row.dt_count > 0:
+                avg_kva = max(16, int(round(row.total_dt_rating_kva / max(1, row.dt_count))))
+                dt_ratings = [avg_kva] * row.dt_count
 
         inputs.append(
             ClusterBoqInput(
@@ -475,6 +525,7 @@ def _serialize_cluster_breakdown(cb: ClusterCostBreakdown) -> ClusterBoqBreakdow
         total_capex_lakhs=cb.total_capex_lakhs,
         has_unset_rates=cb.has_unset_rates,
         unset_item_codes=cb.unset_item_codes,
+        totals_withheld=cb.totals_withheld,
         economics=_serialize_economics(cb.economics),
         lines=[
             BoqLineItemResponse(
@@ -533,6 +584,19 @@ def compute_and_persist_scenario_boq(
     user: User,
 ) -> ScenarioBoqResponse:
     """Compute, persist, and return the itemized BOQ and financial abstract for a scenario."""
+    with project_lock(db, project_id):
+        acquire_pg_xact_lock(db, f"project:{project_id}")
+        return _compute_and_persist_scenario_boq_locked(
+            db, project_id=project_id, scenario_id=scenario_id, user=user
+        )
+
+
+def _compute_and_persist_scenario_boq_locked(
+    db: Session,
+    project_id: str,
+    scenario_id: str,
+    user: User,
+) -> ScenarioBoqResponse:
     project = get_owned_project_or_404(db, project_id, user)
     scenario = db.execute(
         select(PlanningScenario).where(
@@ -557,8 +621,9 @@ def compute_and_persist_scenario_boq(
             )
 
     rate_rows = ensure_project_rates_seeded(db, project_id)
+    acquire_pg_xact_lock(db, f"project:{project_id}")
     rates_map = _build_rates_map(rate_rows)
-    econ_params = _build_economic_params_for_project(project)
+    econ_params, grant_policy_note = _build_economic_params_for_project(project)
     cluster_inputs = _build_cluster_boq_inputs_for_scenario(db, project_id, scenario.id)
 
     summary = compute_scenario_boq(
@@ -592,6 +657,8 @@ def compute_and_persist_scenario_boq(
         total_capex_lakhs=summary.total_capex_lakhs,
         has_unset_rates=summary.has_unset_rates,
         unset_item_codes=summary.unset_item_codes,
+        totals_withheld=summary.totals_withheld,
+        grant_policy_note=grant_policy_note,
         export_blocked_reason=summary.export_blocked_reason,
         economics=_serialize_economics(summary.economics),
         aggregated_lines=[
@@ -624,6 +691,18 @@ def get_project_scenario_comparison(
     user: User,
 ) -> ProjectScenarioComparisonResponse:
     """Evaluate all 4 project scenarios on identical demand inputs and return comparison."""
+    with project_lock(db, project_id):
+        acquire_pg_xact_lock(db, f"project:{project_id}")
+        return _get_project_scenario_comparison_locked(
+            db, project_id=project_id, user=user
+        )
+
+
+def _get_project_scenario_comparison_locked(
+    db: Session,
+    project_id: str,
+    user: User,
+) -> ProjectScenarioComparisonResponse:
     project = get_owned_project_or_404(db, project_id, user)
     scenarios = list(
         db.execute(
@@ -659,11 +738,14 @@ def get_project_scenario_comparison(
         )
         for s in scenarios:
             s.is_active = s.scenario_key == prior_active_key
+        acquire_pg_xact_lock(db, f"project:{project_id}")
         db.commit()
 
+    acquire_pg_xact_lock(db, f"project:{project_id}")
     rate_rows = ensure_project_rates_seeded(db, project_id)
+    acquire_pg_xact_lock(db, f"project:{project_id}")
     rates_map = _build_rates_map(rate_rows)
-    econ_params = _build_economic_params_for_project(project)
+    econ_params, grant_policy_note = _build_economic_params_for_project(project)
 
     scenario_cards: list[ScenarioComparisonCard] = []
     summaries_by_key: dict[str, tuple[PlanningScenario, ScenarioBoqSummary]] = {}
@@ -714,6 +796,7 @@ def get_project_scenario_comparison(
                 avoided_co2_tonnes_yr=summary.economics.avoided_co2_tonnes_yr,
                 has_unset_rates=summary.has_unset_rates,
                 unset_item_codes=summary.unset_item_codes,
+                totals_withheld=summary.totals_withheld,
             )
         )
 
@@ -734,7 +817,7 @@ def get_project_scenario_comparison(
     mg_by_cid = {cb.cluster_id: cb for cb in mg_summary.cluster_breakdowns}
     shs_by_cid = {cb.cluster_id: cb for cb in shs_summary.cluster_breakdowns}
 
-    # Check if grid scenarios require tie-in per cluster
+    # Check if grid scenarios require tie-in per cluster and prepare counterfactual option inputs
     grid_scen_id = summaries_by_key.get("GRID_EXTENSION_ONLY", active_tuple)[0].id
     grid_layouts = {
         r.cluster_id: r
@@ -746,49 +829,219 @@ def get_project_scenario_comparison(
         .scalars()
         .all()
     }
+    cluster_rows_by_id = {
+        c.id: c
+        for c in db.execute(
+            select(SettlementCluster).where(SettlementCluster.project_id == project_id)
+        )
+        .scalars()
+        .all()
+    }
+    gap_rows_by_cid = {
+        g.cluster_id: g
+        for g in db.execute(
+            select(ClusterGapAnalysis).where(ClusterGapAnalysis.project_id == project_id)
+        )
+        .scalars()
+        .all()
+    }
+    demand_rows_by_cid = {
+        d.cluster_id: d
+        for d in db.execute(
+            select(ProjectDemandEstimate).where(
+                ProjectDemandEstimate.project_id == project_id,
+                ProjectDemandEstimate.cluster_id.is_not(None),
+            )
+        )
+        .scalars()
+        .all()
+    }
+    solar_res = db.execute(
+        select(SolarResource).where(SolarResource.project_id == project_id)
+    ).scalar_one_or_none()
+    worst_ghi = (
+        float(solar_res.worst_ghi_kwh_m2_day)
+        if solar_res is not None and solar_res.worst_ghi_kwh_m2_day is not None
+        else 3.82
+    )
+    consts_map = {**get_default_constants_map()}
+    for c_row in db.execute(select(EngineeringConstant)).scalars().all():
+        consts_map[c_row.key] = float(c_row.value)
+
+    def _counterfactual_option_boq(
+        *,
+        target_modality: str,
+        cluster_id: str,
+        fallback_cb: ClusterCostBreakdown,
+    ) -> ClusterCostBreakdown:
+        if fallback_cb.modality == target_modality:
+            return fallback_cb
+        cl_obj = cluster_rows_by_id.get(cluster_id)
+        gap_obj = gap_rows_by_cid.get(cluster_id)
+        dem_obj = demand_rows_by_cid.get(cluster_id)
+        g_lay = grid_layouts.get(cluster_id)
+
+        est_hh = cl_obj.est_households if cl_obj is not None else fallback_cb.est_households
+        n_non_res = cl_obj.n_non_residential if cl_obj is not None else 0
+        slope_deg = (
+            float(gap_obj.slope_mean_deg)
+            if gap_obj is not None
+            else (
+                float(cl_obj.slope_mean_deg)
+                if cl_obj is not None and cl_obj.slope_mean_deg is not None
+                else 4.0
+            )
+        )
+        forest_cnt = 1 if (gap_obj is not None and float(gap_obj.canopy_share) >= 0.45) else 0
+        water_cnt = int(gap_obj.water_crossings_count) if gap_obj is not None else 0
+
+        peak_kw_hor = float(dem_obj.peak_kw_horizon) if dem_obj is not None else 15.0
+        peak_kva_hor = float(dem_obj.peak_kva_horizon) if dem_obj is not None else 17.65
+        energy_day_hor = float(dem_obj.energy_kwh_day_horizon) if dem_obj is not None else 85.0
+        annual_mwh_hor = float(dem_obj.annual_energy_mwh_horizon) if dem_obj is not None else 31.0
+
+        if target_modality == "SOLAR_MINIGRID":
+            mg = compute_solar_minigrid_sizing(
+                peak_kva_horizon=peak_kva_hor,
+                energy_kwh_day_horizon=energy_day_hor,
+                worst_ghi_kwh_m2_day=worst_ghi,
+                constants=consts_map,
+            )
+            lt_3ph = float(g_lay.lt_3ph_length_m) if g_lay is not None else 0.0
+            lt_1ph = float(g_lay.lt_1ph_length_m) if g_lay is not None else 0.0
+            lt_poles = int(g_lay.lt_poles_count) if g_lay is not None else 0
+            max_branch = float(g_lay.max_lt_branch_m) if g_lay is not None else 0.0
+            losses = compute_annual_technical_losses(
+                peak_kw_horizon=peak_kw_hor,
+                peak_kva_horizon=peak_kva_hor,
+                energy_kwh_day_horizon=energy_day_hor,
+                annual_energy_mwh_horizon=annual_mwh_hor,
+                ht_length_m=0.0,
+                max_lt_branch_m=max_branch,
+                placed_dts=[],
+                constants=consts_map,
+                lt_3ph_length_m=lt_3ph,
+                lt_1ph_length_m=lt_1ph,
+            )
+            opt_in = ClusterBoqInput(
+                cluster_id=cluster_id,
+                cluster_label=fallback_cb.cluster_label,
+                cluster_name=fallback_cb.cluster_name,
+                modality="SOLAR_MINIGRID",
+                est_households=est_hh,
+                slope_mean_deg=slope_deg,
+                forest_crossings=forest_cnt,
+                water_crossings=water_cnt,
+                ht_length_m=0.0,
+                ht_poles_count=0,
+                dt_ratings_kva=[],
+                lt_3ph_length_m=lt_3ph,
+                lt_1ph_length_m=lt_1ph,
+                lt_poles_count=lt_poles,
+                solar_pv_kwp=mg.solar_pv_kwp,
+                bess_capacity_kwh=mg.bess_capacity_kwh,
+                inverter_kva=mg.inverter_kva,
+                shs_kits_count=0,
+                annual_energy_mwh_horizon=annual_mwh_hor,
+                total_loss_mwh_yr=losses.total_loss_mwh_yr,
+            )
+            return compute_cluster_boq(opt_in, rates_map, econ_params)
+
+        # STANDALONE_SHS option with energy bounded in evaluate_lifecycle_economics
+        shs = compute_standalone_shs_sizing(
+            est_households=est_hh,
+            n_non_residential=n_non_res,
+            constants=consts_map,
+        )
+        opt_in = ClusterBoqInput(
+            cluster_id=cluster_id,
+            cluster_label=fallback_cb.cluster_label,
+            cluster_name=fallback_cb.cluster_name,
+            modality="STANDALONE_SHS",
+            est_households=est_hh,
+            slope_mean_deg=slope_deg,
+            forest_crossings=forest_cnt,
+            water_crossings=water_cnt,
+            ht_length_m=0.0,
+            ht_poles_count=0,
+            dt_ratings_kva=[],
+            lt_3ph_length_m=0.0,
+            lt_1ph_length_m=0.0,
+            lt_poles_count=0,
+            solar_pv_kwp=shs.total_pv_kwp,
+            bess_capacity_kwh=0.0,
+            inverter_kva=0.0,
+            shs_kits_count=shs.shs_kits_count,
+            annual_energy_mwh_horizon=annual_mwh_hor,
+            total_loss_mwh_yr=0.0,
+        )
+        return compute_cluster_boq(opt_in, rates_map, econ_params)
 
     habitation_rows: list[HabitationOptionComparisonRow] = []
     for cb in active_summary.cluster_breakdowns:
         cid = cb.cluster_id
         g_cb = grid_by_cid.get(cid, cb)
-        m_cb = mg_by_cid.get(cid, cb)
-        s_cb = shs_by_cid.get(cid, cb)
+        m_cb = _counterfactual_option_boq(
+            target_modality="SOLAR_MINIGRID",
+            cluster_id=cid,
+            fallback_cb=mg_by_cid.get(cid, cb),
+        )
+        s_cb = _counterfactual_option_boq(
+            target_modality="STANDALONE_SHS",
+            cluster_id=cid,
+            fallback_cb=shs_by_cid.get(cid, cb),
+        )
         g_layout = grid_layouts.get(cid)
         grid_req_tie_in = bool(g_layout.requires_tie_in) if g_layout else False
 
-        options_npc: list[tuple[str, float]] = [
-            ("SOLAR_MINIGRID", m_cb.economics.npc_inr),
-            ("STANDALONE_SHS", s_cb.economics.npc_inr),
-        ]
-        if not grid_req_tie_in:
-            options_npc.append((g_cb.modality, g_cb.economics.npc_inr))
+        if (
+            m_cb.has_unset_rates
+            or s_cb.has_unset_rates
+            or (not grid_req_tie_in and g_cb.has_unset_rates)
+        ):
+            best_mod = "UNSET_RATES_REQUIRED"
+        else:
+            options_npc: list[tuple[str, float]] = [
+                ("STANDALONE_SHS", s_cb.economics.npc_inr),
+                ("SOLAR_MINIGRID", m_cb.economics.npc_inr),
+            ]
+            if not grid_req_tie_in:
+                options_npc.append((g_cb.modality, g_cb.economics.npc_inr))
+            best_mod, _ = min(options_npc, key=lambda item: item[1])
 
-        best_mod, _ = min(options_npc, key=lambda item: item[1])
-
-        if grid_req_tie_in and cb.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"}:
+        if best_mod == "UNSET_RATES_REQUIRED":
+            rationale = (
+                "Option life-cycle comparison withheld until UNSET Schedule of Rates item(s) "
+                "are priced."
+            )
+        elif (
+            grid_req_tie_in
+            and best_mod != cb.modality
+            and cb.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"}
+        ):
             rationale = (
                 "11 kV Tie-In UNSET (HT length = 0 m); place a verified/assumed tie-in "
-                "point for full grid extension costing, or select off-grid solar."
+                f"point for grid costing, or compare least-cost off-grid option ({best_mod})."
             )
-        elif cb.modality == "GRID_AUGMENTATION":
+        elif best_mod == "GRID_AUGMENTATION":
             rationale = (
                 "Existing settlement proximity allows LT network & DT augmentation at "
-                "lowest life-cycle NPC."
+                f"lowest 10-yr NPC (₹{g_cb.economics.npc_lakhs:.2f} L)."
             )
-        elif cb.modality == "SOLAR_MINIGRID":
+        elif best_mod == "SOLAR_MINIGRID":
             rationale = (
-                f"Solar PV + LiFePO4 Mini-Grid avoids steep terrain 11 kV feeder costs "
-                f"and yields ₹{m_cb.economics.lcoe_inr_kwh:.2f}/kWh LCOE."
+                f"Solar PV + LiFePO4 Mini-Grid minimizes 10-yr NPC "
+                f"(₹{m_cb.economics.npc_lakhs:.2f} L, ₹{m_cb.economics.lcoe_inr_kwh:.2f}/kWh LCOE)."
             )
-        elif cb.modality == "STANDALONE_SHS":
+        elif best_mod == "STANDALONE_SHS":
             rationale = (
-                "Dispersed low-density hamlet (< 25 HH); standalone 200 Wp SHS kits "
-                "minimize per-household CAPEX."
+                "Standalone 200 Wp SHS kits minimize 10-yr life-cycle NPC "
+                f"(₹{s_cb.economics.npc_lakhs:.2f} L, ₹{s_cb.economics.lcoe_inr_kwh:.2f}/kWh LCOE)."
             )
         else:
             rationale = (
-                f"11 kV Grid Extension + LT AB-cable radial network yields "
-                f"₹{g_cb.economics.lcoe_inr_kwh:.2f}/kWh LCOE."
+                f"11 kV Grid Extension + LT AB-cable radial network yields lowest 10-yr NPC "
+                f"(₹{g_cb.economics.npc_lakhs:.2f} L, ₹{g_cb.economics.lcoe_inr_kwh:.2f}/kWh LCOE)."
             )
 
         habitation_rows.append(
@@ -838,6 +1091,8 @@ def get_project_scenario_comparison(
         total_capex_lakhs=active_summary.total_capex_lakhs,
         has_unset_rates=active_summary.has_unset_rates,
         unset_item_codes=active_summary.unset_item_codes,
+        totals_withheld=active_summary.totals_withheld,
+        grant_policy_note=grant_policy_note,
         export_blocked_reason=active_summary.export_blocked_reason,
         economics=_serialize_economics(active_summary.economics),
         aggregated_lines=[
@@ -871,6 +1126,7 @@ def get_project_scenario_comparison(
         horizon_years=econ_params.horizon_years,
         has_unset_rates=active_summary.has_unset_rates,
         unset_item_codes=active_summary.unset_item_codes,
+        totals_withheld=active_summary.totals_withheld,
         export_blocked_reason=active_summary.export_blocked_reason,
         scenarios=scenario_cards,
         habitation_comparisons=habitation_rows,

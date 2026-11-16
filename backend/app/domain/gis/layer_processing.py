@@ -23,7 +23,8 @@ from typing import Any
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, Normalize
+from numpy.typing import NDArray
 from shapely.geometry.base import BaseGeometry
 
 from app.domain.gis.raster_ops import compute_hillshade, compute_slope_deg
@@ -184,12 +185,14 @@ def render_raster_layer_png(
             "2022_ANNUAL": 0.88,
             "2020_BASELINE": 0.72,
         }.get(observation_period, 1.00)
-        rad = grids["radiance"] * period_scale
+        rad = np.clip(grids["radiance"] * period_scale, 0.0, None)
         viirs_cmap = LinearSegmentedColormap.from_list(
             "viirs_black_marble",
-            ["#070913", "#1E1B4B", "#6D28D9", "#D97706", "#FDE047", "#FFFFFF"],
+            ["#0F172A", "#1D4ED8", "#06B6D4", "#F59E0B", "#FEF08A"],
         )
-        ax.imshow(rad, cmap=viirs_cmap, vmin=0.0, vmax=2.5, alpha=0.84)
+        rgba = viirs_cmap(Normalize(vmin=0.0, vmax=2.5)(rad))
+        rgba[..., 3] = np.clip((rad - 0.08) / 0.35, 0.0, 0.90)
+        ax.imshow(rgba)
     else:
         plt.close(fig)
         raise ValueError(f"Unsupported raster preview layer_key: '{layer_key}'")
@@ -198,3 +201,157 @@ def render_raster_layer_png(
     fig.savefig(buf, format="png", transparent=True, pad_inches=0)
     plt.close(fig)
     return buf.getvalue()
+
+
+_VIIRS_CMAP = LinearSegmentedColormap.from_list(
+    "viirs_black_marble_canonical",
+    ["#0F172A", "#1D4ED8", "#06B6D4", "#F59E0B", "#FEF08A"],
+)
+
+_WORLDCOVER_RGBA: dict[int, tuple[float, float, float, float]] = {
+    10: (0.00, 0.39, 0.00, 0.78),  # Tree cover (#006400)
+    20: (1.00, 0.73, 0.13, 0.76),  # Shrubland (#FFBB22)
+    30: (1.00, 1.00, 0.30, 0.72),  # Grassland (#FFFF4C)
+    40: (0.94, 0.59, 1.00, 0.74),  # Cropland (#F096FF)
+    50: (0.98, 0.00, 0.00, 0.82),  # Built-up (#FA0000)
+    60: (0.71, 0.71, 0.71, 0.70),  # Bare / sparse (#B4B4B4)
+    80: (0.00, 0.39, 0.78, 0.85),  # Permanent water (#0064C8)
+    90: (0.00, 0.59, 0.63, 0.80),  # Herbaceous wetland (#0096A0)
+}
+
+
+def summarize_raster_arrays(
+    elev_m: NDArray[np.floating],
+    landcover: NDArray[np.integer],
+    cell_size_x_m: float = 30.0,
+    cell_size_y_m: float = 30.0,
+    radiance: NDArray[np.floating] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Compute real terrain, slope, land-cover, and optional radiance statistics from rasters."""
+    elev_f = elev_m.astype(np.float64)
+    valid_elev = np.isfinite(elev_f) & (elev_f > -500.0) & (elev_f < 9000.0)
+    if np.any(valid_elev):
+        fill_val = float(np.median(elev_f[valid_elev]))
+        elev_clean = np.where(valid_elev, elev_f, fill_val)
+        slope_deg = compute_slope_deg(
+            elev_clean,
+            cell_size_x_m=max(1.0, cell_size_x_m),
+            cell_size_y_m=max(1.0, cell_size_y_m),
+        )
+        valid_elev_vals = elev_clean[valid_elev]
+        valid_slope_vals = slope_deg[valid_elev]
+        elev_min = round(float(np.min(valid_elev_vals)), 1)
+        elev_max = round(float(np.max(valid_elev_vals)), 1)
+        elev_mean = round(float(np.mean(valid_elev_vals)), 1)
+        slope_mean = round(float(np.mean(valid_slope_vals)), 2)
+        slope_max = round(float(np.max(valid_slope_vals)), 2)
+        steep_pct = round(float(np.mean(valid_slope_vals >= 20.0) * 100.0), 1)
+    else:
+        elev_min = elev_max = elev_mean = slope_mean = slope_max = steep_pct = 0.0
+
+    lc_int = landcover.astype(np.int32)
+    valid_lc = lc_int[lc_int > 0]
+    total_lc = max(1, int(valid_lc.size))
+    tree_pct = round(float(np.sum(valid_lc == 10) / total_lc * 100.0), 1)
+    shrub_grass_pct = round(float(np.sum(np.isin(valid_lc, [20, 30])) / total_lc * 100.0), 1)
+    cropland_pct = round(float(np.sum(valid_lc == 40) / total_lc * 100.0), 1)
+    built_pct = round(float(np.sum(valid_lc == 50) / total_lc * 100.0), 1)
+    water_pct = round(float(np.sum(np.isin(valid_lc, [80, 90])) / total_lc * 100.0), 1)
+
+    summaries: dict[str, dict[str, Any]] = {
+        "dem": {
+            "elevation_min_m": elev_min,
+            "elevation_max_m": elev_max,
+            "elevation_mean_m": elev_mean,
+            "slope_mean_deg": slope_mean,
+            "slope_max_deg": slope_max,
+            "steep_area_pct": steep_pct,
+        },
+        "landcover": {
+            "tree_cover_pct": tree_pct,
+            "canopy_share_pct": tree_pct,
+            "shrub_grass_pct": shrub_grass_pct,
+            "cropland_pct": cropland_pct,
+            "built_up_pct": built_pct,
+            "water_barrier_pct": water_pct,
+        },
+    }
+
+    if radiance is not None:
+        rad_f = radiance.astype(np.float64)
+        valid_rad = rad_f[np.isfinite(rad_f) & (rad_f >= 0.0)]
+        if valid_rad.size > 0:
+            summaries["nightlights"] = {
+                "mean_radiance_nw_cm2_sr": round(float(np.mean(valid_rad)), 4),
+                "max_radiance_nw_cm2_sr": round(float(np.max(valid_rad)), 4),
+                "dark_area_pct": round(float(np.mean(valid_rad < 0.25) * 100.0), 1),
+            }
+
+    return summaries
+
+
+def render_raster_arrays_png(
+    layer_key: str,
+    *,
+    elev_m: NDArray[np.floating] | None = None,
+    landcover: NDArray[np.integer] | None = None,
+    radiance: NDArray[np.floating] | None = None,
+    cell_size_m: float = 30.0,
+) -> bytes:
+    """Render clipped DEM, WorldCover, or VIIRS arrays into a transparent RGBA PNG."""
+    fig = plt.figure(figsize=(3.2, 3.2), dpi=100)
+    try:
+        ax = fig.add_axes((0.0, 0.0, 1.0, 1.0))
+        ax.axis("off")
+
+        if layer_key in {"dem", "terrain", "slope"}:
+            if elev_m is None:
+                raise ValueError("elev_m array is required to render DEM overlay.")
+            elev_f = elev_m.astype(np.float64)
+            valid = np.isfinite(elev_f) & (elev_f > -500.0) & (elev_f < 9000.0)
+            fill = float(np.median(elev_f[valid])) if np.any(valid) else 0.0
+            clean = np.where(valid, elev_f, fill)
+            vmin = float(np.percentile(clean[valid], 2)) if np.any(valid) else 0.0
+            vmax = float(np.percentile(clean[valid], 98)) if np.any(valid) else 1.0
+            if vmax <= vmin:
+                vmax = vmin + 1.0
+            hs_raw = compute_hillshade(clean, cell_size_m=max(1.0, cell_size_m))
+            hs = hs_raw.astype(np.float64) / 255.0
+            norm = Normalize(vmin=vmin, vmax=vmax, clip=True)(clean)
+            terrain_rgba = plt.get_cmap("terrain")(norm)
+            terrain_rgba[..., :3] = np.clip(
+                terrain_rgba[..., :3] * (0.55 + 0.55 * hs[..., None]),
+                0.0,
+                1.0,
+            )
+            terrain_rgba[..., 3] = np.where(valid, 0.78, 0.0)
+            ax.imshow(terrain_rgba)
+        elif layer_key == "landcover":
+            if landcover is None:
+                raise ValueError("landcover array is required to render WorldCover overlay.")
+            lc = landcover.astype(np.int32)
+            rgba = np.zeros((*lc.shape, 4), dtype=np.float64)
+            for code, color in _WORLDCOVER_RGBA.items():
+                mask = lc == code
+                if np.any(mask):
+                    rgba[mask] = color
+            ax.imshow(rgba)
+        elif layer_key == "nightlights":
+            if radiance is None:
+                raise ValueError("radiance array is required to render VIIRS overlay.")
+            rad = np.where(
+                np.isfinite(radiance),
+                np.clip(radiance.astype(np.float64), 0.0, None),
+                0.0,
+            )
+            rgba = _VIIRS_CMAP(Normalize(vmin=0.0, vmax=2.5, clip=True)(rad))
+            rgba[..., 3] = np.clip((rad - 0.08) / 0.35, 0.0, 0.90)
+            ax.imshow(rgba)
+        else:
+            raise ValueError(f"Unsupported raster preview layer_key: '{layer_key}'")
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", transparent=True, pad_inches=0)
+        return buf.getvalue()
+    finally:
+        plt.close(fig)

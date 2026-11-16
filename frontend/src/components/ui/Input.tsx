@@ -21,6 +21,7 @@ export type InputSize = 'sm' | 'md'
 export interface InputProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?: string
+  labelHelp?: React.ReactNode
   hint?: string
   error?: string
   /** Optional physical unit badge rendered inside the right edge (e.g., "kVA", "m", "INR") */
@@ -41,6 +42,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     {
       id,
       label,
+      labelHelp,
       hint,
       error,
       unit,
@@ -67,9 +69,12 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className={`flex flex-col ${containerClassName}`.trim()}>
         {label && (
-          <label htmlFor={inputId} className="field-label">
-            {label}
-          </label>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor={inputId} className="field-label">
+              {label}
+            </label>
+            {labelHelp}
+          </div>
         )}
         <div className="relative flex items-center">
           {leftIcon && (
@@ -113,6 +118,7 @@ Input.displayName = 'Input'
 export interface TextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string
+  labelHelp?: React.ReactNode
   hint?: string
   error?: string
   mono?: boolean
@@ -124,6 +130,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     {
       id,
       label,
+      labelHelp,
       hint,
       error,
       mono = false,
@@ -148,9 +155,12 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <div className={`flex flex-col ${containerClassName}`.trim()}>
         {label && (
-          <label htmlFor={textareaId} className="field-label">
-            {label}
-          </label>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor={textareaId} className="field-label">
+              {label}
+            </label>
+            {labelHelp}
+          </div>
         )}
         <textarea
           ref={ref}

@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from shapely.geometry import mapping
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ProjectNotFoundError, VersionConflictError
@@ -31,7 +31,7 @@ from app.schemas.project import (
     ProjectResponse,
     ProjectUpdateRequest,
 )
-from app.services.seed_service import ensure_seed_data
+from app.services.seed_service import DEMO_PROJECT_ID, ensure_seed_data
 
 
 def _serialize_project(db: Session, proj: Project) -> ProjectResponse:
@@ -76,24 +76,27 @@ def _serialize_project(db: Session, proj: Project) -> ProjectResponse:
 
 
 def get_owned_project_or_404(db: Session, project_id: str, user: User) -> Project:
-    """Fetch a non-deleted project owned by user (or any project if ADMIN), else raise 404."""
+    """Fetch an active project owned by user (or the Sample Study / ADMIN), else raise 404."""
     proj = db.execute(
         select(Project).where(Project.id == project_id, Project.deleted_at.is_(None))
     ).scalar_one_or_none()
 
     if proj is None:
         raise ProjectNotFoundError(project_id)
-    if proj.owner_id != user.id and user.role != "ADMIN":
+    if proj.id != DEMO_PROJECT_ID and proj.owner_id != user.id and user.role != "ADMIN":
         raise ProjectNotFoundError(project_id)
     return proj
 
 
 def list_projects_for_user(db: Session, user: User) -> list[ProjectResponse]:
-    """List all active projects owned by the user (ordered by updated_at desc)."""
+    """List user-owned active projects plus the shared Sample Study (updated_at desc)."""
     ensure_seed_data(db)
     stmt = (
         select(Project)
-        .where(Project.owner_id == user.id, Project.deleted_at.is_(None))
+        .where(
+            or_(Project.owner_id == user.id, Project.id == DEMO_PROJECT_ID),
+            Project.deleted_at.is_(None),
+        )
         .order_by(Project.updated_at.desc())
     )
     rows = db.execute(stmt).scalars().all()
@@ -136,6 +139,9 @@ def create_project(
     )
     db.commit()
     db.refresh(proj)
+    from app.services.infrastructure_service import ensure_project_settings_seeded
+
+    ensure_project_settings_seeded(db, proj.id, load_tier=proj.load_tier)
     return _serialize_project(db, proj)
 
 
@@ -195,12 +201,38 @@ def update_project_with_optimistic_lock(
     )
     db.commit()
     db.refresh(proj)
+
+    if "load_tier" in changes:
+        from app.services.infrastructure_service import apply_load_tier_to_project_settings
+
+        apply_load_tier_to_project_settings(db, proj.id, proj.load_tier)
+
+    if any(
+        k in changes for k in ("load_tier", "horizon_years", "discount_rate", "scheme")
+    ):
+        from app.db.models.settlement import SettlementCluster
+
+        has_clusters = (
+            db.execute(
+                select(SettlementCluster.id).where(SettlementCluster.project_id == proj.id)
+            ).first()
+            is not None
+        )
+        if has_clusters:
+            from app.services.infrastructure_service import compute_and_persist_project_demand
+            from app.services.planning_service import sync_project_scenarios_after_upstream_change
+
+            compute_and_persist_project_demand(db, project_id=proj.id, user=user)
+            sync_project_scenarios_after_upstream_change(db, project_id=proj.id, user=user)
+
     return _serialize_project(db, proj)
 
 
 def soft_delete_project(db: Session, project_id: str, user: User) -> None:
-    """Soft-delete a project by setting deleted_at."""
+    """Soft-delete a user-owned project by setting deleted_at."""
     proj = get_owned_project_or_404(db, project_id, user)
+    if proj.owner_id != user.id and user.role != "ADMIN":
+        raise ProjectNotFoundError(project_id)
     now = datetime.now(UTC)
     proj.deleted_at = now
     db.add(

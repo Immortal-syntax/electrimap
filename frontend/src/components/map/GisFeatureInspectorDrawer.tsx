@@ -23,6 +23,11 @@ import {
 } from '../ui/Badge';
 import { QualityTag, type QualityTagKind } from '../ui/QualityTag';
 import { Button } from '../ui/Button';
+import { HelpTooltip } from '../ui/Tooltip';
+import {
+  formatModalityLabel,
+  formatVerificationStateLabel,
+} from '../../lib/beginnerGlossary';
 import {
   resolveInfraCategoryMeta,
   type InfrastructureCategorySpec,
@@ -60,11 +65,38 @@ export interface GisFeatureInspectorDrawerProps {
   onSelectClusterInWorkbench?: (clusterId: string) => void;
 }
 
+function formatInspectorProvenance(badge: string): string {
+  switch (badge) {
+    case 'VIIRS DNB VNL v2.2 (~500 m)':
+      return 'NASA Nighttime Light (~500 m)';
+    case 'VIIRS DNB + Footprint DBSCAN':
+      return 'Night Light + Roof Grouping';
+    case 'BUILDING_FOOTPRINT_PROXY':
+      return 'Satellite Roof Detection';
+    case 'PROPOSED_PRELIMINARY':
+      return 'Preliminary Design Estimate';
+    case 'MODEL_ESTIMATED_GAP':
+      return 'Estimated Gap Corridor';
+    case 'CENSUS 2011 DCHB + LGD':
+      return 'Census 2011 + Village Map';
+    case 'OSM_MAPPED':
+      return 'OpenStreetMap Grid Data';
+    case 'USER_ASSUMED':
+      return 'User-Marked Point';
+    case 'UTILITY_RECORD':
+      return 'Utility Record';
+    case 'FIELD_SURVEY':
+      return 'Field Survey';
+    default:
+      return badge.replace(/_/g, ' ');
+  }
+}
+
 /**
  * Structured GIS Feature Inspector Drawer.
  *
- * Displays genuine feature attributes, data provenance badges (PROJECT vs. REF · DEMO),
- * epistemic quality tags (VERIFIED / ESTIMATED / ASSUMED), plain-English explanation
+ * Displays genuine feature attributes, data provenance badges,
+ * epistemic quality tags, plain-English explanation
  * for non-technical evaluators, and mandatory epistemic caveats.
  */
 export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps> = ({
@@ -79,11 +111,13 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
     feature.provenanceBadge.includes('PROPOSED') ||
     feature.layerGroupTitle.includes('Layer F');
 
+  const friendlyProvenance = formatInspectorProvenance(feature.provenanceBadge);
+
   return (
     <div
       role="region"
       aria-label="Selected GIS Feature Inspector"
-      className="absolute bottom-10 right-3 z-20 w-80 sm:w-96 max-h-[82%] overflow-y-auto bg-sheet/95 backdrop-blur-md text-ink border border-rule-subtle rounded-lg shadow-overlay p-4 space-y-3 text-xs"
+      className="absolute bottom-10 left-3 right-3 sm:left-auto sm:right-3 z-20 sm:w-96 max-h-[82%] overflow-y-auto bg-sheet/95 backdrop-blur-md text-ink border border-rule-subtle rounded-lg shadow-overlay p-4 space-y-3 text-xs"
     >
       {/* Header with Layer Group, Title & Close Button */}
       <div className="flex items-start justify-between gap-2 border-b border-rule-subtle pb-3">
@@ -113,25 +147,26 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
         {feature.sourceClass && <LayerSourceBadge source={feature.sourceClass} />}
         <QualityTag
           kind={feature.qualityKind ?? (isProposed ? 'ASSUMED' : 'ESTIMATED')}
-          label={feature.provenanceBadge}
+          label={friendlyProvenance}
         />
         {isProposed && (
           <Badge variant="warn" size="sm" dashed>
-            PRELIMINARY · NOT INSTALLED
+            Preliminary Plan (Not Built)
           </Badge>
         )}
         {!isProposed &&
           feature.layerGroupTitle.includes('Layer A') &&
           feature.provenanceBadge !== 'USER_ASSUMED' && (
             <Badge variant="primary" size="sm">
-              MAPPED EXISTING INFRASTRUCTURE
+              Mapped Existing Grid
             </Badge>
           )}
         {feature.provenanceBadge === 'USER_ASSUMED' && (
           <Badge variant="warn" size="sm" dashed>
-            USER-ASSUMED TIE-IN POINT
+            Assumed Connection Point
           </Badge>
         )}
+        <HelpTooltip glossaryKey="dataSourceProvenance" label="About this data source" />
       </div>
 
       {/* Infrastructure Symbology & Voltage Swatch (when inspecting Layer A / Layer F) */}
@@ -166,11 +201,12 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
 
       {/* Settlement 2-Axis Proxy Classification Badge if inspecting a settlement cluster */}
       {feature.proxyClass && (
-        <div className="pt-0.5">
+        <div className="pt-0.5 flex flex-wrap items-center gap-1.5">
           <ClassificationBadge
             proxyClass={feature.proxyClass}
             verificationState={feature.verificationState ?? 'UNVERIFIED'}
           />
+          <HelpTooltip glossaryKey="proxyClassification" label="What this satellite tag means" />
         </div>
       )}
 
@@ -188,7 +224,7 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
         ))}
         {feature.coordinates && (
           <div className="col-span-2 pt-2 border-t border-rule-subtle flex items-center justify-between text-xs text-ink-2">
-            <span>WGS 84 Coordinates</span>
+            <span>Map Coordinates (Lat/Lon)</span>
             <span className="font-mono tabular-nums font-semibold text-ink">
               {feature.coordinates[0].toFixed(5)}°E, {feature.coordinates[1].toFixed(5)}°N
             </span>
@@ -209,7 +245,7 @@ export const GisFeatureInspectorDrawer: React.FC<GisFeatureInspectorDrawerProps>
       <div className="p-3 bg-warn-tint border border-warn/25 rounded-md text-xs text-warn font-medium leading-relaxed flex items-start gap-2">
         <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
         <div>
-          <strong>Data Accuracy &amp; Provenance ({feature.provenanceBadge}):</strong>{' '}
+          <strong>Data Accuracy &amp; Provenance ({friendlyProvenance}):</strong>{' '}
           {feature.epistemicCaveat}
         </div>
       </div>
@@ -311,7 +347,7 @@ export function buildInspectedFeatureFromMapProperties(
         ? 'Layer B · NASA VIIRS Nighttime Illumination & Radiance Series'
         : 'Layer D · Settlement & Habitation Assessment',
       title: `${String(props.cluster_code ?? props.label ?? 'Cluster')} — ${String(props.name ?? 'Habitation')}`,
-      subtitle: `Axis 1 Proxy: ${String(proxyClass)} · Axis 2: ${String(verificationState)}`,
+      subtitle: `${formatVerificationStateLabel(verificationState)} · Satellite Estimate`,
       provenanceBadge: isViirsLayerClick
         ? 'VIIRS DNB VNL v2.2 (~500 m)'
         : 'VIIRS DNB + Footprint DBSCAN',
@@ -374,8 +410,66 @@ export function buildInspectedFeatureFromMapProperties(
         {
           label: 'Preliminary Modality',
           value: props.preliminary_mode
-            ? String(props.preliminary_mode)
+            ? formatModalityLabel(String(props.preliminary_mode))
             : 'Pending Gap Evaluation',
+        },
+      ],
+    };
+  }
+
+  if (
+    layerId === 'ref-buildings-fill' ||
+    layerId === 'buildings-mvt-fill' ||
+    layerId === 'project-buildings-fill'
+  ) {
+    const areaVal =
+      props.area_m2 !== undefined && props.area_m2 !== null
+        ? Number(props.area_m2)
+        : null;
+    const isExcluded = Boolean(props.is_excluded ?? props.excluded);
+    const sizeClass = props.size_class
+      ? String(props.size_class)
+      : areaVal !== null
+        ? areaVal < 20
+          ? 'Small Outbuilding (<20 m² · Excluded from HH Count)'
+          : areaVal > 180
+            ? 'Large / Institutional Footprint (>180 m²)'
+            : 'Residential-Scale Footprint (20–180 m²)'
+        : 'Mapped Building Structure Footprint';
+    const clusterRef = props.cluster_code ?? props.cluster_label;
+
+    return {
+      layerGroupTitle: 'Layer D · Building Structure Footprint',
+      title: String(props.name ?? props.building_id ?? props.id ?? 'Building Structure'),
+      subtitle: `Source: ${String(props.source ?? props.provenance ?? 'Open Buildings / Vector Tile')}`,
+      provenanceBadge: 'BUILDING_FOOTPRINT_PROXY',
+      sourceClass: hasProjectData ? 'PROJECT' : 'REFERENCE_DEMO',
+      qualityKind: 'ESTIMATED',
+      coordinates,
+      clusterId: props.cluster_id ? String(props.cluster_id) : undefined,
+      beginnerExplanation:
+        'Individual building rooftop polygon detected from satellite optical imagery. Footprints between 20 m² and 180 m² feed DBSCAN habitation clustering to estimate household demand.',
+      epistemicCaveat:
+        'Satellite rooftop footprints indicate physical structures only. They cannot reveal interior electricity meters, occupancy, or supply reliability without ground verification.',
+      attributes: [
+        {
+          label: 'Footprint Area',
+          value:
+            areaVal !== null && !Number.isNaN(areaVal)
+              ? `${areaVal.toFixed(1)} m²`
+              : 'Vector tile geometry (attribute omitted in MVT)',
+        },
+        {
+          label: 'Size Classification',
+          value: sizeClass,
+        },
+        {
+          label: 'Cluster Assignment',
+          value: clusterRef ? String(clusterRef) : 'Pending / Unassigned',
+        },
+        {
+          label: 'Clustering Filter',
+          value: isExcluded ? 'Excluded (Non-HH / <20 m²)' : 'Included in Habitation Demand',
         },
       ],
     };
@@ -395,7 +489,7 @@ export function buildInspectedFeatureFromMapProperties(
     return {
       layerGroupTitle: 'Layer A · Mapped Electricity Infrastructure',
       title: String(props.name ?? spec.label),
-      subtitle: `Category: ${rawCat} · Tag: ${String(props.osm_tag ?? spec.osmTag)}`,
+      subtitle: `${spec.shortLabel} (${spec.voltageLabel})`,
       provenanceBadge: prov,
       sourceClass:
         prov === 'USER_ASSUMED' || Boolean(props.asset_type)
@@ -460,7 +554,7 @@ export function buildInspectedFeatureFromMapProperties(
     return {
       layerGroupTitle: 'Layer F · Proposed Electricity Network Extension',
       title: String(props.name ?? props.target_name ?? spec.label),
-      subtitle: `Type: ${rawType} · Status: PRELIMINARY DESIGN`,
+      subtitle: `${spec.shortLabel} · Preliminary Plan (Not Built)`,
       provenanceBadge: 'PROPOSED_PRELIMINARY',
       sourceClass: hasProjectData ? 'PROJECT' : 'REFERENCE_DEMO',
       qualityKind: 'ASSUMED',
@@ -515,7 +609,11 @@ export function buildInspectedFeatureFromMapProperties(
     return {
       layerGroupTitle: 'Layer E · Potential Electrification Gap Corridor',
       title: String(props.gap_code ?? 'Unserved / Underserved Gap Corridor'),
-      subtitle: `Severity: ${String(props.gap_severity ?? 'CANDIDATE_GAP')}`,
+      subtitle:
+        props.gap_severity === 'HIGH_PRIORITY_GAP' ||
+        props.gap_severity === 'CRITICAL_GAP'
+          ? 'High Priority Field Check'
+          : 'Preliminary Investigation Corridor',
       provenanceBadge: String(props.estimation_type ?? 'MODEL_ESTIMATED_GAP'),
       sourceClass: hasProjectData ? 'PROJECT' : 'REFERENCE_DEMO',
       qualityKind: 'ESTIMATED',

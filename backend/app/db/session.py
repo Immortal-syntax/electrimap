@@ -20,7 +20,7 @@ from typing import Any
 
 import pyproj
 import shapely
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -37,7 +37,16 @@ def build_engine(database_url: str | None = None) -> Engine:
         if db_file and db_file != ":memory:":
             Path(db_file).parent.mkdir(parents=True, exist_ok=True)
         connect_args["check_same_thread"] = False
-    return create_engine(url, connect_args=connect_args, future=True, pool_pre_ping=True)
+    eng = create_engine(url, connect_args=connect_args, future=True, pool_pre_ping=True)
+    if url.startswith("sqlite"):
+
+        @event.listens_for(eng, "connect")
+        def _set_sqlite_pragma(dbapi_connection: Any, _connection_record: Any) -> None:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+    return eng
 
 
 engine = build_engine()

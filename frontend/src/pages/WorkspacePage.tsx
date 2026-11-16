@@ -27,18 +27,19 @@ import {
   Settings,
 } from 'lucide-react';
 import { apiRequest } from '../lib/apiClient';
-import { useSessionStore } from '../stores/sessionStore';
 import { MapCanvas } from '../components/map/MapCanvas';
 import {
+  DEMO_PROJECT_ID,
   WORKSPACE_SECTIONS,
   normalizeWorkspaceSection,
   type WorkspaceSectionKey,
 } from '../components/layout/navigationConfig';
 import {
   DataManagementPanel,
-  ProjectLayerDto,
-  RasterOverlayKey,
+  type ProjectLayerDto,
+  type RasterOverlayKey,
 } from '../components/workspace/DataManagementPanel';
+import { computeMapDataReadiness } from '../lib/mapDataReadiness';
 import {
   ClusterListResponseDto,
   SettlementAssessmentPanel,
@@ -78,6 +79,12 @@ import { Input, Textarea } from '../components/ui/Input';
 import type { JobStatusDto } from '../components/ui/JobProgress';
 import { Select } from '../components/ui/Select';
 import { LoadingState } from '../components/ui/Skeleton';
+import { HelpTooltip } from '../components/ui/Tooltip';
+import {
+  formatBoundarySourceLabel,
+  formatScenarioLabel,
+} from '../lib/beginnerGlossary';
+import { useActiveProjectStore } from '../stores/activeProjectStore';
 import { ProjectDto } from './ProjectsPage';
 
 interface ReferenceGeoJsonPayload {
@@ -86,14 +93,23 @@ interface ReferenceGeoJsonPayload {
   routes: GeoJSON.FeatureCollection;
 }
 
-function settledValue<T>(result: PromiseSettledResult<T>): T | null {
-  return result.status === 'fulfilled' ? result.value : null;
+function settledValue<T>(
+  result: PromiseSettledResult<T>,
+  label: string,
+  failures: string[],
+): T | null {
+  if (result.status === 'fulfilled') {
+    return result.value;
+  }
+  const reason =
+    result.reason instanceof Error ? result.reason.message : 'Request failed unexpectedly.';
+  failures.push(`${label}: ${reason}`);
+  return null;
 }
 
 export const WorkspacePage: React.FC = () => {
   const { id, section } = useParams<{ id: string; section?: string }>();
   const navigate = useNavigate();
-  const { user, login } = useSessionStore();
 
   const activeSectionKey: WorkspaceSectionKey = normalizeWorkspaceSection(section);
   const isOverviewMode = activeSectionKey === 'overview';
@@ -134,6 +150,7 @@ export const WorkspacePage: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [partialLoadWarnings, setPartialLoadWarnings] = useState<string[]>([]);
   const [mapActionError, setMapActionError] = useState<string | null>(null);
 
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -149,9 +166,10 @@ export const WorkspacePage: React.FC = () => {
   const [settingsVillages, setSettingsVillages] = useState('');
   const [settingsBaseYear, setSettingsBaseYear] = useState(2026);
   const [settingsHorizonYears, setSettingsHorizonYears] = useState(10);
-  const [settingsDiscountRate, setSettingsDiscountRate] = useState(0.08);
+  const [settingsDiscountRate, setSettingsDiscountRate] = useState(8);
 
   const fetchScenariosAndConstants = useCallback(async (projectId: string) => {
+    const failures: string[] = [];
     const [scenRes, constRes, ratesRes, compRes, preflightRes, exportsRes, jobsRes] =
       await Promise.allSettled([
         apiRequest<PlanningScenarioListDto>(`/api/v1/projects/${projectId}/scenarios`),
@@ -162,13 +180,13 @@ export const WorkspacePage: React.FC = () => {
         apiRequest<ProjectExportListDto>(`/api/v1/projects/${projectId}/exports`),
         apiRequest<JobStatusDto[]>(`/api/v1/projects/${projectId}/jobs`),
       ]);
-    const scenData = settledValue(scenRes);
-    const constData = settledValue(constRes);
-    const ratesData = settledValue(ratesRes);
-    const compData = settledValue(compRes);
-    const preflightData = settledValue(preflightRes);
-    const exportsData = settledValue(exportsRes);
-    const jobsData = settledValue(jobsRes);
+    const scenData = settledValue(scenRes, 'Network scenarios', failures);
+    const constData = settledValue(constRes, 'Engineering constants', failures);
+    const ratesData = settledValue(ratesRes, 'Schedule of Rates', failures);
+    const compData = settledValue(compRes, 'Scenario comparison', failures);
+    const preflightData = settledValue(preflightRes, 'Pre-flight audit', failures);
+    const exportsData = settledValue(exportsRes, 'Export logs', failures);
+    const jobsData = settledValue(jobsRes, 'Background jobs', failures);
 
     if (scenData) setScenariosState(scenData);
     if (constData) setEngineeringConstants(constData);
@@ -177,38 +195,55 @@ export const WorkspacePage: React.FC = () => {
     if (preflightData) setPreflightState(preflightData);
     if (exportsData) setExportLogState(exportsData);
     if (jobsData) setJobsState(jobsData);
+    setPartialLoadWarnings(failures);
   }, []);
 
   const fetchInfraAndDemand = useCallback(
     async (projectId: string) => {
+      const failures: string[] = [];
       const [infraRes, gapRes, settingsRes, demandRes] = await Promise.allSettled([
         apiRequest<InfrastructureListDto>(`/api/v1/projects/${projectId}/infrastructure`),
         apiRequest<ProjectGapAnalysisDto>(`/api/v1/projects/${projectId}/gap-analysis`),
         apiRequest<ProjectSettingsListDto>(`/api/v1/projects/${projectId}/settings`),
         apiRequest<ProjectDemandSummaryDto>(`/api/v1/projects/${projectId}/demand`),
       ]);
-      const infraData = settledValue(infraRes);
-      const gapData = settledValue(gapRes);
-      const settingsData = settledValue(settingsRes);
-      const demandData = settledValue(demandRes);
+      const infraData = settledValue(infraRes, 'Infrastructure assets', failures);
+      const gapData = settledValue(gapRes, 'Gap analysis', failures);
+      const settingsData = settledValue(settingsRes, 'Project assumptions', failures);
+      const demandData = settledValue(demandRes, 'Demand forecast', failures);
 
       if (infraData) setInfrastructure(infraData);
       if (gapData) setGapAnalysis(gapData);
       if (settingsData) setSettings(settingsData);
       if (demandData) setDemand(demandData);
       await fetchScenariosAndConstants(projectId);
+      const infraLabels = [
+        'Infrastructure assets',
+        'Gap analysis',
+        'Project assumptions',
+        'Demand forecast',
+      ];
+      setPartialLoadWarnings((prev) =>
+        Array.from(
+          new Set([
+            ...prev.filter((w) => !infraLabels.some((lbl) => w.startsWith(lbl))),
+            ...failures,
+          ]),
+        ),
+      );
     },
     [fetchScenariosAndConstants],
   );
 
   const fetchSettlementsAndLedger = useCallback(
     async (projectId: string) => {
+      const failures: string[] = [];
       const [clustersRes, ledgerRes] = await Promise.allSettled([
         apiRequest<ClusterListResponseDto>(`/api/v1/projects/${projectId}/clusters`),
         apiRequest<VerificationLedgerDto>(`/api/v1/projects/${projectId}/verifications`),
       ]);
-      const clustersData = settledValue(clustersRes);
-      const ledgerData = settledValue(ledgerRes);
+      const clustersData = settledValue(clustersRes, 'Settlement clusters', failures);
+      const ledgerData = settledValue(ledgerRes, 'Verification ledger', failures);
 
       if (clustersData) {
         setSettlements(clustersData);
@@ -218,12 +253,22 @@ export const WorkspacePage: React.FC = () => {
         setVerificationLedger(ledgerData);
       }
       await fetchInfraAndDemand(projectId);
+      const settleLabels = ['Settlement clusters', 'Verification ledger'];
+      setPartialLoadWarnings((prev) =>
+        Array.from(
+          new Set([
+            ...prev.filter((w) => !settleLabels.some((lbl) => w.startsWith(lbl))),
+            ...failures,
+          ]),
+        ),
+      );
     },
     [fetchInfraAndDemand],
   );
 
   const fetchLayersAndVectors = useCallback(
     async (projectId: string) => {
+      const failures: string[] = [];
       const [layerRes, bldRes, osmRes] = await Promise.allSettled([
         apiRequest<ProjectLayerDto[]>(`/api/v1/projects/${projectId}/layers`),
         apiRequest<GeoJSON.FeatureCollection>(
@@ -233,14 +278,23 @@ export const WorkspacePage: React.FC = () => {
           `/api/v1/projects/${projectId}/layers/osm_features/geojson`,
         ),
       ]);
-      const layerItems = settledValue(layerRes);
-      const bldFc = settledValue(bldRes);
-      const osmFc = settledValue(osmRes);
+      const layerItems = settledValue(layerRes, 'GIS layers', failures);
+      const bldFc = settledValue(bldRes, 'Buildings GeoJSON', failures);
+      const osmFc = settledValue(osmRes, 'OSM features GeoJSON', failures);
 
       if (layerItems) setLayers(layerItems);
       if (bldFc) setBuildingsGeoJson(bldFc);
       if (osmFc) setOsmGeoJson(osmFc);
       await fetchSettlementsAndLedger(projectId);
+      const layerLabels = ['GIS layers', 'Buildings GeoJSON', 'OSM features GeoJSON'];
+      setPartialLoadWarnings((prev) =>
+        Array.from(
+          new Set([
+            ...prev.filter((w) => !layerLabels.some((lbl) => w.startsWith(lbl))),
+            ...failures,
+          ]),
+        ),
+      );
     },
     [fetchSettlementsAndLedger],
   );
@@ -249,25 +303,30 @@ export const WorkspacePage: React.FC = () => {
     if (!id) return;
     setLoading(true);
     setError(null);
+    setPartialLoadWarnings([]);
     try {
-      if (!user) {
-        await login('planner@electrimap.in', 'ElectriMap#2026');
-      }
       const [projData, geoRes] = await Promise.all([
         apiRequest<ProjectDto>(`/api/v1/projects/${id}`),
-        apiRequest<ReferenceGeoJsonPayload>('/api/v1/spikes/reference-geojson').catch(() => null),
+        id === DEMO_PROJECT_ID
+          ? apiRequest<ReferenceGeoJsonPayload>('/api/v1/spikes/reference-geojson').catch(
+              () => null,
+            )
+          : Promise.resolve(null),
       ]);
       setProject(projData);
-      if (geoRes) {
-        setRoutesGeoJson(geoRes.routes);
-      }
+      useActiveProjectStore.getState().setProjectMeta(projData.id, {
+        name: projData.name,
+        district: projData.target_district,
+        state: projData.target_state,
+      });
+      setRoutesGeoJson(geoRes ? geoRes.routes : null);
       await fetchLayersAndVectors(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load project workspace.');
     } finally {
       setLoading(false);
     }
-  }, [id, user, login, fetchLayersAndVectors]);
+  }, [id, fetchLayersAndVectors]);
 
   useEffect(() => {
     void loadWorkspace();
@@ -277,8 +336,8 @@ export const WorkspacePage: React.FC = () => {
     return (
       <div className="page-container">
         <LoadingState
-          title="Loading GIS engineering workbench..."
-          description="Fetching validated AOI geometry, satellite layers, habitation clusters, and engineering scenarios."
+          title="Loading village planning workspace..."
+          description="Fetching your study boundary, satellite layers, hamlets, and engineering estimates."
         />
       </div>
     );
@@ -293,7 +352,7 @@ export const WorkspacePage: React.FC = () => {
           onRetry={() => void loadWorkspace()}
         />
         <Link to="/projects" className="text-xs font-mono text-accent underline inline-block">
-          ← Return to Projects Portfolio
+          ← Return to My Projects
         </Link>
       </div>
     );
@@ -310,7 +369,7 @@ export const WorkspacePage: React.FC = () => {
     setSettingsVillages(project.village_names ?? '');
     setSettingsBaseYear(project.base_year);
     setSettingsHorizonYears(project.horizon_years);
-    setSettingsDiscountRate(project.discount_rate);
+    setSettingsDiscountRate(Number((project.discount_rate * 100).toFixed(2)));
     setSettingsError(null);
     setSettingsModalOpen(true);
   };
@@ -334,12 +393,17 @@ export const WorkspacePage: React.FC = () => {
           village_names: settingsVillages.trim() || null,
           base_year: settingsBaseYear,
           horizon_years: settingsHorizonYears,
-          discount_rate: settingsDiscountRate,
+          discount_rate: Number((settingsDiscountRate / 100).toFixed(4)),
         }),
       });
       setProject(updated);
+      useActiveProjectStore.getState().setProjectMeta(updated.id, {
+        name: updated.name,
+        district: updated.target_district,
+        state: updated.target_state,
+      });
       setSettingsModalOpen(false);
-      await fetchScenariosAndConstants(updated.id);
+      await fetchSettlementsAndLedger(updated.id);
     } catch (err) {
       setSettingsError(
         err instanceof Error ? err.message : 'Unable to save project settings.',
@@ -388,10 +452,10 @@ export const WorkspacePage: React.FC = () => {
           tone: 'primary',
         };
       case 'data': {
-        const readyCount = layers.filter((l) => l.status === 'READY').length;
+        const mapReadiness = computeMapDataReadiness(layers);
         return {
-          text: `${readyCount}/${Math.max(layers.length, 4)} ready`,
-          tone: readyCount > 0 ? 'ok' : 'warn',
+          text: mapReadiness.label,
+          tone: mapReadiness.badgeVariant,
         };
       }
       case 'settlements': {
@@ -411,21 +475,25 @@ export const WorkspacePage: React.FC = () => {
       case 'network': {
         const scenKey = scenariosState?.active_scenario_key;
         return {
-          text: scenKey ? scenKey.replace('_OPTIMAL', '') : 'Pending',
+          text: scenKey ? formatScenarioLabel(scenKey) : 'Pending',
           tone: scenKey ? 'ok' : 'neutral',
         };
       }
       case 'cost': {
         if (!ratesState) return { text: 'Pending', tone: 'neutral' };
-        return ratesState.unset_count === 0
-          ? { text: 'Rates ready', tone: 'ok' }
-          : { text: `${ratesState.unset_count} unset`, tone: 'error' };
+        if (ratesState.unset_count > 0) {
+          return { text: `${ratesState.unset_count} prices needed`, tone: 'error' };
+        }
+        if (!scenariosState || scenariosState.scenarios.length === 0) {
+          return { text: 'Pending', tone: 'neutral' };
+        }
+        return { text: 'Prices ready', tone: 'ok' };
       }
       case 'reports': {
-        if (!preflightState) return { text: 'Audit', tone: 'neutral' };
+        if (!preflightState) return { text: 'Checks', tone: 'neutral' };
         return preflightState.can_export
-          ? { text: 'Export ready', tone: 'ok' }
-          : { text: 'Blocked', tone: 'error' };
+          ? { text: 'Ready to export', tone: 'ok' }
+          : { text: 'Steps needed', tone: 'neutral' };
       }
     }
   };
@@ -438,11 +506,13 @@ export const WorkspacePage: React.FC = () => {
     (!isOverviewMode && (showMapInFocusedStage || placeTieInModeActive));
 
   const sectionBadge = getSectionReadinessBadge(activeSectionKey);
-  const readyLayerCount = layers.filter((l) => l.status === 'READY').length;
+  const mapReadiness = computeMapDataReadiness(layers);
   const isOverviewHeroMapActive = isOverviewMode && !showAllStagesInOverview;
 
   const sharedMapElement = (
     <MapCanvas
+      projectId={project.id}
+      metricEpsg={project.metric_epsg}
       variant={isOverviewHeroMapActive ? 'overview' : 'workbench'}
       defaultLayerPanelOpen={isOverviewHeroMapActive ? false : true}
       onOpenFullMap={() => navigateToSection('map')}
@@ -513,13 +583,18 @@ export const WorkspacePage: React.FC = () => {
         <header className="bg-sheet/95 backdrop-blur-sm border border-rule-subtle rounded-lg px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-card">
           <div className="min-w-0 flex items-center flex-wrap gap-x-3 gap-y-1">
             <h1 className="heading-lg truncate">{project.name}</h1>
-            <span className="text-xs text-ink-2">
-              {project.aoi ? `${project.aoi.area_km2.toFixed(2)} km²` : 'No AOI'} ·{' '}
-              <span className="font-mono">EPSG:{project.metric_epsg}</span> ·{' '}
-              {readyLayerCount}/{Math.max(layers.length, 4)} layers ready
+            <span className="text-xs text-ink-2 inline-flex items-center gap-1.5 flex-wrap">
+              <span>{project.aoi ? `${project.aoi.area_km2.toFixed(2)} km²` : 'Boundary not set'}</span>
+              <span>·</span>
+              <span className="inline-flex items-center gap-1 font-mono">
+                Zone EPSG:{project.metric_epsg}
+                <HelpTooltip glossaryKey="crsEpsgUtm" placement="bottom" />
+              </span>
+              <span>·</span>
+              <span>Map data: {mapReadiness.label}</span>
             </span>
             <span className="px-2.5 py-0.5 text-2xs font-medium border border-dashed border-warn-border bg-warn-bg text-warn rounded-full">
-              Preliminary — Field Survey Required
+              Preliminary — Field Check Required
             </span>
           </div>
 
@@ -561,13 +636,13 @@ export const WorkspacePage: React.FC = () => {
           <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Badge variant="primary" size="sm">
-                {project.scheme} · {project.horizon_years}-Year Horizon
+                {project.scheme} · {project.horizon_years}-Year Plan
               </Badge>
               <span className="text-ink-2 font-medium">
-                Revision v{project.version} · Updated {project.updated_at.slice(0, 10)}
+                Saved v{project.version} · Updated {project.updated_at.slice(0, 10)}
               </span>
               <span className="px-2.5 py-0.5 text-2xs font-medium border border-dashed border-warn-border bg-warn-bg text-warn rounded-full">
-                PRELIMINARY — NOT FIELD VERIFIED
+                Preliminary Draft — Needs Field Check
               </span>
             </div>
             <h1 className="heading-xl text-ink truncate">{project.name}</h1>
@@ -575,18 +650,21 @@ export const WorkspacePage: React.FC = () => {
               <span>
                 {project.village_names ??
                   (project.aoi?.lgd_code
-                    ? `LGD ${project.aoi.lgd_code}`
-                    : 'Custom AOI Polygon')}
+                    ? `Village Code ${project.aoi.lgd_code}`
+                    : 'Custom Study Boundary')}
               </span>
               <span aria-hidden="true">·</span>
               <span>
-                {project.target_block ?? 'Nandapur'},{' '}
-                {project.target_district ?? 'Koraput'},{' '}
-                {project.target_state ?? 'Odisha'}
+                {[project.target_block, project.target_district, project.target_state]
+                  .filter(Boolean)
+                  .join(', ') || 'Location not set yet'}
               </span>
               <span aria-hidden="true">·</span>
-              <span className="font-mono text-ink">
-                WGS 84 ↔ EPSG:{project.metric_epsg}
+              <span
+                className="font-mono text-ink"
+                title="GPS coordinates are converted to this local metric zone for accurate distance calculations"
+              >
+                Metric Zone EPSG:{project.metric_epsg}
               </span>
             </div>
           </div>
@@ -677,6 +755,20 @@ export const WorkspacePage: React.FC = () => {
             )}
           </div>
         </header>
+      )}
+
+      {partialLoadWarnings.length > 0 && (
+        <Callout
+          tone="warn"
+          title="Some Workspace Datasets Failed to Load"
+          action={
+            <Button size="xs" variant="ghost" onClick={() => void loadWorkspace()}>
+              Retry Workspace Load
+            </Button>
+          }
+        >
+          {partialLoadWarnings.join(' · ')}
+        </Callout>
       )}
 
       {project.aoi?.warnings.includes('APPROXIMATE_BOUNDARY_BUFFER_1500M') && (
@@ -770,22 +862,24 @@ export const WorkspacePage: React.FC = () => {
 
               <dl className="space-y-2 text-xs">
                 <div className="flex justify-between border-b border-rule-subtle pb-1.5">
-                  <dt className="text-ink-2">Project ID</dt>
-                  <dd className="font-mono text-ink">{project.id.slice(0, 8)}…</dd>
+                  <dt className="text-ink-2">Boundary Type</dt>
+                  <dd className="text-ink font-medium">
+                    {project.aoi?.boundary_source
+                      ? formatBoundarySourceLabel(project.aoi.boundary_source)
+                      : 'Not set'}
+                  </dd>
                 </div>
                 <div className="flex justify-between border-b border-rule-subtle pb-1.5">
-                  <dt className="text-ink-2">Boundary Source</dt>
-                  <dd className="font-mono text-ink">{project.aoi?.boundary_source ?? 'NONE'}</dd>
-                </div>
-                <div className="flex justify-between border-b border-rule-subtle pb-1.5">
-                  <dt className="text-ink-2">LGD / Census 2011</dt>
+                  <dt className="text-ink-2">Village / Census Code</dt>
                   <dd className="font-mono text-ink">
                     {project.aoi?.lgd_code ?? '—'} / {project.aoi?.census2011_code ?? '—'}
                   </dd>
                 </div>
                 <div className="flex justify-between border-b border-rule-subtle pb-1.5">
-                  <dt className="text-ink-2">Ingested GIS Layers</dt>
-                  <dd className="font-medium text-ink">{layers.length} layers ready</dd>
+                  <dt className="text-ink-2">Map Data Availability</dt>
+                  <dd className="font-medium text-ink">
+                    {mapReadiness.label} ({mapReadiness.usableCount}/{layers.length} usable)
+                  </dd>
                 </div>
                 <div className="flex justify-between border-b border-rule-subtle pb-1.5">
                   <dt className="text-ink-2">Revision</dt>
@@ -851,7 +945,7 @@ export const WorkspacePage: React.FC = () => {
             <div className="flex items-center justify-between border-b border-rule pb-2 pt-2">
               <div>
                 <span className="heading-overline">Stage 1 of 6</span>
-                <h2 className="heading-md">Study Area GIS Layers &amp; Dataset Provenance</h2>
+                <h2 className="heading-md">Get Your Map Ready</h2>
               </div>
               <Button
                 size="xs"
@@ -864,6 +958,7 @@ export const WorkspacePage: React.FC = () => {
           )}
           <DataManagementPanel
             projectId={project.id}
+            metricEpsg={project.metric_epsg}
             layers={layers}
             visibleVectorLayers={visibleVectorLayers}
             onToggleVectorLayer={(layerKey) =>
@@ -873,10 +968,16 @@ export const WorkspacePage: React.FC = () => {
               }))
             }
             activeRasterOverlay={activeRasterOverlay}
-            onChangeRasterOverlay={setActiveRasterOverlay}
+            onChangeRasterOverlay={(next) => {
+              setActiveRasterOverlay(next);
+              if (next !== 'none' && !isOverviewMode && !isMapRoute) {
+                setShowMapInFocusedStage(true);
+              }
+            }}
             rasterOpacity={rasterOpacity}
             onChangeRasterOpacity={setRasterOpacity}
             onLayersUpdated={() => fetchLayersAndVectors(project.id)}
+            onContinueToNextStep={() => navigateToSection('settlements')}
           />
         </section>
       )}
@@ -891,9 +992,9 @@ export const WorkspacePage: React.FC = () => {
           {isOverviewMode && showAllStages && (
             <div className="flex items-center justify-between border-b border-rule pb-2 pt-2">
               <div>
-                <span className="heading-overline">Stage 2 of 6</span>
+                <span className="heading-overline">Step 2 of 6</span>
                 <h2 className="heading-md">
-                  Villages, Habitation Clustering &amp; Field Verification Ledger
+                  Villages, Home Clusters &amp; Field Checks
                 </h2>
               </div>
               <Button
@@ -901,12 +1002,13 @@ export const WorkspacePage: React.FC = () => {
                 variant="ghost"
                 onClick={() => navigateToSection('settlements')}
               >
-                Open Stage 2 →
+                Open Step 2 →
               </Button>
             </div>
           )}
           <SettlementAssessmentPanel
             projectId={project.id}
+            metricEpsg={project.metric_epsg}
             settlements={settlements}
             ledger={verificationLedger}
             selectedClusterId={selectedClusterId}
@@ -926,9 +1028,9 @@ export const WorkspacePage: React.FC = () => {
           {isOverviewMode && showAllStages && (
             <div className="flex items-center justify-between border-b border-rule pb-2 pt-2">
               <div>
-                <span className="heading-overline">Stage 3 of 6</span>
+                <span className="heading-overline">Step 3 of 6</span>
                 <h2 className="heading-md">
-                  Existing Grid Infrastructure, Electrification Gaps &amp; Load Forecast
+                  Existing Power Lines, Distance Gaps &amp; Demand Forecast
                 </h2>
               </div>
               <Button
@@ -936,18 +1038,32 @@ export const WorkspacePage: React.FC = () => {
                 variant="ghost"
                 onClick={() => navigateToSection('infrastructure')}
               >
-                Open Stage 3 →
+                Open Step 3 →
               </Button>
             </div>
           )}
           <InfrastructureAndDemandPanel
             projectId={project.id}
+            metricEpsg={project.metric_epsg}
             infrastructure={infrastructure}
             gapAnalysis={gapAnalysis}
             settings={settings}
             demand={demand}
             placeTieInModeActive={placeTieInModeActive}
-            onTogglePlaceTieInMode={() => setPlaceTieInModeActive((prev) => !prev)}
+            onTogglePlaceTieInMode={() =>
+              setPlaceTieInModeActive((prev) => {
+                const next = !prev;
+                if (next) {
+                  setShowMapInFocusedStage(true);
+                  setTimeout(() => {
+                    document
+                      .getElementById('step-section-map')
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }, 80);
+                }
+                return next;
+              })
+            }
             onInfrastructureAndDemandUpdated={() => fetchSettlementsAndLedger(project.id)}
           />
         </section>
@@ -979,6 +1095,7 @@ export const WorkspacePage: React.FC = () => {
           )}
           <NetworkEngineeringPanel
             projectId={project.id}
+            metricEpsg={project.metric_epsg}
             scenariosState={scenariosState}
             constants={engineeringConstants}
             onScenariosUpdated={() => fetchScenariosAndConstants(project.id)}
@@ -1087,6 +1204,7 @@ export const WorkspacePage: React.FC = () => {
             preflight={preflightState}
             exportLog={exportLogState}
             onRefreshAuditAndLogs={() => fetchScenariosAndConstants(project.id)}
+            onNavigateSection={navigateToSection}
           />
         </section>
       )}
@@ -1169,9 +1287,9 @@ export const WorkspacePage: React.FC = () => {
         onClose={() => {
           if (!savingSettings) setSettingsModalOpen(false);
         }}
-        overline={`PROJECT CONFIGURATION · VERSION v${project.version}`}
-        title="Project Settings & Planning Horizon"
-        description="Update target scheme metadata, geography labels, demand tier, or economic horizon. Optimistic version concurrency prevents silent overwrites."
+        overline={`Project Settings · Saved Version ${project.version}`}
+        title="Edit Study Details & Assumptions"
+        description="Update your village details, government scheme, electricity usage level, or planning horizon."
         size="lg"
       >
         <form
@@ -1206,26 +1324,25 @@ export const WorkspacePage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               id="settings-proj-scheme"
-              label="Target Scheme"
+              label="Government Programme / Scheme"
               value={settingsScheme}
               onChange={(e) => setSettingsScheme(e.target.value)}
               options={[
-                { value: 'DA-JGUA / RDSS', label: 'DA-JGUA / RDSS' },
-                { value: 'RDSS Feeder Separation', label: 'RDSS Feeder Separation' },
-                { value: 'MNRE Off-Grid / Mini-Grid', label: 'MNRE Off-Grid / Mini-Grid' },
-                { value: 'State Tribal Sub-Plan (TSP)', label: 'State Tribal Sub-Plan (TSP)' },
+                { value: 'DA-JGUA / RDSS', label: 'Tribal & Rural Grid (DA-JGUA / RDSS)' },
+                { value: 'RDSS Feeder Separation', label: 'Farm & Village Feeder Split (RDSS)' },
+                { value: 'MNRE Off-Grid / Mini-Grid', label: 'Solar Mini-Grid / Off-Grid (MNRE)' },
+                { value: 'State Tribal Sub-Plan (TSP)', label: 'State Tribal Development Plan (TSP)' },
               ]}
             />
             <Select
               id="settings-proj-tier"
-              label="Consumer Load Tier"
+              label="Home Electricity Usage Level"
               value={settingsLoadTier}
               onChange={(e) => setSettingsLoadTier(e.target.value)}
-              mono
               options={[
-                { value: 'TIER_2_SUBSISTENCE', label: 'TIER_2 (0.25 kW/HH)' },
-                { value: 'TIER_3_STANDARD', label: 'TIER_3 (0.50 kW/HH)' },
-                { value: 'TIER_4_PRODUCTIVE', label: 'TIER_4 (1.00 kW/HH)' },
+                { value: 'TIER_2_SUBSISTENCE', label: 'Basic — Lighting & Fans (0.25 kW/home)' },
+                { value: 'TIER_3_STANDARD', label: 'Standard — Appliances & TV (0.50 kW/home)' },
+                { value: 'TIER_4_PRODUCTIVE', label: 'Productive — Small Shops & Motors (1.00 kW/home)' },
               ]}
             />
           </div>
@@ -1284,17 +1401,23 @@ export const WorkspacePage: React.FC = () => {
               value={settingsHorizonYears}
               onChange={(e) => setSettingsHorizonYears(Number(e.target.value))}
             />
-            <Input
-              id="settings-proj-discount"
-              label="Discount Rate"
-              type="number"
-              min={0.01}
-              max={0.25}
-              step={0.005}
-              mono
-              value={settingsDiscountRate}
-              onChange={(e) => setSettingsDiscountRate(Number(e.target.value))}
-            />
+            <div className="space-y-1">
+              <Input
+                id="settings-proj-discount"
+                label="Annual Discount Rate (%)"
+                type="number"
+                min={1}
+                max={25}
+                step={0.5}
+                mono
+                value={settingsDiscountRate}
+                onChange={(e) => setSettingsDiscountRate(Number(e.target.value))}
+              />
+              <div className="flex items-center gap-1 text-2xs text-ink-3">
+                <span>Used to compare future costs (default 8%)</span>
+                <HelpTooltip glossaryKey="planningHorizonDiscountRate" label="Discount rate explanation" />
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-rule">

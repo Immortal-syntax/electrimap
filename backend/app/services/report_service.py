@@ -17,10 +17,12 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.db.models.auth import User
 from app.db.models.export_record import ProjectExportRecord
 from app.db.models.ops import AuditEvent
-from app.db.models.project import ProjectAoi
+from app.db.models.project import ProjectAoi, ProjectLayer
+from app.db.models.reference import Dataset
 from app.domain.reporting.preflight import compute_file_sha256, evaluate_dpr_preflight
 from app.schemas.reports import (
     DprSectionStatusItemDto,
@@ -60,6 +62,29 @@ def get_project_preflight_report(
         select(ProjectAoi).where(ProjectAoi.project_id == proj.id)
     ).scalar_one_or_none()
 
+    layer_rows = (
+        db.execute(select(ProjectLayer).where(ProjectLayer.project_id == proj.id))
+        .scalars()
+        .all()
+    )
+    ds_ids = {layer.dataset_id for layer in layer_rows if layer.dataset_id}
+    ds_by_id: dict[str, Dataset] = (
+        {
+            d.id: d
+            for d in db.execute(select(Dataset).where(Dataset.id.in_(ds_ids))).scalars().all()
+        }
+        if ds_ids
+        else {}
+    )
+    synthetic_fallback_layers: list[str] = []
+    for layer_row in layer_rows:
+        if layer_row.layer_key == "nightlights":
+            continue
+        ds_row = ds_by_id.get(layer_row.dataset_id) if layer_row.dataset_id else None
+        is_fallback_flag = (layer_row.summary_metrics or {}).get("is_synthetic_fallback") is True
+        if is_fallback_flag or (ds_row is not None and ds_row.key == "synthetic_fallback"):
+            synthetic_fallback_layers.append(layer_row.layer_key)
+
     grid_missing_tie_in = [
         cl.cluster_label
         for cl in active_scenario.clusters
@@ -84,6 +109,7 @@ def get_project_preflight_report(
         total_capex_inr=comparison.active_scenario_boq.total_capex_inr,
         npc_inr=comparison.active_scenario_boq.economics.npc_inr,
         lcoe_inr_kwh=comparison.active_scenario_boq.economics.lcoe_inr_kwh,
+        synthetic_fallback_layers=synthetic_fallback_layers,
     )
 
     return PreFlightReportResponse(
@@ -218,6 +244,21 @@ def list_project_export_records(
     )
 
 
+def _assert_preflight_export_allowed(preflight: PreFlightReportResponse, format_label: str) -> None:
+    if preflight.can_export:
+        return
+    failed = [
+        c for c in preflight.checks if c.category == "HARD_BLOCKER" and c.status == "FAIL"
+    ]
+    reasons = "; ".join(f"{c.check_code}: {c.detail}" for c in failed)
+    raise AppError(
+        code=failed[0].check_code if failed else "PREFLIGHT_EXPORT_BLOCKED",
+        message=f"{format_label} export blocked by pre-flight audit: {reasons}",
+        status_code=422,
+        details={"failed_checks": [c.check_code for c in failed]},
+    )
+
+
 def export_and_log_dpr_pdf(
     db: Session,
     project_id: str,
@@ -225,6 +266,7 @@ def export_and_log_dpr_pdf(
 ) -> tuple[bytes, ProjectExportRecord]:
     """Generate the complete 24-section PDF DPR and log its SHA-256 export record."""
     preflight = get_project_preflight_report(db, project_id, user)
+    _assert_preflight_export_allowed(preflight, "24-Section PDF DPR")
     scenarios_state = get_project_scenarios(db, project_id=project_id, user=user)
     active_scen = scenarios_state.active_scenario
     pdf_bytes = generate_preliminary_settlement_pdf(db, project_id=project_id, user=user)
@@ -254,6 +296,7 @@ def export_and_log_boq_xlsx(
 ) -> tuple[bytes, ProjectExportRecord]:
     """Generate the formula-driven 5-sheet Excel BOQ workbook and log its SHA-256 record."""
     preflight = get_project_preflight_report(db, project_id, user)
+    _assert_preflight_export_allowed(preflight, "Excel BOQ (.xlsx)")
     scenarios_state = get_project_scenarios(db, project_id=project_id, user=user)
     active_scen = scenarios_state.active_scenario
     xlsx_bytes = generate_project_boq_xlsx(db, project_id=project_id, user=user)
@@ -283,6 +326,7 @@ def export_and_log_gis_package(
 ) -> tuple[bytes, ProjectExportRecord]:
     """Generate the cleaned GIS vector & schedule ZIP package and log its SHA-256 record."""
     preflight = get_project_preflight_report(db, project_id, user)
+    _assert_preflight_export_allowed(preflight, "GIS Package (.zip)")
     scenarios_state = get_project_scenarios(db, project_id=project_id, user=user)
     active_scen = scenarios_state.active_scenario
     zip_bytes = generate_project_gis_package_zip(db, project_id=project_id, user=user)

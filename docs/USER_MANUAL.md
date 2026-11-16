@@ -39,9 +39,9 @@ docker compose up --build
    cd frontend
    npm run dev
    ```
-3. **Default Planner Credentials:**
-   - **Email:** `planner@electrimap.in`
-   - **Password:** `ElectriMap#2026`
+3. **Development User Accounts** *(change initial passwords before any production deployment)*:
+   - **Swayam Kumar:** `swayamkr26@gmail.com` / `1234`
+   - **Sumit Kushwaha:** `sumitp@gmail.com` / `1234`
 
 ---
 

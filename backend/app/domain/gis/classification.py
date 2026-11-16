@@ -26,7 +26,7 @@ from shapely.ops import unary_union
 
 from app.domain.gis.clustering import DetectedCluster
 from app.domain.gis.crs import project_geometry
-from app.domain.gis.layer_processing import generate_aoi_grids
+from app.domain.gis.raster_ops import compute_slope_deg
 
 
 @dataclass(frozen=True)
@@ -51,8 +51,8 @@ class ClassifiedClusterResult:
     slope_mean_deg: float
     slope_max_deg: float
     canopy_share: float
-    mean_radiance_nw_cm2_sr: float
-    nl_lightscore: float
+    mean_radiance_nw_cm2_sr: float | None
+    nl_lightscore: float | None
     d_road_m: float | None
     d_infra_m: float | None
     d_dt_m: float | None
@@ -77,37 +77,79 @@ class CensusReconciliationSummary:
     reconciliation_note: str
 
 
-def _sample_raster_stats_for_cluster(
-    cluster_geom: Polygon,
-    aoi_bbox: tuple[float, float, float, float],
-    grids: dict[str, np.ndarray],
-) -> tuple[float, float, float, float, float]:
-    """Extract mean/max slope (deg), canopy share [0..1], mean radiance, and lightscore."""
-    min_lon, min_lat, max_lon, max_lat = aoi_bbox
-    slope_grid = grids["slope_deg"]
-    wc_grid = grids["worldcover"]
-    rad_grid = grids["radiance"]
-    rows, cols = slope_grid.shape
+def _slice_raster_window(
+    arr: np.ndarray,
+    bounds: tuple[float, float, float, float],
+    target_geom: BaseGeometry,
+) -> np.ndarray | None:
+    """Slice raster pixels intersecting `target_geom` bounds in north-up WGS 84 layout."""
+    if arr.size == 0 or arr.ndim != 2:
+        return None
+    min_lon, min_lat, max_lon, max_lat = bounds
+    span_x = max_lon - min_lon
+    span_y = max_lat - min_lat
+    if span_x <= 0.0 or span_y <= 0.0:
+        return None
 
-    c_min_x, c_min_y, c_max_x, c_max_y = cluster_geom.bounds
-    span_x = max(max_lon - min_lon, 1e-6)
-    span_y = max(max_lat - min_lat, 1e-6)
+    c_min_x, c_min_y, c_max_x, c_max_y = target_geom.bounds
+    if c_max_x <= min_lon or c_min_x >= max_lon or c_max_y <= min_lat or c_min_y >= max_lat:
+        return None
 
+    rows, cols = arr.shape
     col_start = int(np.clip(np.floor((c_min_x - min_lon) / span_x * cols), 0, cols - 1))
     col_end = int(np.clip(np.ceil((c_max_x - min_lon) / span_x * cols), col_start + 1, cols))
     row_start = int(np.clip(np.floor((max_lat - c_max_y) / span_y * rows), 0, rows - 1))
     row_end = int(np.clip(np.ceil((max_lat - c_min_y) / span_y * rows), row_start + 1, rows))
+    sub = arr[row_start:row_end, col_start:col_end]
+    return sub if sub.size > 0 else None
 
-    sub_slope = slope_grid[row_start:row_end, col_start:col_end]
-    sub_wc = wc_grid[row_start:row_end, col_start:col_end]
-    sub_rad = rad_grid[row_start:row_end, col_start:col_end]
 
-    slope_mean = round(float(np.mean(sub_slope)), 2)
-    slope_max = round(float(np.max(sub_slope)), 2)
-    canopy_share = round(float(np.mean(sub_wc == 10)), 3)
-    mean_rad = round(float(np.mean(sub_rad)), 3)
-    lightscore = round(float(np.clip(mean_rad / 1.35, 0.0, 1.0)), 3)
-    return slope_mean, slope_max, canopy_share, mean_rad, lightscore
+def _sample_real_raster_stats_for_cluster(
+    cluster_geom: Polygon,
+    *,
+    slope_deg_grid: np.ndarray | None,
+    worldcover_wgs84: np.ndarray | None,
+    raster_bounds_wgs84: tuple[float, float, float, float] | None,
+    radiance_wgs84: np.ndarray | None,
+    radiance_bounds_wgs84: tuple[float, float, float, float] | None,
+) -> dict[str, Any]:
+    """Extract real zonal slope, canopy, and radiance stats without fabricating missing bands."""
+    slope_mean_val: float | None = None
+    slope_max_val: float | None = None
+    if slope_deg_grid is not None and raster_bounds_wgs84 is not None:
+        sub_slope = _slice_raster_window(slope_deg_grid, raster_bounds_wgs84, cluster_geom)
+        if sub_slope is not None:
+            valid = sub_slope[np.isfinite(sub_slope) & (sub_slope >= 0.0)]
+            if valid.size > 0:
+                slope_mean_val = round(float(np.mean(valid)), 2)
+                slope_max_val = round(float(np.max(valid)), 2)
+
+    canopy_val: float | None = None
+    if worldcover_wgs84 is not None and raster_bounds_wgs84 is not None:
+        sub_wc = _slice_raster_window(worldcover_wgs84, raster_bounds_wgs84, cluster_geom)
+        if sub_wc is not None:
+            valid_wc = sub_wc[sub_wc > 0]
+            if valid_wc.size > 0:
+                canopy_val = round(float(np.mean(valid_wc == 10)), 3)
+
+    mean_rad: float | None = None
+    lightscore: float | None = None
+    r_bounds = radiance_bounds_wgs84 or raster_bounds_wgs84
+    if radiance_wgs84 is not None and r_bounds is not None:
+        sub_rad = _slice_raster_window(radiance_wgs84, r_bounds, cluster_geom)
+        if sub_rad is not None:
+            valid_rad = sub_rad[np.isfinite(sub_rad) & (sub_rad >= 0.0)]
+            if valid_rad.size > 0:
+                mean_rad = round(float(np.mean(valid_rad)), 3)
+                lightscore = round(float(np.clip(mean_rad / 1.35, 0.0, 1.0)), 3)
+
+    return {
+        "slope_mean_deg": slope_mean_val,
+        "slope_max_deg": slope_max_val,
+        "canopy_share": canopy_val,
+        "mean_radiance_nw_cm2_sr": mean_rad,
+        "nl_lightscore": lightscore,
+    }
 
 
 def classify_habitation_clusters(
@@ -119,6 +161,12 @@ def classify_habitation_clusters(
     dt_geoms_wgs84: list[BaseGeometry] | None = None,
     metric_epsg: int = 32644,
     thresholds: ClassificationThresholds | None = None,
+    dem_elev_wgs84: np.ndarray | None = None,
+    worldcover_wgs84: np.ndarray | None = None,
+    raster_bounds_wgs84: tuple[float, float, float, float] | None = None,
+    cell_size_m: float = 30.0,
+    radiance_wgs84: np.ndarray | None = None,
+    radiance_bounds_wgs84: tuple[float, float, float, float] | None = None,
 ) -> list[ClassifiedClusterResult]:
     """Compute zonal metrics and assign 4-tier Axis-1 proxy class + Axis-2 UNVERIFIED state.
 
@@ -127,14 +175,26 @@ def classify_habitation_clusters(
       `{"LIKELY_ELECTRIFIED", "POTENTIALLY_UNDERSERVED", "POTENTIALLY_UNSERVED", "UNKNOWN"}`
     - Proxy confidence is strictly in `{"LOW", "MEDIUM"}` (`"HIGH"` is reserved for verified).
     - `verification_state` is always initialized to `"UNVERIFIED"`.
+    - Never fabricates synthetic VIIRS radiance or terrain when rasters are unavailable;
+      when night-time lights are unavailable, assigns `"UNKNOWN"` (`"LOW"`).
     """
     cfg = thresholds or ClassificationThresholds()
     if not clusters:
         return []
 
-    min_lon, min_lat, max_lon, max_lat = [float(x) for x in aoi_geom.bounds]
-    aoi_bbox = (min_lon, min_lat, max_lon, max_lat)
-    grids = generate_aoi_grids(aoi_bbox)
+    del aoi_geom  # Retained in signature for callers; sampling uses real raster bounds.
+
+    slope_deg_grid: np.ndarray | None = None
+    if dem_elev_wgs84 is not None and raster_bounds_wgs84 is not None and dem_elev_wgs84.size > 0:
+        elev_f = dem_elev_wgs84.astype(np.float64)
+        valid_elev = np.isfinite(elev_f) & (elev_f > -500.0) & (elev_f < 9000.0)
+        fill_val = float(np.median(elev_f[valid_elev])) if np.any(valid_elev) else 0.0
+        elev_clean = np.where(valid_elev, elev_f, fill_val)
+        slope_deg_grid = compute_slope_deg(
+            elev_clean,
+            cell_size_x_m=max(1.0, float(cell_size_m)),
+            cell_size_y_m=max(1.0, float(cell_size_m)),
+        )
 
     road_union_utm: BaseGeometry | None = None
     if road_geoms_wgs84:
@@ -167,9 +227,20 @@ def classify_habitation_clusters(
         c_utm_pt = Point(float(c_utm.centroid.x), float(c_utm.centroid.y))
         cluster_utm_centroids.append(c_utm_pt)
 
-        slope_mean, slope_max, canopy_share, mean_rad, nl_score = _sample_raster_stats_for_cluster(
-            c.geom, aoi_bbox, grids
+        sampled = _sample_real_raster_stats_for_cluster(
+            c.geom,
+            slope_deg_grid=slope_deg_grid,
+            worldcover_wgs84=worldcover_wgs84,
+            raster_bounds_wgs84=raster_bounds_wgs84,
+            radiance_wgs84=radiance_wgs84,
+            radiance_bounds_wgs84=radiance_bounds_wgs84,
         )
+        slope_mean = sampled["slope_mean_deg"]
+        slope_max = sampled["slope_max_deg"]
+        canopy_share = sampled["canopy_share"]
+        mean_rad = sampled["mean_radiance_nw_cm2_sr"]
+        nl_score = sampled["nl_lightscore"]
+
         d_road_m = (
             round(float(c_utm_pt.distance(road_union_utm)), 1)
             if road_union_utm is not None
@@ -185,7 +256,8 @@ def classify_habitation_clusters(
         )
 
         is_likely_elec = (
-            not c.is_isolated_group
+            nl_score is not None
+            and not c.is_isolated_group
             and c.n_detected >= cfg.min_buildings_for_proxy
             and nl_score >= cfg.nl_electrified_min
             and (d_infra_m is None or d_infra_m <= cfg.max_infra_dist_electrified_m)
@@ -211,11 +283,14 @@ def classify_habitation_clusters(
     for idx, c in enumerate(clusters):
         st = raw_stats[idx]
         c_utm_pt = cluster_utm_centroids[idx]
-        nl_score = float(st["nl_lightscore"])
+        nl_score = st["nl_lightscore"]
         d_infra_m = st["d_infra_m"]
         d_dt_m = st["d_dt_m"]
         d_road_m = st["d_road_m"]
-        canopy_share = float(st["canopy_share"])
+        canopy_opt: float | None = st["canopy_share"]
+        canopy_col = float(canopy_opt) if canopy_opt is not None else 0.0
+        slope_mean_col = float(st["slope_mean_deg"]) if st["slope_mean_deg"] is not None else 0.0
+        slope_max_col = float(st["slope_max_deg"]) if st["slope_max_deg"] is not None else 0.0
 
         d_elec_m: float | None = None
         if electrified_utm_points:
@@ -238,6 +313,14 @@ def classify_habitation_clusters(
                 f"{cfg.min_buildings_for_proxy} threshold); 500m nightlights cannot "
                 "resolve isolated roofs reliably."
             )
+        elif nl_score is None:
+            proxy_class = "UNKNOWN"
+            proxy_confidence = "LOW"
+            reasons.append(
+                "VIIRS night-time lights raster is unavailable for this AOI; Axis-1 "
+                "electrification status remains UNKNOWN until field verification or VIIRS "
+                "ingestion."
+            )
         elif st["is_likely_elec"]:
             proxy_class = "LIKELY_ELECTRIFIED"
             proxy_confidence = "MEDIUM" if (d_road_m is not None and d_road_m <= 500.0) else "LOW"
@@ -250,7 +333,9 @@ def classify_habitation_clusters(
             or (d_infra_m is None and (d_elec_m is None or d_elec_m > 800.0))
         ):
             proxy_class = "POTENTIALLY_UNSERVED"
-            proxy_confidence = "MEDIUM" if canopy_share < 0.65 else "LOW"
+            proxy_confidence = (
+                "MEDIUM" if (canopy_opt is not None and canopy_opt < 0.65) else "LOW"
+            )
             reasons.append(
                 f"Low nightlight LightScore={nl_score:.2f} (< {cfg.nl_unserved_max:.2f}) "
                 "and remote from electrified core/grid lines."
@@ -272,11 +357,19 @@ def classify_habitation_clusters(
 
         evidence_dict: dict[str, Any] = {
             "quality_tag": "PROXY",
+            "nightlights_available": nl_score is not None,
+            "nightlights_source": "VIIRS_RASTER" if nl_score is not None else "UNAVAILABLE",
+            "terrain_source": (
+                "COPERNICUS_DEM_30M" if st["slope_mean_deg"] is not None else "UNAVAILABLE"
+            ),
+            "landcover_source": (
+                "ESA_WORLDCOVER" if canopy_opt is not None else "UNAVAILABLE"
+            ),
             "nl_lightscore": nl_score,
             "mean_radiance_nw_cm2_sr": st["mean_radiance_nw_cm2_sr"],
             "slope_mean_deg": st["slope_mean_deg"],
             "slope_max_deg": st["slope_max_deg"],
-            "canopy_share": canopy_share,
+            "canopy_share": canopy_opt,
             "d_road_m": d_road_m,
             "d_infra_m": d_infra_m,
             "d_dt_m": d_dt_m,
@@ -294,9 +387,9 @@ def classify_habitation_clusters(
                 proxy_class=proxy_class,
                 proxy_confidence=proxy_confidence,
                 verification_state="UNVERIFIED",
-                slope_mean_deg=st["slope_mean_deg"],
-                slope_max_deg=st["slope_max_deg"],
-                canopy_share=canopy_share,
+                slope_mean_deg=slope_mean_col,
+                slope_max_deg=slope_max_col,
+                canopy_share=canopy_col,
                 mean_radiance_nw_cm2_sr=st["mean_radiance_nw_cm2_sr"],
                 nl_lightscore=nl_score,
                 d_road_m=d_road_m,
