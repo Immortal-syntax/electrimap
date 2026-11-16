@@ -42,7 +42,8 @@
     4. Hardened auth, wizard transactions, accessibility & responsive viewports (`AUD-18`, `AUD-20`, `AUD-21`, `AUD-22`, `AUD-24`–`AUD-29`): validated wizard AOI inputs before project creation, removed silent auto-login & guarded `?next=`, added `Dialog` scrolling + focus trap and `AppShell` mobile drawer Esc/focus handling, fixed header/Panel stacking at `768×1024`, replaced `QualityTag` mono Unicode glyphs with Lucide icons, fixed `ref-buildings-fill` inspector dispatch, wrapped mobile `390×844` map basemap controls, and bounded `GisFeatureInspectorDrawer` inside small viewports (**COMPLETED & VERIFIED**)
 - **Git Repository Status:**
   - Remote: `https://github.com/Immortal-syntax/electrimap.git`
-  - Active Branch: `experiment` (ready for commit/push synchronization with `origin/experiment`).
+  - Active Branch: `main` (synchronized with `origin/main`; `experiment` merged and synchronized with `origin/experiment`).
+  - Remote Branches Cleaned: Obsolete Dependabot branches deleted from GitHub (`dependabot/npm_and_yarn/frontend/*`) and pruned locally.
 
 ---
 
@@ -78,7 +79,7 @@
 ---
 
 ## 4. Multi-Agent Handover & Continuity Context (Antigravity <-> Claude)
-- **Active Branch:** `experiment` (synchronized with `origin/experiment`).
+- **Active Branch:** `main` (synchronized with `origin/main`; `experiment` synchronized with `origin/experiment`).
 - **How to Verify Locally:**
   - Backend: `.\backend\.venv\Scripts\ruff.exe check backend`, `.\backend\.venv\Scripts\mypy.exe --config-file backend/pyproject.toml backend/app backend/tests`, `.\backend\.venv\Scripts\pytest.exe backend/tests -q`
   - Frontend: `cd frontend && npm run typecheck && npm run lint && npm run test -- --run && npm run build`
