@@ -37,6 +37,7 @@ from app.services.gis_export_service import generate_project_gis_package_zip
 from app.services.infrastructure_service import list_project_infrastructure
 from app.services.planning_service import get_project_scenarios
 from app.services.project_service import get_owned_project_or_404
+from app.services.seed_service import DEMO_PROJECT_ID
 from app.services.settlement_pdf_service import generate_preliminary_settlement_pdf
 from app.services.settlement_service import (
     get_project_settlement_state,
@@ -77,13 +78,15 @@ def get_project_preflight_report(
         else {}
     )
     synthetic_fallback_layers: list[str] = []
-    for layer_row in layer_rows:
-        if layer_row.layer_key == "nightlights":
-            continue
-        ds_row = ds_by_id.get(layer_row.dataset_id) if layer_row.dataset_id else None
-        is_fallback_flag = (layer_row.summary_metrics or {}).get("is_synthetic_fallback") is True
-        if is_fallback_flag or (ds_row is not None and ds_row.key == "synthetic_fallback"):
-            synthetic_fallback_layers.append(layer_row.layer_key)
+    if proj.id != DEMO_PROJECT_ID:
+        for layer_row in layer_rows:
+            if layer_row.layer_key == "nightlights":
+                continue
+            ds_row = ds_by_id.get(layer_row.dataset_id) if layer_row.dataset_id else None
+            metrics = layer_row.summary_metrics or {}
+            is_fallback_flag = metrics.get("is_synthetic_fallback") is True
+            if is_fallback_flag or (ds_row is not None and ds_row.key == "synthetic_fallback"):
+                synthetic_fallback_layers.append(layer_row.layer_key)
 
     grid_missing_tie_in = [
         cl.cluster_label

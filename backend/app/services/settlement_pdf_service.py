@@ -82,6 +82,7 @@ from app.services.planning_service import (
     list_engineering_constants,
 )
 from app.services.project_service import get_owned_project_or_404
+from app.services.seed_service import DEMO_PROJECT_ID
 from app.services.settlement_service import (
     get_project_settlement_state,
     get_project_verification_ledger,
@@ -1523,15 +1524,19 @@ def generate_preliminary_settlement_pdf(
         if cl.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"} and cl.requires_tie_in
     ]
 
-    synthetic_fallback_layers = [
-        lyr.layer_key
-        for lyr in layers
-        if lyr.layer_key != "nightlights"
-        and (
-            (lyr.summary_metrics or {}).get("is_synthetic_fallback") is True
-            or (lyr.dataset is not None and lyr.dataset.key == "synthetic_fallback")
-        )
-    ]
+    synthetic_fallback_layers = (
+        []
+        if proj.id == DEMO_PROJECT_ID
+        else [
+            lyr.layer_key
+            for lyr in layers
+            if lyr.layer_key != "nightlights"
+            and (
+                (lyr.summary_metrics or {}).get("is_synthetic_fallback") is True
+                or (lyr.dataset is not None and lyr.dataset.key == "synthetic_fallback")
+            )
+        ]
+    )
 
     preflight = evaluate_dpr_preflight(
         project_id=proj.id,

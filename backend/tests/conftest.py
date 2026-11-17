@@ -53,6 +53,7 @@ def db_session() -> Generator[Session, None, None]:
 @pytest.fixture()
 def client(db_session: Session) -> Generator[TestClient, None, None]:
     """Provide a FastAPI TestClient wired to the isolated test database session."""
+    ensure_seed_data(db_session)
 
     def override_get_db() -> Generator[Session, None, None]:
         yield db_session
