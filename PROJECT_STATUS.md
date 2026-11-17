@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — Live Project State & Agent Handover Record
 
-> **Status:** Production-Ready (v1.0) · Phase: Full Data Integrity, Contextual Help & End-to-End DPR PDF Remediation Completed & Verified  
-> **Last Synchronized:** 2026-11-16  
+> **Status:** Production-Ready (v1.0) · Phase: Full-Stack Audit Remediation, Security & CI/CD Hardening Completed & Verified  
+> **Last Synchronized:** 2026-11-17  
 > **Active AI Agent:** Antigravity (Google DeepMind)  
 > **Secondary Compatibility:** Claude (Anthropic) via `CLAUDE.md` and `AGENTS.md`  
 
@@ -66,15 +66,15 @@
 
 ---
 
-## 3. Verification & Test Results (Synchronized 2026-11-16)
-- **Backend Ruff Lint (`ruff check backend/app backend/tests`):** Passed (`All checks passed!`).
-- **Backend Strict Typecheck (`mypy --config-file backend/pyproject.toml backend/app backend/tests`):** Passed (`Success: no issues found in 116 source files`).
-- **Backend Test Suite (`pytest backend/tests -q`):** **65 passed** (`1 warning` from third-party `starlette.testclient` deprecation).
+## 3. Verification & Test Results (Synchronized 2026-11-17)
+- **Backend Ruff Lint (`ruff check app tests`):** Passed (`All checks passed!`).
+- **Backend Strict Typecheck (`mypy app`):** Passed (`Success: no issues found in 94 source files`).
+- **Backend Test Suite (`pytest -v`):** **71 passed** (`1 warning` from third-party `starlette.testclient` deprecation), including `test_audit_fixes_regression.py` and `test_audit_math_regression.py`.
 - **Frontend Typecheck (`npm run typecheck` -> `tsc --noEmit`):** Passed (`0 errors`).
 - **Frontend Linting (`npm run lint` -> `eslint . --max-warnings 0`):** Passed (`0 warnings, 0 errors`).
-- **Frontend Unit Tests (`npm test -- --run` -> `vitest run --run`):** **53 passed** across 3 test suites (`QualityTag.test.tsx`: 10; `BeginnerUxRemediation.test.tsx`: 9; `AppRoutes.test.tsx`: 34).
-- **Frontend Production Build (`npm run build` -> `tsc -b && vite build`):** Passed cleanly (`1624` modules transformed).
-- **Live E2E, Visual DPR PDF & Edge CDP Verification:** Verified 17-cluster Demo Project (`UNKNOWN`/unavailable VIIRS), real Copernicus GLO-30 & ESA WorldCover extraction, NASA POWER `4.90 kWh/m²/d` (`AUG 3.43`), distinct comparison NPC columns, Pre-Flight `GRID_TIE_IN_PRESENT` & synthetic blocks, Tile `ETag` `304`, CSV `\x00` validation, 12-page visual DPR PDF (Plates 1–2, wrapped multi-row SLD, `1280.0 Wh/HH` SHS, wrapped tables), Excel formula workbook, blank wizard defaults, tooltip `Escape` cycle, task-focused Step 1 (`Get your map ready`), task-focused Step 5 (`Project Costs & Scenarios` 3 headlines + collapsed `Financial details` / `Rate sources & assumptions` + 4-column expandable BOQ), individual user sign-in (`Swayam Kumar` & `Sumit Kushwaha` showing ONLY authenticated full name in top-right, shared Sample Study access + private project isolation, refresh persistence, sign-out + browser-back protection, zero hardcoded frontend passwords), and `0 px` horizontal overflow at desktop (`1440×900`) and mobile (`390×844`) with `0` page/post-login HTTP errors.
+- **Frontend Unit Tests (`npm test` -> `vitest run`):** **58 passed** across 4 test suites (`QualityTag.test.tsx`: 10; `BeginnerUxRemediation.test.tsx`: 9; `AppRoutes.test.tsx`: 34; `AuditFixesRegression.test.tsx`: 5).
+- **Frontend Production Build (`npm run build` -> `tsc -b && vite build`):** Passed cleanly (`1627` modules transformed).
+- **Local Full-Stack Edge CDP E2E Verification (`uvicorn` + `vite preview` + Headless Edge):** Verified individual user login & demo write isolation (`403 DEMO_PROJECT_READ_ONLY` for secondary planner), new project -> AOI -> data -> clustering -> verification -> tie-in -> demand -> scenario -> settings save (`version` sync, `0` HTTP 409/500 errors), `0` console errors, `0 px` horizontal overflow at `1440x900`, `1280x800`, `768x1024`, and `375x812` across `/`, `/login`, `/projects`, `/projects/new`, and `/workspace`, unified `snapshot_hash` across Preflight/PDF/XLSX/ZIP, and `10`-page DPR PDF (`CALCULATED_SUM`, no blank page streams, escaped XML metadata).
 
 ---
 
