@@ -1,13 +1,26 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "vite",
-  "installCommand": "if [ -n \"$npm_config_cache_dir\" ]; then export npm_config_cache=\"$npm_config_cache_dir\"; unset npm_config_cache_dir; fi; if [ -n \"$NPM_CONFIG_CACHE_DIR\" ]; then export NPM_CONFIG_CACHE=\"$NPM_CONFIG_CACHE_DIR\"; unset NPM_CONFIG_CACHE_DIR; fi; npm --prefix frontend install --include=dev",
-  "buildCommand": "if [ -n \"$npm_config_cache_dir\" ]; then export npm_config_cache=\"$npm_config_cache_dir\"; unset npm_config_cache_dir; fi; if [ -n \"$NPM_CONFIG_CACHE_DIR\" ]; then export NPM_CONFIG_CACHE=\"$NPM_CONFIG_CACHE_DIR\"; unset NPM_CONFIG_CACHE_DIR; fi; npm --prefix frontend run build",
-  "outputDirectory": "frontend/dist",
+  "services": {
+    "frontend": {
+      "root": "frontend",
+      "framework": "vite",
+      "installCommand": "if [ -n \"$npm_config_cache_dir\" ]; then export npm_config_cache=\"$npm_config_cache_dir\"; unset npm_config_cache_dir; fi; if [ -n \"$NPM_CONFIG_CACHE_DIR\" ]; then export NPM_CONFIG_CACHE=\"$NPM_CONFIG_CACHE_DIR\"; unset NPM_CONFIG_CACHE_DIR; fi; npm install --include=dev",
+      "buildCommand": "if [ -n \"$npm_config_cache_dir\" ]; then export npm_config_cache=\"$npm_config_cache_dir\"; unset npm_config_cache_dir; fi; if [ -n \"$NPM_CONFIG_CACHE_DIR\" ]; then export NPM_CONFIG_CACHE=\"$NPM_CONFIG_CACHE_DIR\"; unset NPM_CONFIG_CACHE_DIR; fi; npm run build",
+      "outputDirectory": "dist",
+      "rewrites": [
+        {
+          "source": "/((?!_vercel/).*)",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  },
   "rewrites": [
     {
-      "source": "/((?!_vercel/).*)",
-      "destination": "/index.html"
+      "source": "/(.*)",
+      "destination": {
+        "service": "frontend"
+      }
     }
   ]
 }
