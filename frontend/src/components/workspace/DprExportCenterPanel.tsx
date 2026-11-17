@@ -25,6 +25,7 @@ import {
   Search,
   ShieldAlert,
 } from 'lucide-react';
+import { apiFetchResponse } from '../../lib/apiClient';
 import { formatScenarioLabel } from '../../lib/beginnerGlossary';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -190,9 +191,9 @@ export const DprExportCenterPanel: React.FC<DprExportCenterPanelProps> = ({
     setDownloadingArtifact(artifact);
     setDownloadError(null);
     try {
-      const resp = await fetch(`/api/v1/projects/${projectId}/exports/${artifact}`, {
-        credentials: 'include',
-      });
+      const resp = await apiFetchResponse(
+        `/api/v1/projects/${projectId}/exports/${artifact}`,
+      );
       if (!resp.ok) {
         let msg = `Export '${artifact}' failed (HTTP ${resp.status}).`;
         try {

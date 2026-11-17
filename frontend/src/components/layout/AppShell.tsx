@@ -118,23 +118,29 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   useEffect(() => {
     if (!activeProjectId || cachedProjectName || !user) return
     let active = true
-    apiRequest<{ name: string; target_district?: string | null; target_state?: string | null }>(
-      `/api/v1/projects/${activeProjectId}`,
-    )
-      .then((proj) => {
-        if (active && proj?.name) {
-          setProjectMeta(activeProjectId, {
-            name: proj.name,
-            district: proj.target_district,
-            state: proj.target_state,
-          })
-        }
-      })
-      .catch(() => {
-        // Fallback label handled smoothly by resolveRouteContext
-      })
+    const timer = window.setTimeout(() => {
+      if (!active || useActiveProjectStore.getState().projectsById[activeProjectId]?.name) {
+        return
+      }
+      apiRequest<{ name: string; target_district?: string | null; target_state?: string | null }>(
+        `/api/v1/projects/${activeProjectId}`,
+      )
+        .then((proj) => {
+          if (active && proj?.name) {
+            setProjectMeta(activeProjectId, {
+              name: proj.name,
+              district: proj.target_district,
+              state: proj.target_state,
+            })
+          }
+        })
+        .catch(() => {
+          // Fallback label handled smoothly by resolveRouteContext
+        })
+    }, 60)
     return () => {
       active = false
+      window.clearTimeout(timer)
     }
   }, [activeProjectId, cachedProjectName, user, setProjectMeta])
 
@@ -406,10 +412,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               </Button>
             </div>
           ) : (
-            <Link to="/login">
-              <Button size="sm" variant="primary">
-                Sign In
-              </Button>
+            <Link
+              to="/login"
+              className="inline-flex items-center justify-center rounded-xs font-medium bg-accent text-white hover:bg-accent-hover h-7 px-2.5 text-xs border border-accent transition-colors"
+            >
+              Sign In
             </Link>
           )}
         </div>

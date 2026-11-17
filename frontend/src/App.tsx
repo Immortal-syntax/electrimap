@@ -12,18 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useEffect } from 'react'
+import React, { Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Analytics } from '@vercel/analytics/react'
 import { AppShell } from './components/layout/AppShell'
 import { LoadingState } from './components/ui/Skeleton'
-import { LandingPage } from './pages/LandingPage'
-import { LoginPage } from './pages/LoginPage'
-import { NewProjectWizardPage } from './pages/NewProjectWizardPage'
-import { ProjectsPage } from './pages/ProjectsPage'
-import { WorkspacePage } from './pages/WorkspacePage'
 import { setCsrfToken } from './lib/apiClient'
 import { useSessionStore } from './stores/sessionStore'
+
+const LandingPage = React.lazy(() =>
+  import('./pages/LandingPage').then((m) => ({ default: m.LandingPage })),
+)
+const LoginPage = React.lazy(() =>
+  import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })),
+)
+const NewProjectWizardPage = React.lazy(() =>
+  import('./pages/NewProjectWizardPage').then((m) => ({ default: m.NewProjectWizardPage })),
+)
+const ProjectsPage = React.lazy(() =>
+  import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })),
+)
+const WorkspacePage = React.lazy(() =>
+  import('./pages/WorkspacePage').then((m) => ({ default: m.WorkspacePage })),
+)
 
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { user, isInitialized } = useSessionStore()
@@ -73,47 +84,58 @@ export const App: React.FC = () => {
   return (
     <BrowserRouter>
       <AppShell>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/projects"
-            element={
-              <ProtectedRoute>
-                <ProjectsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/projects/new"
-            element={
-              <ProtectedRoute>
-                <NewProjectWizardPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/projects/:id/workspace"
-            element={
-              <ProtectedRoute>
-                <WorkspacePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/projects/:id/:section"
-            element={
-              <ProtectedRoute>
-                <WorkspacePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/projects/:id"
-            element={<Navigate to="workspace" replace />}
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense
+          fallback={
+            <div className="page-container">
+              <LoadingState
+                title="Loading view…"
+                description="Preparing workspace components and GIS modules."
+              />
+            </div>
+          }
+        >
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/projects"
+              element={
+                <ProtectedRoute>
+                  <ProjectsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/new"
+              element={
+                <ProtectedRoute>
+                  <NewProjectWizardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:id/workspace"
+              element={
+                <ProtectedRoute>
+                  <WorkspacePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:id/:section"
+              element={
+                <ProtectedRoute>
+                  <WorkspacePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:id"
+              element={<Navigate to="workspace" replace />}
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </AppShell>
       <Analytics />
     </BrowserRouter>

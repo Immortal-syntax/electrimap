@@ -25,7 +25,8 @@ import { Icon } from '../components/ui/Icon';
 import { Input } from '../components/ui/Input';
 
 export const LoginPage: React.FC = () => {
-  const { login, clearError, isLoading, error } = useSessionStore();
+  const { user, isInitialized, login, clearError, isLoading, error, connectionWarning } =
+    useSessionStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -33,19 +34,27 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  const nextUrl = searchParams.get('next');
+  const safeTarget =
+    nextUrl && nextUrl.startsWith('/') && !nextUrl.startsWith('//')
+      ? nextUrl
+      : '/projects';
+
   useEffect(() => {
     clearError();
   }, [clearError]);
+
+  useEffect(() => {
+    if (isInitialized && user) {
+      navigate(safeTarget, { replace: true });
+    }
+  }, [isInitialized, user, navigate, safeTarget]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await login(email.trim(), password);
-      const nextUrl = searchParams.get('next');
-      const isSafeRelative = Boolean(
-        nextUrl && nextUrl.startsWith('/') && !nextUrl.startsWith('//'),
-      );
-      navigate(isSafeRelative && nextUrl ? nextUrl : '/projects');
+      navigate(safeTarget);
     } catch {
       // Error is stored in sessionStore.error
     }
@@ -78,6 +87,11 @@ export const LoginPage: React.FC = () => {
         </div>
 
         <div className="p-7 space-y-4">
+          {connectionWarning && !error && (
+            <Callout tone="warn" title="Backend Connection Issue">
+              {connectionWarning}
+            </Callout>
+          )}
           {error && (
             <Callout tone="error" title="Sign-In Failed">
               {error}

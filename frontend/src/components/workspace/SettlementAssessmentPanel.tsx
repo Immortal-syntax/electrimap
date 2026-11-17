@@ -25,7 +25,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { apiRequest } from '../../lib/apiClient';
+import { apiFetchResponse, apiRequest } from '../../lib/apiClient';
 import {
   formatEvidenceSourceLabel,
   formatVerificationStateLabel,
@@ -149,6 +149,17 @@ export interface SettlementAssessmentPanelProps {
   onSettlementsUpdated: () => Promise<void>;
 }
 
+function formatConfirmedClassLabel(verifiedClass?: string | null): string {
+  if (!verifiedClass) return '';
+  if (verifiedClass === 'ELECTRIFIED') return 'Electrified';
+  if (verifiedClass === 'UNDERSERVED') return 'Underserved';
+  if (verifiedClass === 'UNSERVED') return 'Unserved';
+  return verifiedClass
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
 export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps> = ({
   projectId,
   metricEpsg,
@@ -259,20 +270,9 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
     setDownloadingSkeletonPdf(true);
     setErrorMessage(null);
     try {
-      const resp = await fetch(
+      const resp = await apiFetchResponse(
         `/api/v1/projects/${projectId}/exports/preliminary-settlement-pdf?skeleton_only=true`,
-        { credentials: 'include' },
       );
-      if (!resp.ok) {
-        let msg = `Preliminary DPR Skeleton export failed (${resp.status}).`;
-        try {
-          const payload = (await resp.json()) as { detail?: string; message?: string };
-          msg = payload.message ?? payload.detail ?? msg;
-        } catch {
-          // ignore non-JSON body
-        }
-        throw new Error(msg);
-      }
       const blob = await resp.blob();
       const cd = resp.headers.get('content-disposition') ?? '';
       const match = /filename="?([^";]+)"?/i.exec(cd);
@@ -462,7 +462,12 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
               <Input
                 id="dbscan-eps"
                 label="Village Grouping Radius"
-                labelHelp={<HelpTooltip glossaryKey="dbscanClustering" />}
+                labelHelp={
+                  <span className="inline-flex items-center gap-1">
+                    <HelpTooltip glossaryKey="dbscanClustering" />
+                    <HelpTooltip glossaryKey="settlementBuffer" />
+                  </span>
+                }
                 hint="Buildings within this distance (default 150 m) are grouped into one hamlet cluster."
                 type="number"
                 min={25}
@@ -612,12 +617,14 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
           {/* Left 7 cols: Cluster Inventory Table */}
           <div className="lg:col-span-7 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="small-caps-heading flex items-center gap-1.5">
+              <div className="small-caps-heading flex items-center gap-1.5 flex-wrap">
                 <span>
                   Hamlets &amp; Habitation Groups ({filteredClusters.length}/{clusters.length} ·
                   Field Checked: {(settlements?.verification_coverage_pct ?? 0).toFixed(1)}%)
                 </span>
+                <HelpTooltip glossaryKey="verificationCoverage" />
                 <HelpTooltip glossaryKey="proxyClassification" />
+                <HelpTooltip glossaryKey="axis1Axis2" />
               </div>
               {(clusterSearch || proxyFilter !== 'ALL' || verificationFilter !== 'ALL') && (
                 <Button
@@ -761,14 +768,7 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                             />
                             {c.verified_class && (
                               <div className="text-xs font-medium text-ok">
-                                Confirmed Status:{' '}
-                                {c.verified_class === 'ELECTRIFIED'
-                                  ? 'Electrified'
-                                  : c.verified_class === 'UNDERSERVED'
-                                    ? 'Underserved'
-                                    : c.verified_class === 'UNSERVED'
-                                      ? 'Unserved'
-                                      : c.verified_class}
+                                Confirmed Status: {formatConfirmedClassLabel(c.verified_class)}
                               </div>
                             )}
                           </td>
@@ -827,15 +827,18 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                     <span className="font-semibold text-ink">
                       {formatVerificationStateLabel(selectedCluster.verification_state)}
                       {selectedCluster.verified_class
-                        ? ` (${selectedCluster.verified_class})`
+                        ? ` (${formatConfirmedClassLabel(selectedCluster.verified_class)})`
                         : ''}
                     </span>
                   </div>
                   <div>
                     <span className="text-ink-2 block">Nearest Road / Slope</span>
                     <span className="text-ink tabular-nums">
-                      {Math.round(selectedCluster.d_road_m ?? 0)} m ·{' '}
-                      {selectedCluster.slope_mean_deg.toFixed(1)}°
+                      {selectedCluster.d_road_m !== null &&
+                      selectedCluster.d_road_m !== undefined
+                        ? `${Math.round(selectedCluster.d_road_m)} m`
+                        : '—'}{' '}
+                      · {selectedCluster.slope_mean_deg.toFixed(1)}°
                     </span>
                   </div>
                   <div>
@@ -1034,7 +1037,7 @@ export const SettlementAssessmentPanel: React.FC<SettlementAssessmentPanelProps>
                 onClick={() => {
                   const csv = [
                     'cluster_label,verification_state,verified_class,verified_households,evidence_type,verifier_name,observed_on,note',
-                    'C-01,FIELD_VERIFIED,UNSERVED,42,FIELD_SURVEY,Block Survey Team,2026-04-01,Confirmed 0 LT poles in hamlet',
+                    'CL-01,FIELD_VERIFIED,UNSERVED,42,FIELD_SURVEY,Block Survey Team,2026-04-01,Confirmed 0 LT poles in hamlet',
                   ].join('\n');
                   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
                   const url = URL.createObjectURL(blob);

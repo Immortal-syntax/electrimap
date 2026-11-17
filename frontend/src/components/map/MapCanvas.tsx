@@ -16,7 +16,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
-import type { StyleSpecification } from 'maplibre-gl';
 import { Button } from '../ui/Button';
 import { LayerSourceBadge, type ProxyElectrificationClass } from '../ui/Badge';
 import { QualityTag } from '../ui/QualityTag';
@@ -31,6 +30,8 @@ import {
 import { GisSymbologyLegend } from './GisSymbologyLegend';
 import { RASTER_LEGEND_SPECS } from './symbology';
 import { DEMO_PROJECT_ID } from '../layout/navigationConfig';
+import { resolveApiUrl } from '../../lib/apiClient';
+import { buildBasemapStyle } from './basemapStyles';
 import {
   BasemapMode,
   DEFAULT_ELECTRIFICATION_GAPS_FC,
@@ -57,7 +58,6 @@ const KORAPUT_DEFAULT_ZOOM = 12.6;
 const INDIA_DEFAULT_CENTER: [number, number] = [78.9629, 20.5937];
 const INDIA_DEFAULT_ZOOM = 5.4;
 const MVT_BUILDING_FEATURE_THRESHOLD = 5000;
-const GLYPHS_URL = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 
 function resolveMetricCrsLabel(metricEpsg?: number): string {
   if (!metricEpsg || Number.isNaN(metricEpsg)) return 'UTM 44N (EPSG:32644)';
@@ -143,148 +143,6 @@ export interface MapCanvasProps {
   maxZoom?: number;
   /** Constraining bounding box in EPSG:4326 [[minLon, minLat], [maxLon, maxLat]] (defaults to INDIA_MAX_BOUNDS) */
   maxBounds?: [[number, number], [number, number]];
-}
-
-/**
- * Build a deterministic, 100% free (zero API key) MapLibre StyleSpecification
- * for all 4 basemap modes (`survey_paper`, `streets`, `terrain`, `satellite`).
- */
-function buildBasemapStyle(mode: BasemapMode): StyleSpecification {
-  if (mode === 'streets') {
-    return {
-      version: 8,
-      glyphs: GLYPHS_URL,
-      sources: {
-        'osm-standard': {
-          type: 'raster',
-          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-          tileSize: 256,
-          maxzoom: 19,
-          attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL)',
-        },
-      },
-      layers: [
-        {
-          id: 'streets-bg',
-          type: 'background',
-          paint: { 'background-color': '#EFECE6' },
-        },
-        {
-          id: 'streets-tiles',
-          type: 'raster',
-          source: 'osm-standard',
-          minzoom: 0,
-          maxzoom: 22,
-        },
-      ],
-    };
-  }
-
-  if (mode === 'terrain') {
-    return {
-      version: 8,
-      glyphs: GLYPHS_URL,
-      sources: {
-        'opentopomap-tiles': {
-          type: 'raster',
-          tiles: [
-            'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
-            'https://b.tile.opentopomap.org/{z}/{x}/{y}.png',
-            'https://c.tile.opentopomap.org/{z}/{x}/{y}.png',
-          ],
-          tileSize: 256,
-          maxzoom: 17,
-          attribution:
-            'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
-        },
-      },
-      layers: [
-        {
-          id: 'terrain-bg',
-          type: 'background',
-          paint: { 'background-color': '#EAE5D9' },
-        },
-        {
-          id: 'terrain-tiles',
-          type: 'raster',
-          source: 'opentopomap-tiles',
-          minzoom: 0,
-          maxzoom: 22,
-          paint: {
-            'raster-opacity': 0.9,
-          },
-        },
-      ],
-    };
-  }
-
-  if (mode === 'satellite') {
-    return {
-      version: 8,
-      glyphs: GLYPHS_URL,
-      sources: {
-        'eox-s2': {
-          type: 'raster',
-          tiles: [
-            'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg',
-          ],
-          tileSize: 256,
-          maxzoom: 14,
-          attribution:
-            'Sentinel-2 cloudless 2020 - https://s2maps.eu by EOX IT Services GmbH (CC BY-NC-SA 4.0 · Contains modified Copernicus Sentinel data 2020)',
-        },
-      },
-      layers: [
-        {
-          id: 's2-bg',
-          type: 'background',
-          paint: { 'background-color': '#0F172A' },
-        },
-        {
-          id: 'eox-s2-layer',
-          type: 'raster',
-          source: 'eox-s2',
-          minzoom: 0,
-          maxzoom: 22,
-        },
-      ],
-    };
-  }
-
-  return {
-    version: 8,
-    glyphs: GLYPHS_URL,
-    sources: {
-      'osm-survey': {
-        type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        maxzoom: 19,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL)',
-      },
-    },
-    layers: [
-      {
-        id: 'survey-paper-bg',
-        type: 'background',
-        paint: { 'background-color': '#F4F7FA' },
-      },
-      {
-        id: 'survey-paper-tiles',
-        type: 'raster',
-        source: 'osm-survey',
-        minzoom: 0,
-        maxzoom: 22,
-        paint: {
-          'raster-opacity': 0.72,
-          'raster-saturation': -0.65,
-          'raster-brightness-min': 0.12,
-        },
-      },
-    ],
-  };
 }
 
 function buildSurveyGraticuleGeoJson(
@@ -796,13 +654,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       },
     }));
 
+    const hasComputedScenario = normalizedScenarioFeatures.length > 0;
     return {
       type: 'FeatureCollection',
-      features: [
-        ...(effectiveRefPack ? DEFAULT_PROPOSED_NETWORK_FC.features : []),
-        ...normalizedScenarioFeatures,
-        ...routeFeatures,
-      ],
+      features: hasComputedScenario
+        ? normalizedScenarioFeatures
+        : [
+            ...(effectiveRefPack ? DEFAULT_PROPOSED_NETWORK_FC.features : []),
+            ...routeFeatures,
+          ],
     };
   }, [networkLayout, referenceRoutes, effectiveRefPack]);
 
@@ -896,10 +756,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           !inferredRasterUrl.includes('period=')
             ? `${inferredRasterUrl}${inferredRasterUrl.includes('?') ? '&' : '?'}period=${viirsPeriod}`
             : inferredRasterUrl;
-        const activeOverlayUrl = baseOverlayUrl
+        const activeOverlayUrlRaw = baseOverlayUrl
           ? rasterRetryToken > 0
             ? `${baseOverlayUrl}${baseOverlayUrl.includes('?') ? '&' : '?'}retry=${rasterRetryToken}`
             : baseOverlayUrl
+          : null;
+        const activeOverlayUrl = activeOverlayUrlRaw
+          ? resolveApiUrl(activeOverlayUrlRaw)
           : null;
         const effectiveOpacity =
           effectiveRasterOverlay !== 'none'
@@ -908,10 +771,29 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
         if (activeOverlayUrl) {
           const aoiBbox = aoiGeometry ? computeGeoJsonBbox(aoiGeometry) : null;
-          const minLon = aoiBbox ? aoiBbox[0] : 82.615;
-          const minLat = aoiBbox ? aoiBbox[1] : 18.475;
-          const maxLon = aoiBbox ? aoiBbox[2] : 82.785;
-          const maxLat = aoiBbox ? aoiBbox[3] : 18.605;
+          const usesSpikeViirsBounds = activeOverlayUrl.includes(
+            '/api/v1/spikes/viirs-overlay',
+          );
+          const minLon = usesSpikeViirsBounds
+            ? 82.695
+            : aoiBbox
+              ? aoiBbox[0]
+              : 82.695;
+          const minLat = usesSpikeViirsBounds
+            ? 18.535
+            : aoiBbox
+              ? aoiBbox[1]
+              : 18.535;
+          const maxLon = usesSpikeViirsBounds
+            ? 82.765
+            : aoiBbox
+              ? aoiBbox[2]
+              : 82.765;
+          const maxLat = usesSpikeViirsBounds
+            ? 18.595
+            : aoiBbox
+              ? aoiBbox[3]
+              : 18.595;
           const bounds: [
             [number, number],
             [number, number],
@@ -1277,7 +1159,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           if (!map.getSource('buildings-mvt')) {
             map.addSource('buildings-mvt', {
               type: 'vector',
-              tiles: [`/api/v1/tiles/${projectId}/buildings/{z}/{x}/{y}.mvt`],
+              tiles: [
+                resolveApiUrl(`/api/v1/tiles/${projectId}/buildings/{z}/{x}/{y}.mvt`),
+              ],
               minzoom: 10,
               maxzoom: 18,
             });
@@ -1350,7 +1234,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 [
                   'in',
                   ['get', 'verification_state'],
-                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                  ['literal', ['FIELD_VERIFIED', 'UTILITY_VERIFIED']],
                 ],
                 '#009E73',
                 [
@@ -1379,7 +1263,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 [
                   'in',
                   ['get', 'verification_state'],
-                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                  ['literal', ['FIELD_VERIFIED', 'UTILITY_VERIFIED']],
                 ],
                 '#009E73',
                 [
@@ -1400,7 +1284,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 [
                   'in',
                   ['get', 'verification_state'],
-                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                  ['literal', ['FIELD_VERIFIED', 'UTILITY_VERIFIED']],
                 ],
                 ['literal', [1]],
                 ['literal', [3, 2]],
@@ -1424,7 +1308,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 [
                   'in',
                   ['get', 'verification_state'],
-                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                  ['literal', ['FIELD_VERIFIED', 'UTILITY_VERIFIED']],
                 ],
                 '#009E73',
                 [
@@ -1444,7 +1328,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 [
                   'in',
                   ['get', 'verification_state'],
-                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                  ['literal', ['FIELD_VERIFIED', 'UTILITY_VERIFIED']],
                 ],
                 '#0F172A',
                 '#FFFFFF',
@@ -1454,7 +1338,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 [
                   'in',
                   ['get', 'verification_state'],
-                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                  ['literal', ['FIELD_VERIFIED', 'UTILITY_VERIFIED']],
                 ],
                 3.0,
                 1.8,

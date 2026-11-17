@@ -26,6 +26,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { apiRequest } from '../../lib/apiClient';
+import type { GlossaryKey } from '../../lib/beginnerGlossary';
 import {
   RASTER_LEGEND_SPECS,
   SATELLITE_SOURCES_ATTRIBUTION,
@@ -352,8 +353,9 @@ export const DataManagementPanel: React.FC<DataManagementPanelProps> = ({
           <div className="p-3.5 bg-paper border border-rule rounded-xs flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-ink">
-                  Study Area Data Availability:
+                <span className="text-xs font-semibold text-ink inline-flex items-center gap-1.5">
+                  <span>Study Area Data Availability:</span>
+                  <HelpTooltip glossaryKey="sentinel2Ndvi" />
                 </span>
                 <Badge variant={readiness.badgeVariant} size="sm">
                   {readiness.label}
@@ -619,6 +621,14 @@ export const DataManagementPanel: React.FC<DataManagementPanelProps> = ({
                     LAYER_LABELS[layer.layer_key] ??
                     layer.dataset?.name ??
                     layer.layer_key;
+                  const layerGlossaryMap: Record<string, GlossaryKey> = {
+                    buildings: 'buildingFootprints',
+                    dem_slope: 'demSlope',
+                    landcover: 'worldCover',
+                    nightlights: 'viirsNighttimeLight',
+                    solar_resource: 'ghiSolarIrradiance',
+                  };
+                  const layerGlossaryKey = layerGlossaryMap[layer.layer_key];
                   const honesty = classifyLayerHonesty(layer);
 
                   return (
@@ -629,6 +639,7 @@ export const DataManagementPanel: React.FC<DataManagementPanelProps> = ({
                       <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold text-ink">{displayTitle}</span>
+                          {layerGlossaryKey && <HelpTooltip glossaryKey={layerGlossaryKey} />}
                           <QualityTag kind={honesty.qualityKind} label={honesty.originLabel} />
                           <Badge variant={honesty.badgeVariant} size="sm">
                             {honesty.statusLabel}

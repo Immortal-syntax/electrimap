@@ -16,7 +16,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
-import type { StyleSpecification } from 'maplibre-gl';
+import { resolveApiUrl } from '../../lib/apiClient';
+import { buildBasemapStyle } from './basemapStyles';
 import { Button } from '../ui/Button';
 import { LayerSourceBadge } from '../ui/Badge';
 import { QualityTag } from '../ui/QualityTag';
@@ -52,7 +53,6 @@ export type { BasemapMode };
 
 const KORAPUT_CENTER: [number, number] = [82.73, 18.565];
 const DEFAULT_ZOOM = 12.6;
-const GLYPHS_URL = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 
 if (
   typeof maplibregl.setWorkerUrl === 'function' &&
@@ -164,142 +164,6 @@ export function generateSyntheticPointsGeoJson(
   return {
     type: 'FeatureCollection',
     features,
-  };
-}
-
-function buildBasemapStyle(mode: BasemapMode): StyleSpecification {
-  if (mode === 'streets') {
-    return {
-      version: 8,
-      glyphs: GLYPHS_URL,
-      sources: {
-        'osm-standard': {
-          type: 'raster',
-          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-          tileSize: 256,
-          maxzoom: 19,
-          attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL)',
-        },
-      },
-      layers: [
-        {
-          id: 'streets-bg',
-          type: 'background',
-          paint: { 'background-color': '#EFECE6' },
-        },
-        {
-          id: 'streets-tiles',
-          type: 'raster',
-          source: 'osm-standard',
-          minzoom: 0,
-          maxzoom: 22,
-        },
-      ],
-    };
-  }
-
-  if (mode === 'terrain') {
-    return {
-      version: 8,
-      glyphs: GLYPHS_URL,
-      sources: {
-        'opentopomap-tiles': {
-          type: 'raster',
-          tiles: [
-            'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
-            'https://b.tile.opentopomap.org/{z}/{x}/{y}.png',
-            'https://c.tile.opentopomap.org/{z}/{x}/{y}.png',
-          ],
-          tileSize: 256,
-          maxzoom: 17,
-          attribution:
-            'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
-        },
-      },
-      layers: [
-        {
-          id: 'terrain-bg',
-          type: 'background',
-          paint: { 'background-color': '#EAE5D9' },
-        },
-        {
-          id: 'terrain-tiles',
-          type: 'raster',
-          source: 'opentopomap-tiles',
-          minzoom: 0,
-          maxzoom: 22,
-          paint: { 'raster-opacity': 0.9 },
-        },
-      ],
-    };
-  }
-
-  if (mode === 'satellite') {
-    return {
-      version: 8,
-      glyphs: GLYPHS_URL,
-      sources: {
-        'eox-s2': {
-          type: 'raster',
-          tiles: [
-            'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg',
-          ],
-          tileSize: 256,
-          maxzoom: 14,
-          attribution:
-            'Sentinel-2 cloudless 2020 - https://s2maps.eu by EOX IT Services GmbH (CC BY-NC-SA 4.0 · Contains modified Copernicus Sentinel data 2020)',
-        },
-      },
-      layers: [
-        {
-          id: 's2-bg',
-          type: 'background',
-          paint: { 'background-color': '#0F172A' },
-        },
-        {
-          id: 'eox-s2-layer',
-          type: 'raster',
-          source: 'eox-s2',
-          minzoom: 0,
-          maxzoom: 22,
-        },
-      ],
-    };
-  }
-
-  return {
-    version: 8,
-    glyphs: GLYPHS_URL,
-    sources: {
-      'osm-survey': {
-        type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        maxzoom: 19,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL)',
-      },
-    },
-    layers: [
-      {
-        id: 'survey-paper-bg',
-        type: 'background',
-        paint: { 'background-color': '#F7F5F0' },
-      },
-      {
-        id: 'survey-paper-tiles',
-        type: 'raster',
-        source: 'osm-survey',
-        minzoom: 0,
-        maxzoom: 22,
-        paint: {
-          'raster-opacity': 0.72,
-          'raster-saturation': -0.65,
-          'raster-brightness-min': 0.12,
-        },
-      },
-    ],
   };
 }
 
@@ -527,18 +391,19 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
 
         if (layerBEnabled && !viirsGlobalGibs) {
           const baseUrl = `/api/v1/spikes/viirs-overlay?period=${viirsPeriod}`;
-          const url =
-            rasterRetryToken > 0 ? `${baseUrl}&retry=${rasterRetryToken}` : baseUrl;
+          const url = resolveApiUrl(
+            rasterRetryToken > 0 ? `${baseUrl}&retry=${rasterRetryToken}` : baseUrl,
+          );
           const bounds: [
             [number, number],
             [number, number],
             [number, number],
             [number, number],
           ] = [
-            [82.615, 18.605],
-            [82.785, 18.605],
-            [82.785, 18.475],
-            [82.615, 18.475],
+            [82.695, 18.595],
+            [82.765, 18.595],
+            [82.765, 18.535],
+            [82.695, 18.535],
           ];
           const nextRasterKey = `${url}|${bounds.flat().join(',')}`;
           const existingRaster = map.getSource('viirs-local-raster') as
@@ -820,7 +685,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
                 [
                   'in',
                   ['get', 'verification_state'],
-                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                  ['literal', ['FIELD_VERIFIED', 'UTILITY_VERIFIED']],
                 ],
                 '#009E73',
                 [
@@ -840,7 +705,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
                 [
                   'in',
                   ['get', 'verification_state'],
-                  ['literal', ['VERIFIED', 'VERIFIED_BY_EVIDENCE', 'SURVEY_VERIFIED']],
+                  ['literal', ['FIELD_VERIFIED', 'UTILITY_VERIFIED']],
                 ],
                 '#0F172A',
                 '#FFFFFF',
@@ -1250,7 +1115,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: buildBasemapStyle(basemap),
+      style: buildBasemapStyle(basemap, '#F7F5F0'),
       center: KORAPUT_CENTER,
       zoom: DEFAULT_ZOOM,
       minZoom: MAP_MIN_ZOOM,
@@ -1495,7 +1360,7 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
     if (!map) return;
 
     lastRasterKeyRef.current = null;
-    map.setStyle(buildBasemapStyle(nextMode));
+    map.setStyle(buildBasemapStyle(nextMode, '#F7F5F0'));
     const reSync = () => {
       syncRef.current(map);
     };

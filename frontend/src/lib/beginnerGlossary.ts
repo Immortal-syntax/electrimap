@@ -73,7 +73,7 @@ export const BEGINNER_GLOSSARY = {
     whatItMeans:
       'How bright the ground looks at night from NASA weather satellites, measured in nanowatts per square centimeter per steradian (nW/cm²/sr).',
     whyItMatters:
-      'Very dark inhabited areas (under 0.5 nW/cm²/sr) often lack reliable streetlighting or grid power, helping prioritize field visits.',
+      'Very dark inhabited areas (< 0.20 nW/cm²/sr) lack detectable outdoor illumination, while brighter clusters (≥ 0.75 nW/cm²/sr) suggest likely outdoor lighting—helping prioritize field checks.',
     whatToDo:
       'Compare dark spots against building dots on the map, keeping in mind that moonlight, fires, or thick clouds can affect single-night readings.',
   },
@@ -299,7 +299,7 @@ export const BEGINNER_GLOSSARY = {
     plainTitle: 'How Much Electricity Each Household & Shop Needs',
     technicalCode: 'MTF Tier 2 / 3 / 4',
     whatItMeans:
-      'Selects the appliance bundle per household: Basic lighting/charging (~0.25 kW), Standard fans/TV/appliances (~0.5 kW), or Productive/agricultural loads (~1.2 kW).',
+      'Selects the appliance bundle per household: Basic subsistence (~0.15 kW BPL / ~0.40 kW APL), Standard fans/TV/appliances (~0.25 kW BPL / ~0.75 kW APL), or Productive loads (~0.50 kW BPL / ~1.50 kW APL).',
     whyItMatters:
       'Sets the total kilowatt peak demand that sizes transformers, conductors, or solar arrays across the entire village.',
     whatToDo:
@@ -440,10 +440,10 @@ export const BEGINNER_GLOSSARY = {
   verificationCoverage: {
     id: 'verificationCoverage',
     term: 'Ground Verification Coverage (%)',
-    plainTitle: 'Share of Hamlets Checked Against Field Evidence',
-    technicalCode: 'Verified %',
+    plainTitle: 'Share of Estimated Households Checked Against Field Evidence',
+    technicalCode: 'Verified HH %',
     whatItMeans:
-      'Percentage of identified habitation clusters that have at least one non-reversed field survey, census, or utility verification record.',
+      'Household-weighted percentage of estimated homes across habitation clusters that carry at least one active field survey, census, or utility verification record.',
     whyItMatters:
       'Pre-feasibility reports with 0% field verification carry higher survey uncertainty during appraisal and sanctioning.',
     whatToDo:
@@ -457,7 +457,7 @@ export const BEGINNER_GLOSSARY = {
     whatItMeans:
       'Total estimated upfront construction cost (including taxes, contingency, and supervision charges) divided by the number of households served under the selected plan.',
     whyItMatters:
-      'Helps planners quickly compare affordability against per-household scheme benchmarks without mixing in 20-year operating costs.',
+      'Helps planners quickly compare affordability against per-household scheme benchmarks without mixing in multi-year operating costs across the planning horizon.',
     whatToDo:
       'Review alongside lifetime operating costs inside Financial details when comparing grid extension against microgrids.',
   },
@@ -467,11 +467,11 @@ export const BEGINNER_GLOSSARY = {
     plainTitle: 'Long-Term Cost per Unit of Electricity Delivered',
     technicalCode: 'LCOE (INR/kWh)',
     whatItMeans:
-      'Discounted lifetime project cost (upfront CAPEX + battery replacements + 20-year O&M and power purchases) divided by discounted electricity units delivered over 20 years.',
+      'Discounted lifetime project cost (upfront CAPEX + Year-7 battery replacements where applicable + annual O&M and wholesale power purchases) divided by discounted electricity units delivered over the configured project horizon (10 years default).',
     whyItMatters:
-      'Even when upfront construction costs are similar, high diesel/battery replacement or power-purchase costs can raise lifetime ₹/kWh.',
+      'Even when upfront construction costs are similar, high battery replacement or power-purchase costs can raise lifetime ₹/kWh.',
     whatToDo:
-      'Open Financial details or Compare 4 Plans to evaluate whether lower upfront cost still holds up over 20 years.',
+      'Open Financial details or Compare 4 Plans to evaluate whether lower upfront cost still holds up over the full planning horizon.',
   },
   subsidyAssumptions: {
     id: 'subsidyAssumptions',

@@ -93,6 +93,13 @@ interface ReferenceGeoJsonPayload {
   routes: GeoJSON.FeatureCollection;
 }
 
+function isAbortError(reason: unknown): boolean {
+  return (
+    (reason instanceof DOMException || reason instanceof Error) &&
+    reason.name === 'AbortError'
+  );
+}
+
 function settledValue<T>(
   result: PromiseSettledResult<T>,
   label: string,
@@ -100,6 +107,9 @@ function settledValue<T>(
 ): T | null {
   if (result.status === 'fulfilled') {
     return result.value;
+  }
+  if (isAbortError(result.reason)) {
+    return null;
   }
   const reason =
     result.reason instanceof Error ? result.reason.message : 'Request failed unexpectedly.';
@@ -168,45 +178,106 @@ export const WorkspacePage: React.FC = () => {
   const [settingsHorizonYears, setSettingsHorizonYears] = useState(10);
   const [settingsDiscountRate, setSettingsDiscountRate] = useState(8);
 
-  const fetchScenariosAndConstants = useCallback(async (projectId: string) => {
-    const failures: string[] = [];
-    const [scenRes, constRes, ratesRes, compRes, preflightRes, exportsRes, jobsRes] =
-      await Promise.allSettled([
-        apiRequest<PlanningScenarioListDto>(`/api/v1/projects/${projectId}/scenarios`),
-        apiRequest<EngineeringConstantListDto>('/api/v1/engineering-constants'),
-        apiRequest<ProjectRateListDto>(`/api/v1/projects/${projectId}/rates`),
-        apiRequest<ProjectScenarioComparisonDto>(`/api/v1/projects/${projectId}/comparison`),
-        apiRequest<PreFlightReportDto>(`/api/v1/projects/${projectId}/report/preflight`),
-        apiRequest<ProjectExportListDto>(`/api/v1/projects/${projectId}/exports`),
-        apiRequest<JobStatusDto[]>(`/api/v1/projects/${projectId}/jobs`),
-      ]);
-    const scenData = settledValue(scenRes, 'Network scenarios', failures);
-    const constData = settledValue(constRes, 'Engineering constants', failures);
-    const ratesData = settledValue(ratesRes, 'Schedule of Rates', failures);
-    const compData = settledValue(compRes, 'Scenario comparison', failures);
-    const preflightData = settledValue(preflightRes, 'Pre-flight audit', failures);
-    const exportsData = settledValue(exportsRes, 'Export logs', failures);
-    const jobsData = settledValue(jobsRes, 'Background jobs', failures);
+  const mergeWarnings = useCallback(
+    (labels: readonly string[], failures: readonly string[], signal?: AbortSignal) => {
+      if (signal?.aborted) return;
+      setPartialLoadWarnings((prev) =>
+        Array.from(
+          new Set([
+            ...prev.filter((w) => !labels.some((lbl) => w.startsWith(lbl))),
+            ...failures,
+          ]),
+        ),
+      );
+    },
+    [],
+  );
 
-    if (scenData) setScenariosState(scenData);
-    if (constData) setEngineeringConstants(constData);
-    if (ratesData) setRatesState(ratesData);
-    if (compData) setComparisonState(compData);
-    if (preflightData) setPreflightState(preflightData);
-    if (exportsData) setExportLogState(exportsData);
-    if (jobsData) setJobsState(jobsData);
-    setPartialLoadWarnings(failures);
-  }, []);
+  const refreshProjectOnly = useCallback(
+    async (projectId: string, signal?: AbortSignal): Promise<ProjectDto | null> => {
+      try {
+        const freshProj = await apiRequest<ProjectDto>(`/api/v1/projects/${projectId}`, {
+          signal,
+        });
+        if (signal?.aborted) return null;
+        setProject(freshProj);
+        useActiveProjectStore.getState().setProjectMeta(freshProj.id, {
+          name: freshProj.name,
+          district: freshProj.target_district,
+          state: freshProj.target_state,
+        });
+        return freshProj;
+      } catch (err) {
+        if (isAbortError(err) || signal?.aborted) return null;
+        return null;
+      }
+    },
+    [],
+  );
 
-  const fetchInfraAndDemand = useCallback(
-    async (projectId: string) => {
+  const fetchScenariosAndConstants = useCallback(
+    async (projectId: string, signal?: AbortSignal) => {
+      const failures: string[] = [];
+      const [scenRes, constRes, ratesRes, compRes, preflightRes, exportsRes, jobsRes] =
+        await Promise.allSettled([
+          apiRequest<PlanningScenarioListDto>(`/api/v1/projects/${projectId}/scenarios`, {
+            signal,
+          }),
+          apiRequest<EngineeringConstantListDto>('/api/v1/engineering-constants', { signal }),
+          apiRequest<ProjectRateListDto>(`/api/v1/projects/${projectId}/rates`, { signal }),
+          apiRequest<ProjectScenarioComparisonDto>(`/api/v1/projects/${projectId}/comparison`, {
+            signal,
+          }),
+          apiRequest<PreFlightReportDto>(`/api/v1/projects/${projectId}/report/preflight`, {
+            signal,
+          }),
+          apiRequest<ProjectExportListDto>(`/api/v1/projects/${projectId}/exports`, { signal }),
+          apiRequest<JobStatusDto[]>(`/api/v1/projects/${projectId}/jobs`, { signal }),
+        ]);
+      if (signal?.aborted) return;
+      const scenData = settledValue(scenRes, 'Network scenarios', failures);
+      const constData = settledValue(constRes, 'Engineering constants', failures);
+      const ratesData = settledValue(ratesRes, 'Schedule of Rates', failures);
+      const compData = settledValue(compRes, 'Scenario comparison', failures);
+      const preflightData = settledValue(preflightRes, 'Pre-flight audit', failures);
+      const exportsData = settledValue(exportsRes, 'Export logs', failures);
+      const jobsData = settledValue(jobsRes, 'Background jobs', failures);
+
+      if (scenData) setScenariosState(scenData);
+      if (constData) setEngineeringConstants(constData);
+      if (ratesData) setRatesState(ratesData);
+      if (compData) setComparisonState(compData);
+      if (preflightData) setPreflightState(preflightData);
+      if (exportsData) setExportLogState(exportsData);
+      if (jobsData) setJobsState(jobsData);
+      const scenarioLabels = [
+        'Network scenarios',
+        'Engineering constants',
+        'Schedule of Rates',
+        'Scenario comparison',
+        'Pre-flight audit',
+        'Export logs',
+        'Background jobs',
+      ];
+      mergeWarnings(scenarioLabels, failures, signal);
+    },
+    [mergeWarnings],
+  );
+
+  const loadInfraBundle = useCallback(
+    async (projectId: string, signal?: AbortSignal) => {
       const failures: string[] = [];
       const [infraRes, gapRes, settingsRes, demandRes] = await Promise.allSettled([
-        apiRequest<InfrastructureListDto>(`/api/v1/projects/${projectId}/infrastructure`),
-        apiRequest<ProjectGapAnalysisDto>(`/api/v1/projects/${projectId}/gap-analysis`),
-        apiRequest<ProjectSettingsListDto>(`/api/v1/projects/${projectId}/settings`),
-        apiRequest<ProjectDemandSummaryDto>(`/api/v1/projects/${projectId}/demand`),
+        apiRequest<InfrastructureListDto>(`/api/v1/projects/${projectId}/infrastructure`, {
+          signal,
+        }),
+        apiRequest<ProjectGapAnalysisDto>(`/api/v1/projects/${projectId}/gap-analysis`, {
+          signal,
+        }),
+        apiRequest<ProjectSettingsListDto>(`/api/v1/projects/${projectId}/settings`, { signal }),
+        apiRequest<ProjectDemandSummaryDto>(`/api/v1/projects/${projectId}/demand`, { signal }),
       ]);
+      if (signal?.aborted) return;
       const infraData = settledValue(infraRes, 'Infrastructure assets', failures);
       const gapData = settledValue(gapRes, 'Gap analysis', failures);
       const settingsData = settledValue(settingsRes, 'Project assumptions', failures);
@@ -216,32 +287,37 @@ export const WorkspacePage: React.FC = () => {
       if (gapData) setGapAnalysis(gapData);
       if (settingsData) setSettings(settingsData);
       if (demandData) setDemand(demandData);
-      await fetchScenariosAndConstants(projectId);
       const infraLabels = [
         'Infrastructure assets',
         'Gap analysis',
         'Project assumptions',
         'Demand forecast',
       ];
-      setPartialLoadWarnings((prev) =>
-        Array.from(
-          new Set([
-            ...prev.filter((w) => !infraLabels.some((lbl) => w.startsWith(lbl))),
-            ...failures,
-          ]),
-        ),
-      );
+      mergeWarnings(infraLabels, failures, signal);
     },
-    [fetchScenariosAndConstants],
+    [mergeWarnings],
   );
 
-  const fetchSettlementsAndLedger = useCallback(
-    async (projectId: string) => {
+  const fetchInfraAndDemand = useCallback(
+    async (projectId: string, signal?: AbortSignal) => {
+      await loadInfraBundle(projectId, signal);
+      if (!signal?.aborted) {
+        await fetchScenariosAndConstants(projectId, signal);
+      }
+    },
+    [loadInfraBundle, fetchScenariosAndConstants],
+  );
+
+  const loadSettlementsBundle = useCallback(
+    async (projectId: string, signal?: AbortSignal) => {
       const failures: string[] = [];
       const [clustersRes, ledgerRes] = await Promise.allSettled([
-        apiRequest<ClusterListResponseDto>(`/api/v1/projects/${projectId}/clusters`),
-        apiRequest<VerificationLedgerDto>(`/api/v1/projects/${projectId}/verifications`),
+        apiRequest<ClusterListResponseDto>(`/api/v1/projects/${projectId}/clusters`, { signal }),
+        apiRequest<VerificationLedgerDto>(`/api/v1/projects/${projectId}/verifications`, {
+          signal,
+        }),
       ]);
+      if (signal?.aborted) return;
       const clustersData = settledValue(clustersRes, 'Settlement clusters', failures);
       const ledgerData = settledValue(ledgerRes, 'Verification ledger', failures);
 
@@ -252,32 +328,37 @@ export const WorkspacePage: React.FC = () => {
       if (ledgerData) {
         setVerificationLedger(ledgerData);
       }
-      await fetchInfraAndDemand(projectId);
       const settleLabels = ['Settlement clusters', 'Verification ledger'];
-      setPartialLoadWarnings((prev) =>
-        Array.from(
-          new Set([
-            ...prev.filter((w) => !settleLabels.some((lbl) => w.startsWith(lbl))),
-            ...failures,
-          ]),
-        ),
-      );
+      mergeWarnings(settleLabels, failures, signal);
     },
-    [fetchInfraAndDemand],
+    [mergeWarnings],
   );
 
-  const fetchLayersAndVectors = useCallback(
-    async (projectId: string) => {
+  const fetchSettlementsAndLedger = useCallback(
+    async (projectId: string, signal?: AbortSignal) => {
+      await loadSettlementsBundle(projectId, signal);
+      if (!signal?.aborted) {
+        await fetchInfraAndDemand(projectId, signal);
+      }
+    },
+    [loadSettlementsBundle, fetchInfraAndDemand],
+  );
+
+  const loadLayersBundle = useCallback(
+    async (projectId: string, signal?: AbortSignal) => {
       const failures: string[] = [];
       const [layerRes, bldRes, osmRes] = await Promise.allSettled([
-        apiRequest<ProjectLayerDto[]>(`/api/v1/projects/${projectId}/layers`),
+        apiRequest<ProjectLayerDto[]>(`/api/v1/projects/${projectId}/layers`, { signal }),
         apiRequest<GeoJSON.FeatureCollection>(
           `/api/v1/projects/${projectId}/layers/buildings/geojson`,
+          { signal },
         ),
         apiRequest<GeoJSON.FeatureCollection>(
           `/api/v1/projects/${projectId}/layers/osm_features/geojson`,
+          { signal },
         ),
       ]);
+      if (signal?.aborted) return;
       const layerItems = settledValue(layerRes, 'GIS layers', failures);
       const bldFc = settledValue(bldRes, 'Buildings GeoJSON', failures);
       const osmFc = settledValue(osmRes, 'OSM features GeoJSON', failures);
@@ -285,51 +366,75 @@ export const WorkspacePage: React.FC = () => {
       if (layerItems) setLayers(layerItems);
       if (bldFc) setBuildingsGeoJson(bldFc);
       if (osmFc) setOsmGeoJson(osmFc);
-      await fetchSettlementsAndLedger(projectId);
       const layerLabels = ['GIS layers', 'Buildings GeoJSON', 'OSM features GeoJSON'];
-      setPartialLoadWarnings((prev) =>
-        Array.from(
-          new Set([
-            ...prev.filter((w) => !layerLabels.some((lbl) => w.startsWith(lbl))),
-            ...failures,
-          ]),
-        ),
-      );
+      mergeWarnings(layerLabels, failures, signal);
     },
-    [fetchSettlementsAndLedger],
+    [mergeWarnings],
   );
 
-  const loadWorkspace = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    setPartialLoadWarnings([]);
-    try {
-      const [projData, geoRes] = await Promise.all([
-        apiRequest<ProjectDto>(`/api/v1/projects/${id}`),
-        id === DEMO_PROJECT_ID
-          ? apiRequest<ReferenceGeoJsonPayload>('/api/v1/spikes/reference-geojson').catch(
-              () => null,
-            )
-          : Promise.resolve(null),
-      ]);
-      setProject(projData);
-      useActiveProjectStore.getState().setProjectMeta(projData.id, {
-        name: projData.name,
-        district: projData.target_district,
-        state: projData.target_state,
-      });
-      setRoutesGeoJson(geoRes ? geoRes.routes : null);
-      await fetchLayersAndVectors(id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load project workspace.');
-    } finally {
-      setLoading(false);
-    }
-  }, [id, fetchLayersAndVectors]);
+  const fetchLayersAndVectors = useCallback(
+    async (projectId: string, signal?: AbortSignal) => {
+      await loadLayersBundle(projectId, signal);
+      if (!signal?.aborted) {
+        await fetchSettlementsAndLedger(projectId, signal);
+      }
+    },
+    [loadLayersBundle, fetchSettlementsAndLedger],
+  );
+
+  const loadWorkspace = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!id) return;
+      setLoading(true);
+      setError(null);
+      setPartialLoadWarnings([]);
+      try {
+        const [projData, geoRes] = await Promise.all([
+          apiRequest<ProjectDto>(`/api/v1/projects/${id}`, { signal }),
+          id === DEMO_PROJECT_ID
+            ? apiRequest<ReferenceGeoJsonPayload>('/api/v1/spikes/reference-geojson', {
+                signal,
+              }).catch(() => null)
+            : Promise.resolve(null),
+        ]);
+        if (signal?.aborted) return;
+        setProject(projData);
+        useActiveProjectStore.getState().setProjectMeta(projData.id, {
+          name: projData.name,
+          district: projData.target_district,
+          state: projData.target_state,
+        });
+        setRoutesGeoJson(geoRes ? geoRes.routes : null);
+        await Promise.all([
+          loadLayersBundle(id, signal),
+          loadSettlementsBundle(id, signal),
+          loadInfraBundle(id, signal),
+          fetchScenariosAndConstants(id, signal),
+        ]);
+      } catch (err) {
+        if (isAbortError(err) || signal?.aborted) return;
+        setError(err instanceof Error ? err.message : 'Unable to load project workspace.');
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
+      }
+    },
+    [
+      id,
+      loadLayersBundle,
+      loadSettlementsBundle,
+      loadInfraBundle,
+      fetchScenariosAndConstants,
+    ],
+  );
 
   useEffect(() => {
-    void loadWorkspace();
+    const controller = new AbortController();
+    void loadWorkspace(controller.signal);
+    return () => {
+      controller.abort();
+    };
   }, [loadWorkspace]);
 
   if (loading) {
@@ -976,7 +1081,12 @@ export const WorkspacePage: React.FC = () => {
             }}
             rasterOpacity={rasterOpacity}
             onChangeRasterOpacity={setRasterOpacity}
-            onLayersUpdated={() => fetchLayersAndVectors(project.id)}
+            onLayersUpdated={async () => {
+              await Promise.all([
+                refreshProjectOnly(project.id),
+                fetchLayersAndVectors(project.id),
+              ]);
+            }}
             onContinueToNextStep={() => navigateToSection('settlements')}
           />
         </section>
@@ -1013,7 +1123,12 @@ export const WorkspacePage: React.FC = () => {
             ledger={verificationLedger}
             selectedClusterId={selectedClusterId}
             onSelectCluster={(cid) => setSelectedClusterId(cid)}
-            onSettlementsUpdated={() => fetchSettlementsAndLedger(project.id)}
+            onSettlementsUpdated={async () => {
+              await Promise.all([
+                refreshProjectOnly(project.id),
+                fetchSettlementsAndLedger(project.id),
+              ]);
+            }}
           />
         </section>
       )}
@@ -1064,7 +1179,12 @@ export const WorkspacePage: React.FC = () => {
                 return next;
               })
             }
-            onInfrastructureAndDemandUpdated={() => fetchSettlementsAndLedger(project.id)}
+            onInfrastructureAndDemandUpdated={async () => {
+              await Promise.all([
+                refreshProjectOnly(project.id),
+                fetchSettlementsAndLedger(project.id),
+              ]);
+            }}
           />
         </section>
       )}
@@ -1072,7 +1192,7 @@ export const WorkspacePage: React.FC = () => {
       {/* Stage 4: Network Routing, Voltage Drop & Single-Line Diagram */}
       {((isOverviewMode && showAllStages) || activeSectionKey === 'network') && (
         <section
-          id="step-section-engineering"
+          id="step-section-network"
           aria-label="Step 4 Network Routing and Single-Line Diagram"
           className="space-y-2"
         >
@@ -1098,7 +1218,12 @@ export const WorkspacePage: React.FC = () => {
             metricEpsg={project.metric_epsg}
             scenariosState={scenariosState}
             constants={engineeringConstants}
-            onScenariosUpdated={() => fetchScenariosAndConstants(project.id)}
+            onScenariosUpdated={async () => {
+              await Promise.all([
+                refreshProjectOnly(project.id),
+                fetchScenariosAndConstants(project.id),
+              ]);
+            }}
           />
         </section>
       )}
