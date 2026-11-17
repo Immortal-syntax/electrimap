@@ -92,6 +92,18 @@ describe('Audit Fixes Regression Suite (API Client, Auth, Costing, Settlements &
     expect((capturedError as ApiClientError).code).toBe('HTTP_405');
     expect((capturedError as ApiClientError).status).toBe(405);
     expect((capturedError as ApiClientError).message).toContain('HTTP 405');
+
+    htmlSpy.mockResolvedValueOnce(
+      new Response('404: NOT_FOUND', {
+        status: 404,
+        headers: { 'Content-Type': 'text/plain' },
+      }),
+    );
+    await expect(apiRequest('/api/v1/auth/me')).rejects.toMatchObject({
+      name: 'ApiClientError',
+      code: 'BACKEND_UNAVAILABLE',
+      status: 404,
+    });
   });
 
   it('shows non-blocking Backend Connection Issue banner on LoginPage and redirects once authenticated', async () => {

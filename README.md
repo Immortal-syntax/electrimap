@@ -17,16 +17,16 @@ A web-based pre-feasibility GIS workbench for assessing rural and tribal electri
 
 | Environment | Access Link | Description |
 |---|---|---|
-| **Production Web App (Vercel)** | [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app) | Live interactive GIS workbench with client-side SPA routing and real-time Vercel Web Analytics |
+| **Production Web App (Vercel)** | [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app) | Static React/Vite GIS frontend (`frontend/dist`) + Vercel Analytics; requires `VITE_API_ORIGIN` pointing to a hosted `backend/` API for sign-in |
 | **API Documentation (Local/Docker)** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI/Swagger documentation for all 40+ REST endpoints |
 
-### Pre-Configured Test Accounts
+### Pre-Configured Dev/Demo Accounts (Local / Docker `APP_ENV != production`)
 
 | Account | Email | Password | Access Scope |
 |---|---|---|---|
-| **Swayam Kumar** | `swayamkr26@gmail.com` | `1234` | Full planner access; private project portfolio + shared Bheja Sample Study |
-| **Sumit Kushwaha** | `sumitp@gmail.com` | `1234` | Full planner access; private project portfolio + shared Bheja Sample Study |
-| **Instant Exploration** | *Click "Sample Study" in top bar* | *None* | Read-only pre-feasibility benchmark exploration for Village Bheja, Koraput, Odisha |
+| **Swayam Kumar** | `swayamkr26@gmail.com` | `1234` | Full planner access; private project portfolio + shared Bheja Sample Study (disabled in `APP_ENV=production`) |
+| **Sumit Kushwaha** | `sumitp@gmail.com` | `1234` | Full planner access; private project portfolio + shared Bheja Sample Study (disabled in `APP_ENV=production`) |
+| **Instant Exploration** | *Click "Sample Study" in top bar* | *None* | Pre-feasibility benchmark exploration for Village Bheja, Koraput, Odisha |
 
 ---
 
@@ -152,19 +152,25 @@ The frontend will be accessible at [http://localhost:5173](http://localhost:5173
 
 ---
 
-## ☁️ Vercel Deployment Guide
+## ☁️ Vercel + Backend Deployment Guide
 
-The ElectriMap frontend is optimized for zero-configuration, production deployment on **Vercel**:
+Vercel hosts only the static Vite frontend (`frontend/dist`). Sign-in, authentication cookies, PostGIS queries, and DPR PDF/Excel exports require hosting [`backend/`](backend/Dockerfile) separately (e.g., Railway, Render, Cloud Run, or Docker) and linking its public URL via `VITE_API_ORIGIN`:
 
-### 1. Connecting the Repository
-1. Import `Immortal-syntax/electrimap` into your [Vercel Dashboard](https://vercel.com/dashboard).
-2. The project contains root [`vercel.json`](vercel.json) and [`frontend/vercel.json`](frontend/vercel.json) configurations that automatically handle builds whether deployed from the repository root or with `Root Directory` set to `frontend`.
+### 1. Connecting & Deploying the Frontend on Vercel
+1. Ensure Vercel (`electrimap-india`) is linked to `Immortal-syntax/electrimap` (`main` branch) in **Vercel Dashboard → Settings → Git** and trigger a **Redeploy** whenever `main` updates.
+2. Root [`vercel.json`](vercel.json) and [`frontend/vercel.json`](frontend/vercel.json) isolate `/api/*` and `/_vercel/*` from SPA HTML rewrites, preventing `HTTP 405` on API requests and HTML `SyntaxError` on `/_vercel/insights/script.js`.
+3. Enable **Web Analytics** in the Vercel Project Analytics tab so `/_vercel/insights/script.js` is served cleanly.
 
-### 2. Built-in Deployment Configurations
-- **Client-Side SPA Routing**: Automatically rewrites all sub-routes (`/projects`, `/login`, `/projects/:id/workspace`) to `/index.html` preventing 404 errors on browser refresh.
-- **Production Build Pipeline**: Executes `tsc -b && vite build` ensuring complete static typechecking and production bundle optimization.
-- **Dependency Guarding**: Configured with `.npmrc` (`include=dev`) and `--include=dev` to ensure TypeScript and Vite build compilers are available under `NODE_ENV=production`.
-- **Vercel Web Analytics**: Pre-integrated with `@vercel/analytics/react` to collect visitor telemetry, top visited views, and device analytics without custom tracking code.
+### 2. Connecting the FastAPI + PostGIS Backend
+1. Deploy [`backend/Dockerfile`](backend/Dockerfile) with PostgreSQL 16 + PostGIS 3.4 (the container automatically binds `${PORT:-8000}`).
+2. Configure backend environment variables:
+   - `APP_ENV=production` (or `demo` if you explicitly want sample demo accounts enabled; otherwise set `PRODUCTION_ADMIN_EMAIL` and `>=12`-char `PRODUCTION_ADMIN_PASSWORD`)
+   - `SESSION_SECRET=<64-char-random-secret>`
+   - `SESSION_COOKIE_SAMESITE=none` (required for cross-origin cookies between `electrimap-india.vercel.app` and an external API domain over HTTPS)
+   - `CORS_ORIGINS=https://electrimap-india.vercel.app`
+3. In **Vercel → Settings → Environment Variables**, set:
+   - `VITE_API_ORIGIN=https://<your-hosted-backend-domain>`
+4. Redeploy the Vercel project so Vite embeds `VITE_API_ORIGIN` into the production bundle.
 
 ---
 
@@ -181,9 +187,9 @@ cd backend
 ruff check app tests
 
 # 2. Strict static typechecking
-mypy app tests
+mypy app
 
-# 3. Comprehensive unit and integration test suite (65 tests)
+# 3. Comprehensive unit and integration test suite (71 tests)
 pytest -v
 ```
 
@@ -198,7 +204,7 @@ npm run lint
 # 2. Strict TypeScript type verification (0 errors)
 npm run typecheck
 
-# 3. Vitest unit and component tests (53 tests)
+# 3. Vitest unit and component tests (58 tests)
 npm run test
 
 # 4. Production build compilation

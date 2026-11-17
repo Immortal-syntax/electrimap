@@ -96,9 +96,12 @@ export function getCsrfToken(): string | null {
   return csrfTokenMemory;
 }
 
-function buildBackendUnavailableMessage(status: number): string {
+function buildBackendUnavailableMessage(status: number, isNonJsonNotFound = false): string {
   if (status === 405) {
     return 'API endpoint returned HTTP 405 (static SPA fallback intercepted /api request). Configure VITE_API_ORIGIN or connect the ElectriMap backend server.';
+  }
+  if (isNonJsonNotFound) {
+    return 'Backend API not found (HTTP 404 on static frontend host). Deploy backend/ and configure VITE_API_ORIGIN in Vercel, or start the FastAPI server.';
   }
   return 'The ElectriMap backend API is unreachable or returned HTML instead of JSON. Configure VITE_API_ORIGIN or start the FastAPI server.';
 }
@@ -151,10 +154,19 @@ async function parseErrorResponse(response: Response): Promise<ApiClientError> {
     }
   }
 
-  if (looksHtml || response.status === 405) {
+  const isNonJsonGatewayError =
+    !contentType.includes('application/json') &&
+    (looksHtml || response.status === 404 || response.status === 405 || response.status >= 502);
+
+  if (isNonJsonGatewayError) {
+    const code = looksHtml
+      ? 'BACKEND_HTML_FALLBACK'
+      : response.status === 405
+        ? 'HTTP_405'
+        : 'BACKEND_UNAVAILABLE';
     return new ApiClientError(
-      looksHtml ? 'BACKEND_HTML_FALLBACK' : 'HTTP_405',
-      buildBackendUnavailableMessage(response.status),
+      code,
+      buildBackendUnavailableMessage(response.status, !looksHtml && response.status === 404),
       response.status,
     );
   }
