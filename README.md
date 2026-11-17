@@ -1,7 +1,7 @@
 # ElectriMap DPR
 
 [![CI](https://github.com/Immortal-syntax/electrimap/actions/workflows/ci.yml/badge.svg)](https://github.com/Immortal-syntax/electrimap/actions/workflows/ci.yml)
-[![Vercel Deployment](https://img.shields.io/badge/Vercel-Live%20Demo-000000?style=flat&logo=vercel&logoColor=white)](https://electrimap.vercel.app)
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Live%20Demo-000000?style=flat&logo=vercel&logoColor=white)](https://electrimap-india.vercel.app)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python: 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](backend/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](backend/)
@@ -17,7 +17,7 @@ A web-based pre-feasibility GIS workbench for assessing rural and tribal electri
 
 | Environment | Access Link | Description |
 |---|---|---|
-| **Production Web App (Vercel)** | [**https://electrimap.vercel.app**](https://electrimap.vercel.app) | Live interactive GIS workbench with client-side SPA routing and real-time Vercel Web Analytics |
+| **Production Web App (Vercel)** | [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app) | Live interactive GIS workbench with client-side SPA routing and real-time Vercel Web Analytics |
 | **API Documentation (Local/Docker)** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI/Swagger documentation for all 40+ REST endpoints |
 
 ### Pre-Configured Test Accounts
