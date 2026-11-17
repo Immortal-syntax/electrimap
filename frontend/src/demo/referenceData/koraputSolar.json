@@ -1,0 +1,37 @@
+{
+  "status": "LIVE_RETRIEVED",
+  "elapsed_s": 1.432,
+  "longitude": 82.73,
+  "latitude": 18.565,
+  "ghi_kwh_m2_day": {
+    "JAN": 4.8168,
+    "FEB": 5.6582,
+    "MAR": 6.0478,
+    "APR": 6.5486,
+    "MAY": 6.3394,
+    "JUN": 4.5271,
+    "JUL": 3.473,
+    "AUG": 3.4267,
+    "SEP": 4.1705,
+    "OCT": 4.7076,
+    "NOV": 4.6685,
+    "DEC": 4.446
+  },
+  "t2m_deg_c": {
+    "JAN": 18.48,
+    "FEB": 21.98,
+    "MAR": 26.1,
+    "APR": 28.7,
+    "MAY": 29.19,
+    "JUN": 25.45,
+    "JUL": 23.41,
+    "AUG": 23.12,
+    "SEP": 23.11,
+    "OCT": 21.83,
+    "NOV": 19.03,
+    "DEC": 17.31
+  },
+  "worst_month": "AUG",
+  "worst_ghi_kwh_m2_day": 3.4267,
+  "annual_mean_ghi_kwh_m2_day": 4.8958
+}

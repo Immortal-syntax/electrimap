@@ -32,7 +32,7 @@ import {
   formatRateProvenanceLabel,
   formatScenarioLabel,
 } from '../../lib/beginnerGlossary';
-import { resolveApiUrl } from '../../lib/apiClient';
+import { generateSorCsvContent } from '../../demo/domainEngMath';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Callout } from '../ui/Callout';
@@ -1681,15 +1681,28 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <a
-                  href={resolveApiUrl(`/api/v1/projects/${projectId}/rates/export-csv`)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-xs border border-rule-strong bg-sheet text-ink hover:bg-subtle transition-colors"
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={FileSpreadsheet}
+                  disabled={!rates || rates.items.length === 0}
+                  onClick={() => {
+                    if (!rates) return;
+                    const csv = generateSorCsvContent(rates);
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `electrimap_sor_${projectId.slice(0, 8)}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                  }}
                 >
-                  <Icon icon={FileSpreadsheet} size="xs" />
-                  <span>Download Current CSV</span>
-                </a>
+                  Download Current CSV
+                </Button>
                 <Button
                   size="sm"
                   variant="danger-outline"

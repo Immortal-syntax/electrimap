@@ -16,7 +16,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
-import { resolveApiUrl } from '../../lib/apiClient';
+import { resolveApiUrl, shouldUseClientRasterDataUrl } from '../../lib/apiClient';
+import { generateDemoRasterOverlayDataUrl } from '../../demo/demoRasterOverlay';
 import { buildBasemapStyle } from './basemapStyles';
 import { Button } from '../ui/Button';
 import { LayerSourceBadge } from '../ui/Badge';
@@ -391,9 +392,11 @@ export const MapSpikePreview: React.FC<MapSpikePreviewProps> = ({
 
         if (layerBEnabled && !viirsGlobalGibs) {
           const baseUrl = `/api/v1/spikes/viirs-overlay?period=${viirsPeriod}`;
-          const url = resolveApiUrl(
-            rasterRetryToken > 0 ? `${baseUrl}&retry=${rasterRetryToken}` : baseUrl,
-          );
+          const url = shouldUseClientRasterDataUrl()
+            ? generateDemoRasterOverlayDataUrl('nightlights', viirsPeriod)
+            : resolveApiUrl(
+                rasterRetryToken > 0 ? `${baseUrl}&retry=${rasterRetryToken}` : baseUrl,
+              );
           const bounds: [
             [number, number],
             [number, number],

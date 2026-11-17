@@ -30,7 +30,12 @@ import {
 import { GisSymbologyLegend } from './GisSymbologyLegend';
 import { RASTER_LEGEND_SPECS } from './symbology';
 import { DEMO_PROJECT_ID } from '../layout/navigationConfig';
-import { resolveApiUrl } from '../../lib/apiClient';
+import {
+  isStandaloneDemoMode,
+  resolveApiUrl,
+  shouldUseClientRasterDataUrl,
+} from '../../lib/apiClient';
+import { generateDemoRasterOverlayDataUrl, type DemoRasterKind } from '../../demo/demoRasterOverlay';
 import { buildBasemapStyle } from './basemapStyles';
 import {
   BasemapMode,
@@ -306,9 +311,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 }) => {
   const isDemoProject = !projectId || projectId === DEMO_PROJECT_ID;
   const usesMvtBuildings = Boolean(
+    !isStandaloneDemoMode() &&
     projectId &&
-      !wizardMode &&
-      (referenceBuildings?.features.length ?? 0) > MVT_BUILDING_FEATURE_THRESHOLD,
+    !wizardMode &&
+    (referenceBuildings?.features.length ?? 0) > MVT_BUILDING_FEATURE_THRESHOLD,
   );
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -321,9 +327,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const [cursorCoords, setCursorCoords] = useState<{ lon: number; lat: number }>(() =>
     initialBbox
       ? {
-          lon: Number(((initialBbox[0] + initialBbox[2]) / 2).toFixed(5)),
-          lat: Number(((initialBbox[1] + initialBbox[3]) / 2).toFixed(5)),
-        }
+        lon: Number(((initialBbox[0] + initialBbox[2]) / 2).toFixed(5)),
+        lat: Number(((initialBbox[1] + initialBbox[3]) / 2).toFixed(5)),
+      }
       : isDemoProject
         ? { lon: KORAPUT_DEFAULT_CENTER[0], lat: KORAPUT_DEFAULT_CENTER[1] }
         : { lon: INDIA_DEFAULT_CENTER[0], lat: INDIA_DEFAULT_CENTER[1] },
@@ -338,7 +344,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   // Specialised Electricity GIS Layer Controls (Layers A through F)
   const [layerPanelOpen, setLayerPanelOpen] = useState<boolean>(
     defaultLayerPanelOpen &&
-      (typeof window === 'undefined' || window.innerWidth >= 1024),
+    (typeof window === 'undefined' || window.innerWidth >= 1024),
   );
   const [beginnerGuideOpen, setBeginnerGuideOpen] = useState<boolean>(false);
   const [layerAEnabled, setLayerAEnabled] = useState<boolean>(true); // Existing Electricity Infrastructure
@@ -580,10 +586,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       settlementStatusFilter === 'ALL'
         ? rawFeatures
         : rawFeatures.filter(
-            (f) =>
-              String(f.properties?.proxy_class ?? 'UNKNOWN') ===
-              settlementStatusFilter,
-          );
+          (f) =>
+            String(f.properties?.proxy_class ?? 'UNKNOWN') ===
+            settlementStatusFilter,
+        );
 
     return {
       type: 'FeatureCollection',
@@ -597,9 +603,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         type: 'FeatureCollection',
         features: effectiveRefPack
           ? [
-              ...gapCorridors.features,
-              ...DEFAULT_ELECTRIFICATION_GAPS_FC.features,
-            ]
+            ...gapCorridors.features,
+            ...DEFAULT_ELECTRIFICATION_GAPS_FC.features,
+          ]
           : gapCorridors.features,
       };
     }
@@ -660,9 +666,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       features: hasComputedScenario
         ? normalizedScenarioFeatures
         : [
-            ...(effectiveRefPack ? DEFAULT_PROPOSED_NETWORK_FC.features : []),
-            ...routeFeatures,
-          ],
+          ...(effectiveRefPack ? DEFAULT_PROPOSED_NETWORK_FC.features : []),
+          ...routeFeatures,
+        ],
     };
   }, [networkLayout, referenceRoutes, effectiveRefPack]);
 
@@ -752,8 +758,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               : null);
         const baseOverlayUrl =
           inferredRasterUrl &&
-          effectiveRasterOverlay === 'nightlights' &&
-          !inferredRasterUrl.includes('period=')
+            effectiveRasterOverlay === 'nightlights' &&
+            !inferredRasterUrl.includes('period=')
             ? `${inferredRasterUrl}${inferredRasterUrl.includes('?') ? '&' : '?'}period=${viirsPeriod}`
             : inferredRasterUrl;
         const activeOverlayUrlRaw = baseOverlayUrl
@@ -761,8 +767,16 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             ? `${baseOverlayUrl}${baseOverlayUrl.includes('?') ? '&' : '?'}retry=${rasterRetryToken}`
             : baseOverlayUrl
           : null;
+        const rasterKind: DemoRasterKind =
+          effectiveRasterOverlay === 'dem_slope'
+            ? 'dem_slope'
+            : effectiveRasterOverlay === 'landcover'
+              ? 'landcover'
+              : 'nightlights';
         const activeOverlayUrl = activeOverlayUrlRaw
-          ? resolveApiUrl(activeOverlayUrlRaw)
+          ? shouldUseClientRasterDataUrl()
+            ? generateDemoRasterOverlayDataUrl(rasterKind, viirsPeriod)
+            : resolveApiUrl(activeOverlayUrlRaw)
           : null;
         const effectiveOpacity =
           effectiveRasterOverlay !== 'none'
@@ -771,8 +785,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
         if (activeOverlayUrl) {
           const aoiBbox = aoiGeometry ? computeGeoJsonBbox(aoiGeometry) : null;
-          const usesSpikeViirsBounds = activeOverlayUrl.includes(
-            '/api/v1/spikes/viirs-overlay',
+          const usesSpikeViirsBounds = Boolean(
+            activeOverlayUrlRaw?.includes('/api/v1/spikes/viirs-overlay'),
           );
           const minLon = usesSpikeViirsBounds
             ? 82.695
@@ -800,11 +814,11 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             [number, number],
             [number, number],
           ] = [
-            [minLon, maxLat],
-            [maxLon, maxLat],
-            [maxLon, minLat],
-            [minLon, minLat],
-          ];
+              [minLon, maxLat],
+              [maxLon, maxLat],
+              [maxLon, minLat],
+              [minLon, minLat],
+            ];
           const nextRasterKey = `${activeOverlayUrl}|${bounds.flat().join(',')}`;
           const existingRaster = map.getSource('project-raster') as
             | maplibregl.ImageSource
@@ -1060,15 +1074,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         // Active AOI Polygon
         const aoiFc: GeoJSON.FeatureCollection = aoiGeometry
           ? {
-              type: 'FeatureCollection',
-              features: [
-                {
-                  type: 'Feature',
-                  properties: { boundary_source: boundarySource },
-                  geometry: aoiGeometry,
-                },
-              ],
-            }
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                properties: { boundary_source: boundarySource },
+                geometry: aoiGeometry,
+              },
+            ],
+          }
           : { type: 'FeatureCollection', features: [] };
 
         upsertGeoJsonSource(map, 'aoi-source', aoiFc);
@@ -1988,12 +2002,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             const lid = top.layer.id;
             const title = String(
               p.name ??
-                p.cluster_code ??
-                p.gap_code ??
-                (lid === 'ref-buildings-fill' || lid === 'buildings-mvt-fill'
-                  ? `Structure ${String(p.id ?? '')}`.trim()
-                  : undefined) ??
-                (p.village_name ? `Village ${String(p.village_name)}` : 'GIS Feature'),
+              p.cluster_code ??
+              p.gap_code ??
+              (lid === 'ref-buildings-fill' || lid === 'buildings-mvt-fill'
+                ? `Structure ${String(p.id ?? '')}`.trim()
+                : undefined) ??
+              (p.village_name ? `Village ${String(p.village_name)}` : 'GIS Feature'),
             );
             const subtitle = lid.startsWith('network-')
               ? `${String(p.layer_type ?? 'PROPOSED')} · PRELIMINARY (NOT INSTALLED)`
@@ -2296,7 +2310,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         label: `${String(props.cluster_code ?? props.label ?? 'CL')} · ${String(props.name ?? 'Project Habitation Cluster')}`,
         category:
           props.proxy_class === 'POTENTIALLY_UNSERVED' ||
-          props.proxy_class === 'POTENTIALLY_UNDERSERVED'
+            props.proxy_class === 'POTENTIALLY_UNDERSERVED'
             ? 'GAP_ZONE'
             : 'SETTLEMENT',
         lon: Number(((bbox[0] + bbox[2]) / 2).toFixed(5)),
@@ -2446,7 +2460,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   );
   const hasProjectBuildings = Boolean(
     (referenceBuildings && referenceBuildings.features.length > 0) ||
-      usesMvtBuildings,
+    usesMvtBuildings,
   );
   const hasProjectGaps = Boolean(
     gapCorridors && gapCorridors.features.length > 0,
@@ -2552,11 +2566,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                     type="button"
                     aria-pressed={basemap === opt.id}
                     onClick={() => handleBasemapChange(opt.id)}
-                    className={`h-7 px-2.5 text-xs font-medium rounded-xs transition-colors whitespace-nowrap ${
-                      basemap === opt.id
+                    className={`h-7 px-2.5 text-xs font-medium rounded-xs transition-colors whitespace-nowrap ${basemap === opt.id
                         ? 'bg-accent text-white shadow-xs'
                         : 'text-ink-2 hover:text-ink hover:bg-sheet/80'
-                    }`}
+                      }`}
                   >
                     {opt.label}
                   </button>
@@ -2571,11 +2584,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                     setMeasureModeActive((prev) => !prev);
                     setMeasurePoints([]);
                   }}
-                  className={`h-8 px-3 text-xs font-medium rounded-sm border transition-colors whitespace-nowrap ${
-                    measureModeActive
+                  className={`h-8 px-3 text-xs font-medium rounded-sm border transition-colors whitespace-nowrap ${measureModeActive
                       ? 'bg-info text-white border-info shadow-xs'
                       : 'bg-sheet text-ink-2 border-rule hover:text-ink hover:bg-paper'
-                  }`}
+                    }`}
                 >
                   {measureModeActive
                     ? 'Measuring (Click Map)'
@@ -2587,11 +2599,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 type="button"
                 aria-pressed={beginnerGuideOpen}
                 onClick={() => setBeginnerGuideOpen((prev) => !prev)}
-                className={`h-8 px-3 text-xs font-medium rounded-sm border transition-colors whitespace-nowrap ${
-                  beginnerGuideOpen
+                className={`h-8 px-3 text-xs font-medium rounded-sm border transition-colors whitespace-nowrap ${beginnerGuideOpen
                     ? 'bg-accent text-white border-accent shadow-xs'
                     : 'bg-sheet text-ink-2 border-rule hover:text-ink hover:bg-paper'
-                }`}
+                  }`}
                 title="Open plain-language guide to map colors, symbols, and layers"
               >
                 ? Map Guide
@@ -3044,11 +3055,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                             key={preset}
                             type="button"
                             onClick={() => setViirsOpacity(preset)}
-                            className={`px-2 py-0.5 text-xs font-mono tabular-nums rounded-xs border transition-colors ${
-                              Math.abs(viirsOpacity - preset) < 0.03
+                            className={`px-2 py-0.5 text-xs font-mono tabular-nums rounded-xs border transition-colors ${Math.abs(viirsOpacity - preset) < 0.03
                                 ? 'bg-accent text-white border-accent font-semibold'
                                 : 'bg-paper text-ink-2 border-rule hover:text-ink'
-                            }`}
+                              }`}
                           >
                             {Math.round(preset * 100)}%
                           </button>
@@ -3213,10 +3223,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   onChange={(e) =>
                     handleSelectEnvRasterOverlay(
                       e.target.value as
-                        | 'none'
-                        | 'dem_slope'
-                        | 'landcover'
-                        | 'nightlights',
+                      | 'none'
+                      | 'dem_slope'
+                      | 'landcover'
+                      | 'nightlights',
                     )
                   }
                   className="w-full h-8 px-2 text-xs bg-paper border border-rule rounded-xs text-ink"
@@ -3472,11 +3482,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 <button
                   type="button"
                   onClick={() => setLayerPanelOpen((prev) => !prev)}
-                  className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${
-                    layerPanelOpen
+                  className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${layerPanelOpen
                       ? 'bg-accent text-white shadow-xs'
                       : 'text-ink-2 hover:text-ink hover:bg-sheet'
-                  }`}
+                    }`}
                 >
                   {layerPanelOpen ? 'Hide Layers' : 'Layers (A–F)'}
                 </button>
@@ -3492,11 +3501,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                     key={mode.id}
                     type="button"
                     onClick={() => handleBasemapChange(mode.id)}
-                    className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${
-                      basemap === mode.id
+                    className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${basemap === mode.id
                         ? 'bg-sheet text-accent shadow-xs font-semibold'
                         : 'text-ink-2 hover:text-ink hover:bg-sheet/70'
-                    }`}
+                      }`}
                   >
                     {mode.label}
                   </button>
@@ -3504,11 +3512,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 <button
                   type="button"
                   onClick={() => setLayerBEnabled((prev) => !prev)}
-                  className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${
-                    layerBEnabled
+                  className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${layerBEnabled
                       ? 'bg-warn text-white shadow-xs'
                       : 'text-ink-2 hover:text-ink hover:bg-sheet/70'
-                  }`}
+                    }`}
                 >
                   VIIRS Lights
                 </button>
@@ -3524,11 +3531,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                   type="button"
                   aria-pressed={beginnerGuideOpen}
                   onClick={() => setBeginnerGuideOpen((prev) => !prev)}
-                  className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${
-                    beginnerGuideOpen
+                  className={`h-7 px-2.5 rounded-sm font-medium transition-colors ${beginnerGuideOpen
                       ? 'bg-accent text-white shadow-xs'
                       : 'text-ink-2 hover:text-ink hover:bg-sheet/70'
-                  }`}
+                    }`}
                   title="Open plain-language guide to map colors, symbols, and layers"
                 >
                   ? Map Guide
@@ -3549,9 +3555,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
           {/* Preliminary Engineering Watermark Banner */}
           <div
-            className={`pointer-events-none absolute left-3 z-10 bg-sheet/90 backdrop-blur-md border border-rule-subtle px-3 py-1 rounded-full shadow-xs max-w-[calc(100%-4.5rem)] ${
-              variant === 'overview' ? 'bottom-11' : 'top-3'
-            }`}
+            className={`pointer-events-none absolute left-3 z-10 bg-sheet/90 backdrop-blur-md border border-rule-subtle px-3 py-1 rounded-full shadow-xs max-w-[calc(100%-4.5rem)] ${variant === 'overview' ? 'bottom-11' : 'top-3'
+              }`}
           >
             <div className="text-2xs sm:text-xs text-warn font-semibold truncate">
               PRELIMINARY ENGINEERING ESTIMATE — FIELD SURVEY REQUIRED

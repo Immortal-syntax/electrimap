@@ -131,21 +131,17 @@ describe('Audit Fixes Regression Suite (API Client, Auth, Costing, Settlements &
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Email address/i)).toBeEnabled();
 
-    await act(async () => {
-      useSessionStore.setState({
-        user: {
-          id: 'u-1',
-          email: 'swayamkr26@gmail.com',
-          display_name: 'Swayam Kumar',
-          role: 'PLANNER',
-          is_active: true,
-        },
-        isInitialized: true,
-        isLoading: false,
-        error: null,
-        connectionWarning: null,
-      });
-    });
+    window.localStorage.setItem(
+      'electrimap_demo_session_v1',
+      JSON.stringify({
+        id: '00000000-0000-4000-8000-000000000010',
+        email: 'swayamkr26@gmail.com',
+        display_name: 'Swayam Kumar',
+        signed_in_at: '2026-11-17T00:00:00.000Z',
+      }),
+    );
+    await useSessionStore.getState().checkSession();
+    expect(useSessionStore.getState().user?.display_name).toBe('Swayam Kumar');
 
     rerender(
       <MemoryRouter initialEntries={['/login']}>
@@ -159,6 +155,29 @@ describe('Audit Fixes Regression Suite (API Client, Auth, Costing, Settlements &
     await waitFor(() => {
       expect(screen.getByText('Projects Destination')).toBeInTheDocument();
     });
+
+    await useSessionStore.getState().logout();
+    expect(useSessionStore.getState().user).toBeNull();
+    expect(window.localStorage.getItem('electrimap_demo_session_v1')).toBeNull();
+  });
+
+  it('authenticates Swayam Kumar and Sumit Kushwaha with demo passcode 1234 and rejects invalid credentials', async () => {
+    const swayam = await useSessionStore
+      .getState()
+      .login('swayamkr26@gmail.com', '1234');
+    expect(swayam.display_name).toBe('Swayam Kumar');
+    expect(useSessionStore.getState().user?.display_name).toBe('Swayam Kumar');
+
+    await useSessionStore.getState().logout();
+    expect(useSessionStore.getState().user).toBeNull();
+
+    const sumit = await useSessionStore.getState().login('sumitp@gmail.com', '1234');
+    expect(sumit.display_name).toBe('Sumit Kushwaha');
+    expect(useSessionStore.getState().user?.display_name).toBe('Sumit Kushwaha');
+
+    await expect(
+      useSessionStore.getState().login('swayamkr26@gmail.com', 'wrong'),
+    ).rejects.toThrow(/Invalid email or password/i);
   });
 
   it('resets CostPanel editingRates on save/unset, withholds OPEX when unset, and labels Unset Tie-In', async () => {

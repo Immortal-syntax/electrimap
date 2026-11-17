@@ -17,15 +17,15 @@ A web-based pre-feasibility GIS workbench for assessing rural and tribal electri
 
 | Environment | Access Link | Description |
 |---|---|---|
-| **Production Web App (Vercel)** | [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app) | Full-stack Vercel Services deployment (`frontend/` Vite React SPA + `backend/` FastAPI via Fluid Compute + Vercel Analytics) |
-| **API Documentation (Production / Local)** | [`/api/docs`](https://electrimap-india.vercel.app/api/docs) · [localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI/Swagger documentation for all 40+ REST endpoints |
+| **Production Web App (Vercel)** | [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app) | Standalone Vite React SPA demonstration with browser-persisted (`localStorage`) projects, GIS calculations, and 24-section DPR PDF/Excel/GIS exports |
+| **API Documentation (Local FastAPI)** | [localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI/Swagger documentation for all 40+ REST endpoints when running local backend |
 
-### Pre-Configured Dev/Demo Accounts (Local / Docker `APP_ENV != production`)
+### Configured Demo Accounts (Deployed Vercel Demo & Local Dev)
 
 | Account | Email | Password | Access Scope |
 |---|---|---|---|
-| **Swayam Kumar** | `swayamkr26@gmail.com` | `1234` | Full planner access; private project portfolio + shared Bheja Sample Study (disabled in `APP_ENV=production`) |
-| **Sumit Kushwaha** | `sumitp@gmail.com` | `1234` | Full planner access; private project portfolio + shared Bheja Sample Study (disabled in `APP_ENV=production`) |
+| **Swayam Kumar** | `swayamkr26@gmail.com` | `1234` | Demo sign-in; private project portfolio + pre-loaded Village Bheja Sample Study (`localStorage`) |
+| **Sumit Kushwaha** | `sumitp@gmail.com` | `1234` | Demo sign-in; private project portfolio + pre-loaded Village Bheja Sample Study (`localStorage`) |
 | **Instant Exploration** | *Click "Sample Study" in top bar* | *None* | Pre-feasibility benchmark exploration for Village Bheja, Koraput, Odisha |
 
 ---

@@ -73,7 +73,7 @@ export const LoginPage: React.FC = () => {
               <span>Back to Sample Study Overview</span>
             </Link>
             <Badge variant="primary" size="sm">
-              Secure Session
+              Demo Sign-In
             </Badge>
           </div>
           <div className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-2 pt-0.5">
@@ -82,7 +82,7 @@ export const LoginPage: React.FC = () => {
           </div>
           <h1 className="heading-xl">Sign in to ElectriMap DPR</h1>
           <p className="text-xs text-ink-2 leading-relaxed">
-            Sign in with your account email and password to access village studies, GIS layers, and project reports.
+            Sign in with your demo account email and password to access village studies, GIS layers, and project reports.
           </p>
         </div>
 
@@ -155,7 +155,9 @@ export const LoginPage: React.FC = () => {
           </form>
 
           <div className="pt-3 border-t border-rule-subtle text-xs text-ink-3 leading-relaxed">
-            Protected project data requires an active authenticated session. Sign out when you finish using a shared device.
+            Explicit demonstration sign-in only (persisted in this browser&apos;s{' '}
+            <code>localStorage</code> — not real identity verification). Protected demo workspaces
+            require an active demo sign-in; sign out when finished on a shared device.
           </div>
         </div>
       </div>

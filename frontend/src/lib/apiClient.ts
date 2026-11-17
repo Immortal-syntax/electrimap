@@ -15,8 +15,11 @@
  */
 
 /**
- * Typed HTTP client for ElectriMap DPR REST API (/api/v1) with automatic CSRF header injection.
+ * Typed HTTP client for ElectriMap DPR REST API (/api/v1) with automatic client-side
+ * demonstration engine routing when no external backend origin is configured.
  */
+
+import { handleDemoApiRequest } from '../demo/demoApiRouter';
 
 export interface ApiErrorDetail {
   code: string;
@@ -195,10 +198,42 @@ function buildRequestInit(method: string, options: RequestInit): { method: strin
   return { method, headers };
 }
 
+export function isStandaloneDemoMode(): boolean {
+  const hasExplicitOrigin = Boolean(
+    (
+      import.meta.env.VITE_API_ORIGIN ??
+      import.meta.env.VITE_API_BASE_ORIGIN ??
+      import.meta.env.VITE_API_BASE ??
+      ''
+    ).trim(),
+  );
+  if (hasExplicitOrigin) {
+    return false;
+  }
+  const hasMockedFetch =
+    typeof (globalThis.fetch as { mock?: unknown } | undefined)?.mock === 'object';
+  return !hasMockedFetch;
+}
+
+export function shouldUseClientRasterDataUrl(): boolean {
+  if (import.meta.env.MODE === 'test') {
+    return false;
+  }
+  return isStandaloneDemoMode();
+}
+
 export async function apiFetchResponse(
   path: string,
   options: RequestInit = {},
 ): Promise<Response> {
+  if (isStandaloneDemoMode() && path.startsWith('/api/v1')) {
+    const demoResponse = await handleDemoApiRequest(path, options);
+    if (!demoResponse.ok) {
+      throw await parseErrorResponse(demoResponse);
+    }
+    return demoResponse;
+  }
+
   const method = (options.method ?? 'GET').toUpperCase();
   const { headers } = buildRequestInit(method, options);
   const url = resolveApiUrl(path);

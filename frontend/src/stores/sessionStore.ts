@@ -15,21 +15,16 @@
  */
 
 import { create } from 'zustand';
-import { ApiClientError, apiRequest, getCsrfToken, setCsrfToken } from '../lib/apiClient';
+import {
+  authenticateDemoUser,
+  clearStoredDemoUser,
+  getStoredDemoUser,
+  type DemoUserProfile,
+} from '../demo/demoAuth';
+import { setCsrfToken } from '../lib/apiClient';
 import { useActiveProjectStore } from './activeProjectStore';
 
-export interface UserProfile {
-  id: string;
-  email: string;
-  display_name: string;
-  role: string;
-  is_active: boolean;
-}
-
-interface AuthSessionPayload {
-  user: UserProfile;
-  csrf_token: string | null;
-}
+export type UserProfile = DemoUserProfile;
 
 interface SessionState {
   user: UserProfile | null;
@@ -43,8 +38,6 @@ interface SessionState {
   clearError: () => void;
 }
 
-let inFlightSessionCheck: Promise<void> | null = null;
-
 export const useSessionStore = create<SessionState>((set) => ({
   user: null,
   isInitialized: false,
@@ -53,89 +46,41 @@ export const useSessionStore = create<SessionState>((set) => ({
   connectionWarning: null,
 
   checkSession: async () => {
-    if (inFlightSessionCheck) {
-      return inFlightSessionCheck;
-    }
-    set({ isLoading: true, connectionWarning: null });
-    inFlightSessionCheck = (async () => {
-      try {
-        const needsCsrf = !getCsrfToken();
-        const endpoint = needsCsrf ? '/api/v1/auth/me?issue_csrf=1' : '/api/v1/auth/me';
-        const data = await apiRequest<AuthSessionPayload>(endpoint);
-        if (data?.csrf_token) {
-          setCsrfToken(data.csrf_token);
-        }
-        set({
-          user: data?.user ?? null,
-          isInitialized: true,
-          isLoading: false,
-          connectionWarning: null,
-        });
-      } catch (err) {
-        if (err instanceof ApiClientError && (err.status === 401 || err.status === 403)) {
-          setCsrfToken(null);
-          set({
-            user: null,
-            isInitialized: true,
-            isLoading: false,
-            error: null,
-            connectionWarning: null,
-          });
-        } else {
-          const msg =
-            err instanceof Error
-              ? err.message
-              : 'Unable to reach server to verify planner session.';
-          set({
-            user: null,
-            isInitialized: true,
-            isLoading: false,
-            connectionWarning: msg,
-          });
-        }
-      } finally {
-        inFlightSessionCheck = null;
-      }
-    })();
-    return inFlightSessionCheck;
+    const storedUser = getStoredDemoUser();
+    set({
+      user: storedUser,
+      isInitialized: true,
+      isLoading: false,
+      connectionWarning: null,
+    });
   },
 
   login: async (email: string, password: string) => {
     set({ isLoading: true, error: null });
     try {
-      const data = await apiRequest<AuthSessionPayload>('/api/v1/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      });
+      const profile = authenticateDemoUser(email, password);
       useActiveProjectStore.getState().resetUserProjects();
-      if (data?.csrf_token) {
-        setCsrfToken(data.csrf_token);
-      }
       set({
-        user: data.user,
+        user: profile,
         isInitialized: true,
         isLoading: false,
         error: null,
         connectionWarning: null,
       });
-      return data.user;
+      return profile;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Authentication failed.';
+      const msg = err instanceof Error ? err.message : 'Demo authentication failed.';
       set({ isLoading: false, error: msg });
       throw err;
     }
   },
 
   logout: async () => {
-    try {
-      await apiRequest('/api/v1/auth/logout', { method: 'POST' });
-    } finally {
-      setCsrfToken(null);
-      useActiveProjectStore.getState().resetUserProjects();
-      set({ user: null, isInitialized: true, error: null });
-    }
+    clearStoredDemoUser();
+    setCsrfToken(null);
+    useActiveProjectStore.getState().resetUserProjects();
+    set({ user: null, isInitialized: true, error: null, connectionWarning: null });
   },
 
   clearError: () => set({ error: null }),
 }));
-
