@@ -17,12 +17,57 @@
 Domain purity rule: Pure NumPy / Shapely / scikit-image logic.
 """
 
+import os
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 from shapely.geometry import LineString
-from skimage.graph import MCP_Geometric
+
+
+def _load_mcp_geometric() -> type[Any]:
+    """Import MCP_Geometric lazily and guard against packagers that strip .pyi stubs."""
+    import lazy_loader
+
+    if not getattr(lazy_loader.attach_stub, "_electrimap_stub_safe", False):
+        orig_attach_stub = lazy_loader.attach_stub
+
+        def _safe_attach_stub(package_name: str, filename: str) -> Any:
+            try:
+                return orig_attach_stub(package_name, filename)
+            except ValueError as exc:
+                if "non-existent stub" not in str(exc):
+                    raise
+                pkg_dir = os.path.dirname(filename)
+                submodules = {
+                    entry.name.split(".", 1)[0]
+                    for entry in os.scandir(pkg_dir)
+                    if not entry.name.startswith("__")
+                    and (entry.is_dir() or entry.name.endswith((".py", ".so", ".pyd")))
+                }
+                submod_attrs = (
+                    {
+                        "mcp": [
+                            "MCP",
+                            "MCP_Geometric",
+                            "MCP_Connect",
+                            "MCP_Flexible",
+                            "route_through_array",
+                        ]
+                    }
+                    if package_name == "skimage.graph"
+                    else {}
+                )
+                return lazy_loader.attach(package_name, submodules, submod_attrs)
+
+        _safe_attach_stub._electrimap_stub_safe = True  # type: ignore[attr-defined]
+        lazy_loader.attach_stub = _safe_attach_stub
+
+    from skimage.graph import MCP_Geometric
+
+    cls: type[Any] = MCP_Geometric
+    return cls
 
 
 @dataclass(frozen=True)
@@ -71,7 +116,8 @@ def route_least_cost_feeder(
             crossed_forest_cells=0,
         )
 
-    mcp = MCP_Geometric(cost_surface.astype(np.float64), sampling=(cell_size_m, cell_size_m))
+    mcp_geometric_cls = _load_mcp_geometric()
+    mcp = mcp_geometric_cls(cost_surface.astype(np.float64), sampling=(cell_size_m, cell_size_m))
     cumulative_costs, _traceback = mcp.find_costs(starts=[start_rc], ends=[end_rc])
     path_rc: list[tuple[int, int]] = [
         (int(r), int(c)) for r, c in mcp.traceback(end_rc)

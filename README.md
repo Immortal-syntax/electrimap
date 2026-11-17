@@ -190,7 +190,7 @@ ruff check app tests
 # 2. Strict static typechecking
 mypy app
 
-# 3. Comprehensive unit and integration test suite (72 tests)
+# 3. Comprehensive unit and integration test suite (73 tests)
 pytest -v
 ```
 
