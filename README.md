@@ -17,10 +17,11 @@ A web-based pre-feasibility GIS workbench for assessing rural and tribal electri
 
 | Environment | Access Link | Description |
 |---|---|---|
-| **Production Web App (Vercel)** | [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app) | Standalone Vite React SPA demonstration with browser-persisted (`localStorage`) projects, GIS calculations, and 24-section DPR PDF/Excel/GIS exports |
-| **API Documentation (Local FastAPI)** | [localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI/Swagger documentation for all 40+ REST endpoints when running local backend |
+| **Production Web App (Vercel)** | [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app) | Live interactive Vite React GIS demonstration with browser-persisted (`localStorage`) projects, GIS calculations, and 24-section DPR PDF/Excel/GIS exports |
+| **Sample Study Workbench** | [**https://electrimap-india.vercel.app/projects/00000000-0000-4000-8000-000000000001/workspace**](https://electrimap-india.vercel.app/projects/00000000-0000-4000-8000-000000000001/workspace) | Direct access to the pre-loaded Village Bheja (Koraput, Odisha) 6-step engineering study |
+| **Demo Sign-In** | [**https://electrimap-india.vercel.app/login**](https://electrimap-india.vercel.app/login) | Sign in with either configured demo account below to create, edit, and export studies |
 
-### Configured Demo Accounts (Deployed Vercel Demo & Local Dev)
+### Configured Demo Accounts
 
 | Account | Email | Password | Access Scope |
 |---|---|---|---|
@@ -83,60 +84,11 @@ flowchart LR
 ### Prerequisites
 
 - **Node.js**: 20 LTS or later
-- **Python**: 3.12 or 3.13
-- **Docker**: For running PostgreSQL 16 with PostGIS 3.4 (optional for local testing; SQLite in-memory supported)
-- **GDAL / PROJ**: Geospatial libraries (included automatically in Docker or installed via wheels)
+- **Python**: 3.12 or 3.13 (optional, for running the Python domain/backend test suite)
 
 ---
 
-### Option A: One-Command Docker Deployment (Full Stack)
-
-Deploy the entire stack with database, backend, background worker, and frontend:
-
-```bash
-docker compose up -d --build
-```
-
-- **Frontend UI**: [http://localhost:5173](http://localhost:5173)
-- **Backend API**: [http://localhost:8000](http://localhost:8000)
-- **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
-
----
-
-### Option B: Local Developer Setup
-
-#### 1. Database Setup
-
-```bash
-# Launch PostGIS container
-docker compose up db -d
-```
-
-#### 2. Backend Setup
-
-```bash
-cd backend
-
-# Create virtual environment
-python -m venv .venv
-# Activate virtual environment
-source .venv/bin/activate       # On Linux/macOS
-.\.venv\Scripts\Activate.ps1    # On Windows PowerShell
-
-# Install dependencies in editable mode
-pip install -e ".[dev]"
-
-# Run database migrations
-alembic upgrade head
-
-# Seed initial admin units, users, and demo study
-python -m app.services.seed_service
-
-# Start the FastAPI development server
-uvicorn app.main:app --reload --port 8000
-```
-
-#### 3. Frontend Setup
+### Option A: Frontend & Standalone Demo Setup
 
 ```bash
 cd frontend
@@ -144,34 +96,55 @@ cd frontend
 # Install dependencies (including devDependencies required for tsc)
 npm install
 
-# Start the Vite development server
+# Start the development server
 npm run dev
-```
 
-The frontend will be accessible at [http://localhost:5173](http://localhost:5173).
+# Build the production static bundle
+npm run build
+```
 
 ---
 
-## ☁️ Vercel Full-Stack Deployment Guide (Vercel Services)
+### Option B: Docker Compose Stack
 
-ElectriMap deploys both the **Vite/React frontend** (`frontend/`) and **FastAPI GIS backend** (`backend/app/main.py`) in a single project using **Vercel Services** (beta) defined in [`vercel.json`](vercel.json), keeping `/api/*` first-party same-origin with HttpOnly cookies and isolating `/_vercel/*` for Web Analytics:
+Build and run the multi-container stack (`db`, `backend`, `worker`, `frontend`):
 
-### 1. Required Vercel Project Settings & Environment Variables
-1. Set **Framework Preset** to **Services** (`services`) with **Fluid Compute** enabled and Node.js `22.x`.
-2. In **Vercel → Settings → Environment Variables**, configure:
-   - `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` (enables up to 5 GB uncompressed bundle size on Python Fluid Compute for `geopandas`, `rasterio`, `scipy`, `scikit-image`, `matplotlib`, and `reportlab`).
-   - `APP_ENV=production` (or `APP_ENV=demo` only if you intentionally want showcase sample accounts active).
-   - `SESSION_SECRET=<64-char-random-secret>` (required in `APP_ENV=production`).
-   - `SESSION_COOKIE_SECURE=true` and `CORS_ORIGINS=https://electrimap-india.vercel.app`.
-3. To enable login accounts under `APP_ENV=production` (where weak default passwords are disabled), set `PRODUCTION_ADMIN_EMAIL` and `PRODUCTION_ADMIN_PASSWORD` (`>= 12` characters) as Vercel sensitive environment variables.
+```bash
+docker compose up -d --build
+```
 
-### 2. Persistent PostgreSQL + PostGIS Storage (Recommended: Neon via Vercel Marketplace)
-- Without a managed database, Vercel Functions fall back to ephemeral `/tmp` SQLite across cold starts.
-- Add **Neon Postgres** (or any PostgreSQL 16 + PostGIS database) via **Vercel Dashboard → Storage / Marketplace** so Vercel injects `POSTGRES_URL` / `DATABASE_URL` automatically; [`config.py`](backend/app/core/config.py) normalizes `postgres://`/`postgresql://` to `postgresql+psycopg://` and [`session.py`](backend/app/db/session.py) enables `CREATE EXTENSION IF NOT EXISTS postgis` on startup.
+---
 
-### 3. GitHub Auto-Deployments & Web Analytics
-- Grant Vercel's GitHub App access to `Immortal-syntax/electrimap` and link it to `main` under **Vercel Dashboard → Settings → Git** so pushes auto-deploy cleanly.
-- Enable **Web Analytics** in the Vercel Project Analytics tab so `/_vercel/insights/script.js` is served automatically.
+### Option C: Python Backend & Domain Suite
+
+```bash
+cd backend
+
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate       # On Linux/macOS
+.\.venv\Scripts\Activate.ps1    # On Windows PowerShell
+
+# Install dependencies in editable mode
+pip install -e ".[dev]"
+
+# Run database migrations and seed reference data
+alembic upgrade head
+python -m app.services.seed_service
+
+# Start the FastAPI server
+uvicorn app.main:app --reload
+```
+
+---
+
+## ☁️ Vercel Deployment Guide
+
+ElectriMap deploys directly to [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app) as a self-contained Vite React application configured via [`vercel.json`](vercel.json):
+
+1. **Zero External Infrastructure Required**: Authentication (`swayamkr26@gmail.com` and `sumitp@gmail.com`, password `1234`), project storage (`localStorage`), GIS metric DBSCAN clustering, 7-sector demand forecasting, 4-scenario NPC/LCOE comparisons, and 24-section PDF/Excel/GIS exports execute directly in the browser without requiring PostgreSQL, Neon, PostGIS, or Redis.
+2. **SPA Routing & Web Analytics**: [`vercel.json`](vercel.json) rewrites all application routes (`/login`, `/projects`, `/projects/:id/workspace`, `/map`) to `/index.html` while preserving `/_vercel/*` for Vercel Web Analytics.
+3. **Automatic GitHub Deployments**: Pushing to `main` automatically builds `frontend/dist` and updates [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app).
 
 ---
 
@@ -205,7 +178,7 @@ npm run lint
 # 2. Strict TypeScript type verification (0 errors)
 npm run typecheck
 
-# 3. Vitest unit and component tests (58 tests)
+# 3. Vitest unit and component tests (59 tests)
 npm run test
 
 # 4. Production build compilation
