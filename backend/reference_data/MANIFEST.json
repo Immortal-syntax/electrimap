@@ -1,0 +1,57 @@
+{
+  "reference_geography": {
+    "state": "Odisha",
+    "district": "Koraput",
+    "selected_block": "Nandapur",
+    "sample_village": "Bheja (LGD 398712 / Census 428914)",
+    "bbox_wgs84": [
+      82.68,
+      18.52,
+      82.78,
+      18.61
+    ],
+    "metric_epsg": 32644,
+    "selection_rationale": "Nandapur Block in Koraput District features characteristic Eastern Ghats elevation gradients (850-1150 m), forest-river barriers, a dense main village core, an underserved intermediate tola, a remote PVTG hamlet across a river, and scattered homesteads\u2014testing all 3 electrification strategies."
+  },
+  "generated_at": "2026-11-06T02:32:29.986516+00:00",
+  "solar_summary": {
+    "status": "LIVE_RETRIEVED",
+    "worst_month": "AUG",
+    "worst_ghi_kwh_m2_day": 3.4267,
+    "annual_mean_ghi_kwh_m2_day": 4.8958
+  },
+  "raster_summary": {
+    "dem_status": "LIVE_RETRIEVED",
+    "worldcover_status": "LIVE_RETRIEVED",
+    "grid_shape": [
+      300,
+      300
+    ],
+    "elevation_min_m": 860.0,
+    "elevation_max_m": 1290.7,
+    "elevation_mean_m": 954.4,
+    "tree_cover_share": 0.36,
+    "water_share": 0.0
+  },
+  "vector_summary": {
+    "village_count": 1,
+    "building_count": 143
+  },
+  "files": {
+    "koraput_nandapur_dem_30m.tif": {
+      "sha256": "0cdafb5a45256ba96f1fb38ad7debb4f1f001dbc480edf8a751ccaaf9e039d57"
+    },
+    "koraput_nandapur_worldcover_30m.tif": {
+      "sha256": "7300afc65ae11f7789d7cad4fe440155729ca8cef14f4b1efdc388a80cfc6c90"
+    },
+    "koraput_nandapur_villages.geojson": {
+      "sha256": "d1476fa944c0072fa06c2ad57a7463e4048ec3068b0771c4a9868d50b6fa2a86"
+    },
+    "koraput_nandapur_buildings.geojson": {
+      "sha256": "bdb0c4b4aee640d69e4f034a7644cab5e7bbfdb40ed1963604881706546a57e9"
+    },
+    "koraput_nandapur_solar.json": {
+      "sha256": "daa752eec4d34cdd79ee7c1a40f6573990554fb2f54942f9ff440b84dd4582df"
+    }
+  }
+}

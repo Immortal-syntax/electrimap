@@ -296,7 +296,7 @@ def _ingest_buildings_for_aoi(
 ) -> tuple[int, dict[str, Any], bool]:
     """Clip reference buildings or synthesize explicit fallback footprints outside extract."""
     settings = get_settings()
-    ref_bld_path = settings.data_dir / "reference" / "koraput_nandapur_buildings.geojson"
+    ref_bld_path = settings.reference_dir / "koraput_nandapur_buildings.geojson"
 
     db.execute(
         delete(Building).where(
@@ -520,7 +520,7 @@ def _ingest_solar_resource_for_aoi(
 ) -> tuple[dict[str, Any], bool]:
     """Ingest NASA POWER monthly GHI (kWh/m^2/day) and 2m temperature (C) for the AOI centroid."""
     settings = get_settings()
-    ref_solar_path = settings.data_dir / "reference" / "koraput_nandapur_solar.json"
+    ref_solar_path = settings.reference_dir / "koraput_nandapur_solar.json"
     is_ref_koraput = _intersects_reference_extract(aoi_geom)
 
     lat = round(float(aoi_geom.centroid.y), 5)
@@ -762,7 +762,7 @@ def _run_project_data_acquisition_pipeline_locked(
     is_ref_koraput = _intersects_reference_extract(aoi_geom)
     dem_clip = (
         _read_clipped_reference_raster(
-            settings.data_dir / "reference" / "koraput_nandapur_dem_30m.tif",
+            settings.reference_dir / "koraput_nandapur_dem_30m.tif",
             bbox_tuple,
         )
         if is_ref_koraput
@@ -770,7 +770,7 @@ def _run_project_data_acquisition_pipeline_locked(
     )
     wc_clip = (
         _read_clipped_reference_raster(
-            settings.data_dir / "reference" / "koraput_nandapur_worldcover_30m.tif",
+            settings.reference_dir / "koraput_nandapur_worldcover_30m.tif",
             bbox_tuple,
         )
         if is_ref_koraput
@@ -1079,7 +1079,7 @@ def get_layer_raster_png_and_bounds(
     if layer_key in {"dem_slope", "landcover"} and _intersects_reference_extract(aoi_row.geom):
         if layer_key == "dem_slope":
             clipped = _read_clipped_reference_raster(
-                settings.data_dir / "reference" / "koraput_nandapur_dem_30m.tif",
+                settings.reference_dir / "koraput_nandapur_dem_30m.tif",
                 bbox_tuple,
             )
             if clipped is not None:
@@ -1090,7 +1090,7 @@ def get_layer_raster_png_and_bounds(
                 return png_bytes, [min_lon, min_lat, max_lon, max_lat]
         else:
             clipped = _read_clipped_reference_raster(
-                settings.data_dir / "reference" / "koraput_nandapur_worldcover_30m.tif",
+                settings.reference_dir / "koraput_nandapur_worldcover_30m.tif",
                 bbox_tuple,
             )
             if clipped is not None:
@@ -1371,8 +1371,8 @@ def load_reference_terrain_arrays_for_aoi(
         return (None, None, None)
 
     settings = get_settings()
-    dem_path = settings.data_dir / "reference" / "koraput_nandapur_dem_30m.tif"
-    wc_path = settings.data_dir / "reference" / "koraput_nandapur_worldcover_30m.tif"
+    dem_path = settings.reference_dir / "koraput_nandapur_dem_30m.tif"
+    wc_path = settings.reference_dir / "koraput_nandapur_worldcover_30m.tif"
     if not dem_path.exists() or not wc_path.exists():
         return (None, None, None)
 

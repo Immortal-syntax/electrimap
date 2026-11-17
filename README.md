@@ -17,8 +17,8 @@ A web-based pre-feasibility GIS workbench for assessing rural and tribal electri
 
 | Environment | Access Link | Description |
 |---|---|---|
-| **Production Web App (Vercel)** | [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app) | Static React/Vite GIS frontend (`frontend/dist`) + Vercel Analytics; requires `VITE_API_ORIGIN` pointing to a hosted `backend/` API for sign-in |
-| **API Documentation (Local/Docker)** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI/Swagger documentation for all 40+ REST endpoints |
+| **Production Web App (Vercel)** | [**https://electrimap-india.vercel.app**](https://electrimap-india.vercel.app) | Full-stack Vercel Services deployment (`frontend/` Vite React SPA + `backend/` FastAPI via Fluid Compute + Vercel Analytics) |
+| **API Documentation (Production / Local)** | [`/api/docs`](https://electrimap-india.vercel.app/api/docs) · [localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI/Swagger documentation for all 40+ REST endpoints |
 
 ### Pre-Configured Dev/Demo Accounts (Local / Docker `APP_ENV != production`)
 
@@ -152,25 +152,26 @@ The frontend will be accessible at [http://localhost:5173](http://localhost:5173
 
 ---
 
-## ☁️ Vercel + Backend Deployment Guide
+## ☁️ Vercel Full-Stack Deployment Guide (Vercel Services)
 
-Vercel hosts only the static Vite frontend (`frontend/dist`). Sign-in, authentication cookies, PostGIS queries, and DPR PDF/Excel exports require hosting [`backend/`](backend/Dockerfile) separately (e.g., Railway, Render, Cloud Run, or Docker) and linking its public URL via `VITE_API_ORIGIN`:
+ElectriMap deploys both the **Vite/React frontend** (`frontend/`) and **FastAPI GIS backend** (`backend/app/main.py`) in a single project using **Vercel Services** (beta) defined in [`vercel.json`](vercel.json), keeping `/api/*` first-party same-origin with HttpOnly cookies and isolating `/_vercel/*` for Web Analytics:
 
-### 1. Connecting & Deploying the Frontend on Vercel
-1. Ensure Vercel (`electrimap-india`) is linked to `Immortal-syntax/electrimap` (`main` branch) in **Vercel Dashboard → Settings → Git** and trigger a **Redeploy** whenever `main` updates.
-2. Root [`vercel.json`](vercel.json) and [`frontend/vercel.json`](frontend/vercel.json) isolate `/api/*` and `/_vercel/*` from SPA HTML rewrites, preventing `HTTP 405` on API requests and HTML `SyntaxError` on `/_vercel/insights/script.js`.
-3. Enable **Web Analytics** in the Vercel Project Analytics tab so `/_vercel/insights/script.js` is served cleanly.
+### 1. Required Vercel Project Settings & Environment Variables
+1. Set **Framework Preset** to **Services** (`services`) with **Fluid Compute** enabled and Node.js `22.x`.
+2. In **Vercel → Settings → Environment Variables**, configure:
+   - `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` (enables up to 5 GB uncompressed bundle size on Python Fluid Compute for `geopandas`, `rasterio`, `scipy`, `scikit-image`, `matplotlib`, and `reportlab`).
+   - `APP_ENV=production` (or `APP_ENV=demo` only if you intentionally want showcase sample accounts active).
+   - `SESSION_SECRET=<64-char-random-secret>` (required in `APP_ENV=production`).
+   - `SESSION_COOKIE_SECURE=true` and `CORS_ORIGINS=https://electrimap-india.vercel.app`.
+3. To enable login accounts under `APP_ENV=production` (where weak default passwords are disabled), set `PRODUCTION_ADMIN_EMAIL` and `PRODUCTION_ADMIN_PASSWORD` (`>= 12` characters) as Vercel sensitive environment variables.
 
-### 2. Connecting the FastAPI + PostGIS Backend
-1. Deploy [`backend/Dockerfile`](backend/Dockerfile) with PostgreSQL 16 + PostGIS 3.4 (the container automatically binds `${PORT:-8000}`).
-2. Configure backend environment variables:
-   - `APP_ENV=production` (or `demo` if you explicitly want sample demo accounts enabled; otherwise set `PRODUCTION_ADMIN_EMAIL` and `>=12`-char `PRODUCTION_ADMIN_PASSWORD`)
-   - `SESSION_SECRET=<64-char-random-secret>`
-   - `SESSION_COOKIE_SAMESITE=none` (required for cross-origin cookies between `electrimap-india.vercel.app` and an external API domain over HTTPS)
-   - `CORS_ORIGINS=https://electrimap-india.vercel.app`
-3. In **Vercel → Settings → Environment Variables**, set:
-   - `VITE_API_ORIGIN=https://<your-hosted-backend-domain>`
-4. Redeploy the Vercel project so Vite embeds `VITE_API_ORIGIN` into the production bundle.
+### 2. Persistent PostgreSQL + PostGIS Storage (Recommended: Neon via Vercel Marketplace)
+- Without a managed database, Vercel Functions fall back to ephemeral `/tmp` SQLite across cold starts.
+- Add **Neon Postgres** (or any PostgreSQL 16 + PostGIS database) via **Vercel Dashboard → Storage / Marketplace** so Vercel injects `POSTGRES_URL` / `DATABASE_URL` automatically; [`config.py`](backend/app/core/config.py) normalizes `postgres://`/`postgresql://` to `postgresql+psycopg://` and [`session.py`](backend/app/db/session.py) enables `CREATE EXTENSION IF NOT EXISTS postgis` on startup.
+
+### 3. GitHub Auto-Deployments & Web Analytics
+- Grant Vercel's GitHub App access to `Immortal-syntax/electrimap` and link it to `main` under **Vercel Dashboard → Settings → Git** so pushes auto-deploy cleanly.
+- Enable **Web Analytics** in the Vercel Project Analytics tab so `/_vercel/insights/script.js` is served automatically.
 
 ---
 
@@ -189,7 +190,7 @@ ruff check app tests
 # 2. Strict static typechecking
 mypy app
 
-# 3. Comprehensive unit and integration test suite (71 tests)
+# 3. Comprehensive unit and integration test suite (72 tests)
 pytest -v
 ```
 

@@ -176,3 +176,37 @@ def test_export_sor_to_csv_neutralizes_formula_injection() -> None:
     csv_out = export_sor_to_csv([malicious_item])
     assert "'=cmd|" in csv_out
     assert "'+SUM(1,2)" in csv_out
+
+
+def test_serverless_database_url_normalization_and_reference_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify postgres:// -> postgresql+psycopg:// normalization, POSTGRES_URL fallback,
+    bundled backend/reference_data lookup, and Vercel /tmp SQLite + Secure cookie guards.
+    """
+    from app.core.config import Settings, normalize_database_url
+
+    assert normalize_database_url("postgres://u:p@host/db?sslmode=require") == (
+        "postgresql+psycopg://u:p@host/db?sslmode=require"
+    )
+    assert normalize_database_url("postgresql://u:p@host/db") == (
+        "postgresql+psycopg://u:p@host/db"
+    )
+    assert normalize_database_url("postgresql+psycopg://u:p@host/db") == (
+        "postgresql+psycopg://u:p@host/db"
+    )
+
+    monkeypatch.setenv("POSTGRES_URL", "postgres://neon_user:pass@ep-cool.neon.tech/neondb")
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("VERCEL_PROJECT_PRODUCTION_URL", "electrimap-india.vercel.app")
+    vercel_pg = Settings(app_env="demo")
+    assert vercel_pg.database_url == "postgresql+psycopg://neon_user:pass@ep-cool.neon.tech/neondb"
+    assert vercel_pg.effective_cookie_secure is True
+    assert "https://electrimap-india.vercel.app" in vercel_pg.cors_origin_list
+    assert (vercel_pg.reference_dir / "MANIFEST.json").exists()
+
+    monkeypatch.delenv("POSTGRES_URL")
+    vercel_sqlite = Settings(app_env="demo")
+    assert vercel_sqlite.database_url.startswith("sqlite:///")
+    assert "electrimap_dev.db" in vercel_sqlite.database_url
+    assert "./data/" not in vercel_sqlite.database_url

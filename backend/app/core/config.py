@@ -14,6 +14,8 @@
 
 """Application configuration loaded from environment variables and .env."""
 
+import os
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -21,8 +23,26 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_DATA_DIR = _REPO_ROOT / "data"
+_BUNDLED_REFERENCE_DIR = _BACKEND_ROOT / "reference_data"
+_DEFAULT_SQLITE_URL = "sqlite:///./data/electrimap_dev.db"
+
+if os.environ.get("VERCEL") and "MPLCONFIGDIR" not in os.environ:
+    _mpl_dir = Path(tempfile.gettempdir()) / "matplotlib"
+    _mpl_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["MPLCONFIGDIR"] = str(_mpl_dir)
+
+
+def normalize_database_url(url: str) -> str:
+    """Normalize PostgreSQL URLs to use psycopg v3 when no explicit driver is present."""
+    stripped = url.strip()
+    if stripped.startswith("postgres://"):
+        return "postgresql+psycopg://" + stripped[len("postgres://") :]
+    if stripped.startswith("postgresql://"):
+        return "postgresql+psycopg://" + stripped[len("postgresql://") :]
+    return stripped
 
 
 class Settings(BaseSettings):
@@ -77,7 +97,21 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
-        """Resolve data_dir across working directories and reject weak production secrets."""
+        """Resolve data_dir/database URLs across hosts and reject weak production secrets."""
+        if self.database_url == _DEFAULT_SQLITE_URL:
+            for env_key in ("POSTGRES_URL", "POSTGRES_URL_NON_POOLING", "NEON_DATABASE_URL"):
+                env_val = os.environ.get(env_key, "").strip()
+                if env_val:
+                    self.database_url = env_val
+                    break
+            else:
+                if os.environ.get("VERCEL"):
+                    tmp_db = (Path(tempfile.gettempdir()) / "electrimap_dev.db").as_posix()
+                    self.database_url = f"sqlite:///{tmp_db}"
+
+        self.database_url = normalize_database_url(self.database_url)
+        self.test_database_url = normalize_database_url(self.test_database_url)
+
         if (
             not (self.data_dir / "reference").exists()
             and (_DEFAULT_DATA_DIR / "reference").exists()
@@ -101,17 +135,36 @@ class Settings(BaseSettings):
         return self
 
     @property
+    def reference_dir(self) -> Path:
+        """Return reference dataset directory, falling back to backend/reference_data."""
+        candidate = self.data_dir / "reference"
+        if candidate.exists():
+            return candidate
+        if (_DEFAULT_DATA_DIR / "reference").exists():
+            return _DEFAULT_DATA_DIR / "reference"
+        if _BUNDLED_REFERENCE_DIR.exists():
+            return _BUNDLED_REFERENCE_DIR
+        return candidate
+
+    @property
     def effective_cookie_secure(self) -> bool:
         """Return True when session cookies must carry the Secure flag (HTTPS)."""
         if self.session_cookie_samesite == "none":
             return True
         if self.session_cookie_secure is not None:
             return self.session_cookie_secure
-        return self.app_env == "production"
+        return self.app_env == "production" or bool(os.environ.get("VERCEL"))
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        for env_key in ("VERCEL_URL", "VERCEL_BRANCH_URL", "VERCEL_PROJECT_PRODUCTION_URL"):
+            host = os.environ.get(env_key, "").strip().removeprefix("https://").rstrip("/")
+            if host:
+                origin = f"https://{host}"
+                if origin not in origins:
+                    origins.append(origin)
+        return origins
 
 
 @lru_cache

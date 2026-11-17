@@ -17,10 +17,10 @@
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 import app.db.models  # noqa: F401
-from app.core.config import get_settings
+from app.core.config import get_settings, normalize_database_url
 from app.db.base import Base
 
 config = context.config
@@ -30,6 +30,10 @@ if config.config_file_name is not None:
 settings = get_settings()
 if not config.get_main_option("sqlalchemy.url"):
     config.set_main_option("sqlalchemy.url", settings.database_url)
+else:
+    configured_url = config.get_main_option("sqlalchemy.url") or ""
+    if configured_url:
+        config.set_main_option("sqlalchemy.url", normalize_database_url(configured_url))
 
 target_metadata = Base.metadata
 
@@ -61,6 +65,9 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        if connectable.dialect.name == "postgresql":
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+            connection.commit()
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

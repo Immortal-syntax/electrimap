@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "name": "koraput_nandapur_villages",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "lgd_code": "398712",
+        "census2011_code": "428914",
+        "village_name": "Bheja",
+        "gram_panchayat": "Bheja GP",
+        "block_name": "Nandapur",
+        "district_name": "Koraput",
+        "state_name": "Odisha",
+        "census_2011_pop": 1142,
+        "census_2011_hh": 248,
+        "census_2011_st_pop": 894,
+        "boundary_source": "HARMONISED"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              82.695,
+              18.535
+            ],
+            [
+              82.765,
+              18.535
+            ],
+            [
+              82.765,
+              18.595
+            ],
+            [
+              82.695,
+              18.595
+            ],
+            [
+              82.695,
+              18.535
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

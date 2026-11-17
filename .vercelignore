@@ -1,0 +1,24 @@
+# Exclude local caches, virtualenvs, and dev artifacts from Vercel uploads
+**/.venv
+**/.venv/**
+**/node_modules
+**/node_modules/**
+**/.pytest_cache
+**/.pytest_cache/**
+**/.mypy_cache
+**/.mypy_cache/**
+**/.ruff_cache
+**/.ruff_cache/**
+**/__pycache__
+**/__pycache__/**
+backend/data
+backend/data/**
+backend/tests
+backend/tests/**
+frontend/dist
+frontend/dist/**
+data/*.db
+data/*.sqlite*
+docs
+docs/**
+

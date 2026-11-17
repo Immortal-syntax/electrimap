@@ -14,6 +14,8 @@
 
 """FastAPI application entry point for ElectriMap DPR."""
 
+import os
+import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -47,19 +49,41 @@ from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.db import models as _db_models  # noqa: F401
 from app.db.base import Base
-from app.db.session import SessionLocal, check_db_readiness, engine, get_db
+from app.db.session import (
+    SessionLocal,
+    check_db_readiness,
+    engine,
+    ensure_postgis_extension,
+    get_db,
+)
 from app.services.seed_service import ensure_seed_data
 
 settings = get_settings()
 configure_logging(settings.log_level)
 
+_db_init_lock = threading.Lock()
+_db_initialized = False
+
+
+def initialize_database() -> None:
+    """Create schema, PostGIS extension (when PostgreSQL), and initial seed data once."""
+    global _db_initialized
+    if _db_initialized:
+        return
+    with _db_init_lock:
+        if _db_initialized:
+            return
+        ensure_postgis_extension(engine)
+        Base.metadata.create_all(bind=engine)
+        with SessionLocal() as db:
+            ensure_seed_data(db)
+        _db_initialized = True
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Ensure database tables and seed data exist on startup."""
-    Base.metadata.create_all(bind=engine)
-    with SessionLocal() as db:
-        ensure_seed_data(db)
+    initialize_database()
     yield
 
 
@@ -134,6 +158,8 @@ async def add_security_headers(
     call_next: Callable[[Request], Awaitable[Response]],
 ) -> Response:
     """Attach hardened HTTP security headers to every API response (Task M8-4)."""
+    if os.environ.get("VERCEL") and not _db_initialized:
+        initialize_database()
     response = await call_next(request)
     response.headers.setdefault("Cache-Control", "no-store")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
