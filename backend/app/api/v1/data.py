@@ -21,6 +21,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_current_user
+from app.core.config import get_settings
+from app.core.errors import UploadValidationError
 from app.db.models.auth import User
 from app.db.models.reference import Dataset
 from app.db.session import get_db
@@ -143,7 +145,19 @@ async def upload_project_layer(
     db: Session = Depends(get_db),
 ) -> ProjectLayerResponse:
     """Upload a custom GeoJSON vector layer (`buildings` or `osm_features`)."""
-    raw_bytes = await file.read()
+    settings = get_settings()
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    chunks: list[bytes] = []
+    total_read = 0
+    while chunk := await file.read(1024 * 1024):
+        total_read += len(chunk)
+        if total_read > max_bytes:
+            raise UploadValidationError(
+                f"Uploaded layer exceeds maximum limit of {settings.max_upload_mb} MB.",
+                code="FILE_TOO_LARGE",
+            )
+        chunks.append(chunk)
+    raw_bytes = b"".join(chunks)
     return upload_custom_project_layer(
         db,
         project_id=project_id,

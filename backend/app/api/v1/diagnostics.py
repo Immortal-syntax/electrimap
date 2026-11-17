@@ -14,6 +14,7 @@
 
 """Milestone M8: System Performance Benchmarking & Production Readiness Audit Endpoint."""
 
+import threading
 import time
 from typing import Any
 
@@ -38,11 +39,29 @@ from app.domain.reporting.preflight import DPR_24_SECTIONS
 
 router = APIRouter(prefix="/api/v1/system", tags=["System Diagnostics & Benchmarks"])
 
+_BENCHMARK_CACHE_TTL_S = 60.0
+_benchmark_lock = threading.Lock()
+_benchmark_cached_at: float = 0.0
+_benchmark_cached_payload: dict[str, Any] | None = None
+
 
 @router.get("/benchmark")
 def run_system_benchmark(db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Run deterministic spatial, engineering, and security benchmarks for Milestone M8."""
+    """Run (or serve cached) deterministic spatial, engineering, and security benchmarks."""
+    global _benchmark_cached_at, _benchmark_cached_payload
     settings = get_settings()
+    now = time.monotonic()
+    with _benchmark_lock:
+        if (
+            _benchmark_cached_payload is not None
+            and (now - _benchmark_cached_at) < _BENCHMARK_CACHE_TTL_S
+        ):
+            return {
+                **_benchmark_cached_payload,
+                "database_connected": db.bind is not None,
+                "offline_mode": settings.offline_mode,
+            }
+
     stages: list[dict[str, Any]] = []
 
     # 1. CRS & UTM Metric Geometry Benchmark
@@ -139,12 +158,11 @@ def run_system_benchmark(db: Session = Depends(get_db)) -> dict[str, Any]:
         }
     )
 
-    dialect_name = db.bind.dialect.name if db.bind is not None else "sqlite"
     all_passed = all(s["passed"] for s in stages)
 
-    return {
+    payload: dict[str, Any] = {
         "status": "READY" if all_passed else "DEGRADED",
-        "database_dialect": dialect_name,
+        "database_connected": db.bind is not None,
         "offline_mode": settings.offline_mode,
         "zero_paid_apis_enforced": True,
         "dpr_sections_count": len(DPR_24_SECTIONS),
@@ -158,3 +176,7 @@ def run_system_benchmark(db: Session = Depends(get_db)) -> dict[str, Any]:
         },
         "benchmarks": stages,
     }
+    with _benchmark_lock:
+        _benchmark_cached_at = time.monotonic()
+        _benchmark_cached_payload = payload
+    return payload

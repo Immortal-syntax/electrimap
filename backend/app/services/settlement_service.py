@@ -20,6 +20,7 @@ import csv
 import io
 import math
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from shapely.geometry import Point, Polygon, mapping
@@ -63,6 +64,7 @@ from app.schemas.settlement import (
     VerificationRecordResponse,
     VerificationReversalRequest,
 )
+from app.services.concurrency import project_lock
 from app.services.data_service import (
     load_reference_terrain_arrays_for_aoi,
     run_project_data_acquisition_pipeline,
@@ -73,7 +75,7 @@ from app.services.job_service import (
     serialize_job,
     update_job_progress,
 )
-from app.services.project_service import get_owned_project_or_404
+from app.services.project_service import get_owned_project_or_404, get_writable_project_or_404
 from app.worker import register_job_handler
 
 DEMO_PROJECT_ID = "00000000-0000-4000-8000-000000000001"
@@ -202,6 +204,19 @@ def execute_settlement_clustering_pipeline(
     job: Job | None = None,
 ) -> dict[str, Any]:
     """Run metric DBSCAN clustering and 4-tier proxy classification for a project."""
+    with project_lock(db, project_id):
+        return _execute_settlement_clustering_pipeline_locked(
+            db, project_id=project_id, params=params, job=job
+        )
+
+
+def _execute_settlement_clustering_pipeline_locked(
+    db: Session,
+    *,
+    project_id: str,
+    params: dict[str, Any] | None = None,
+    job: Job | None = None,
+) -> dict[str, Any]:
     aoi_row = db.execute(
         select(ProjectAoi).where(ProjectAoi.project_id == project_id)
     ).scalar_one_or_none()
@@ -490,7 +505,7 @@ def trigger_project_clustering(
     user: User,
 ) -> ClusteringRunResponse:
     """Enqueue and execute habitation clustering + classification for a project."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     params_dict = params_req.model_dump()
     job = enqueue_job(
         db,
@@ -525,19 +540,9 @@ def get_project_settlement_state(
     user: User,
 ) -> ClusterListResponse:
     """Return all habitation clusters, GeoJSON polygons, and Census reconciliation."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    with project_lock(db, project_id):
+        proj = get_owned_project_or_404(db, project_id, user)
 
-    clusters = (
-        db.execute(
-            select(SettlementCluster)
-            .where(SettlementCluster.project_id == proj.id)
-            .order_by(SettlementCluster.is_isolated_group.asc(), SettlementCluster.label.asc())
-        )
-        .scalars()
-        .all()
-    )
-    if not clusters and proj.id == "00000000-0000-4000-8000-000000000001":
-        execute_settlement_clustering_pipeline(db, project_id=proj.id, params=None, job=None)
         clusters = (
             db.execute(
                 select(SettlementCluster)
@@ -549,6 +554,19 @@ def get_project_settlement_state(
             .scalars()
             .all()
         )
+        if not clusters and proj.id == "00000000-0000-4000-8000-000000000001":
+            execute_settlement_clustering_pipeline(db, project_id=proj.id, params=None, job=None)
+            clusters = (
+                db.execute(
+                    select(SettlementCluster)
+                    .where(SettlementCluster.project_id == proj.id)
+                    .order_by(
+                        SettlementCluster.is_isolated_group.asc(), SettlementCluster.label.asc()
+                    )
+                )
+                .scalars()
+                .all()
+            )
 
     current_run = db.execute(
         select(ClusterRun)
@@ -645,7 +663,7 @@ def update_project_building(
     user: User,
 ) -> dict[str, Any]:
     """Exclude/include or reclassify an individual building footprint."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     bld = db.execute(
         select(Building).where(Building.id == building_id, Building.project_id == proj.id)
     ).scalar_one_or_none()
@@ -664,7 +682,8 @@ def update_project_building(
     invalidate_downstream_from_stage(
         db,
         project_id=proj.id,
-        stage="boq_only",
+        stage="clustering",
+        drop_clusters=True,
         bump_version=True,
     )
     db.commit()
@@ -684,7 +703,15 @@ def create_project_building(
     user: User,
 ) -> dict[str, Any]:
     """Manually add a building footprint (`is_user_added=True`)."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
+    from app.domain.gis.crs import is_within_india_bounds
+
+    if not is_within_india_bounds(Point(req.lon, req.lat)):
+        raise AppError(
+            code="INVALID_GEOMETRY",
+            message="Building coordinates must lie within India bounds (WGS 84).",
+            status_code=422,
+        )
     side_deg = max(0.00003, math.sqrt(req.area_m2) / 111_000.0 / 2.0)
     poly = Polygon(
         [
@@ -713,7 +740,8 @@ def create_project_building(
     invalidate_downstream_from_stage(
         db,
         project_id=proj.id,
-        stage="boq_only",
+        stage="clustering",
+        drop_clusters=True,
         bump_version=True,
     )
     db.commit()
@@ -739,7 +767,7 @@ def create_cluster_verification(
     - Never modifies `cluster.proxy_class` or `cluster.proxy_confidence` (Axis 1).
     - Updates `cluster.verification_state` and `cluster.verified_class` (Axis 2).
     """
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     cluster = db.execute(
         select(SettlementCluster).where(
             SettlementCluster.id == req.target_id,
@@ -847,7 +875,7 @@ def reverse_cluster_verification(
     user: User,
 ) -> VerificationRecordResponse:
     """Append a reversal record that restores a cluster's prior state without mutating history."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     orig = db.execute(
         select(VerificationRecord).where(
             VerificationRecord.id == verification_id,
@@ -945,7 +973,7 @@ def import_verifications_csv(
     user: User,
 ) -> VerificationImportResponse:
     """Parse a field verification CSV and append matched records to the immutable ledger."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     if len(raw_bytes) > 5 * 1024 * 1024:
         raise AppError(
             code="CSV_FILE_TOO_LARGE",
@@ -982,9 +1010,10 @@ def import_verifications_csv(
 
     cluster_by_label = {c.label.upper(): c for c in clusters}
 
+    safe_csv_name = Path(filename or "verifications.csv").name or "verifications.csv"
     imp = VerificationImport(
         project_id=proj.id,
-        filename=filename or "verifications.csv",
+        filename=safe_csv_name[:255],
         row_count=0,
         matched=0,
         unmatched=0,

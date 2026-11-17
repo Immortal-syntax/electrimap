@@ -18,6 +18,8 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_current_user
+from app.core.config import get_settings
+from app.core.errors import UploadValidationError
 from app.db.models.auth import User
 from app.db.session import get_db
 from app.schemas.aoi import ProjectAoiResponse, SetAoiRequest
@@ -49,7 +51,19 @@ async def upload_aoi_boundary(
     db: Session = Depends(get_db),
 ) -> ProjectAoiResponse:
     """Validate and store a boundary file (.geojson, .json, .kml, or Shapefile .zip)."""
-    raw_bytes = await file.read()
+    settings = get_settings()
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    chunks: list[bytes] = []
+    total_read = 0
+    while chunk := await file.read(1024 * 1024):
+        total_read += len(chunk)
+        if total_read > max_bytes:
+            raise UploadValidationError(
+                f"File size exceeds maximum limit of {settings.max_upload_mb} MB.",
+                code="FILE_TOO_LARGE",
+            )
+        chunks.append(chunk)
+    raw_bytes = b"".join(chunks)
     return upload_project_aoi_file(
         db,
         project_id=project_id,

@@ -114,6 +114,21 @@ class ProjectNotFoundError(AppError):
         )
 
 
+class ForbiddenProjectModificationError(AppError):
+    """Raised when a non-owner attempts to mutate a read-only shared reference project."""
+
+    def __init__(self, project_id: str) -> None:
+        super().__init__(
+            code="DEMO_PROJECT_READ_ONLY",
+            message=(
+                "The shared reference project is read-only for other users. "
+                "Duplicate it into your own workspace before making modifications."
+            ),
+            status_code=403,
+            details={"project_id": project_id},
+        )
+
+
 class VersionConflictError(AppError):
     """Raised when optimistic concurrency version check fails during project PATCH."""
 
@@ -218,4 +233,3 @@ def register_exception_handlers(app: FastAPI) -> None:
                 }
             },
         )
-

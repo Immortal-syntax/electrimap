@@ -21,7 +21,11 @@ from shapely.geometry import mapping
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.core.errors import ProjectNotFoundError, VersionConflictError
+from app.core.errors import (
+    ForbiddenProjectModificationError,
+    ProjectNotFoundError,
+    VersionConflictError,
+)
 from app.db.models.auth import User
 from app.db.models.ops import AuditEvent
 from app.db.models.project import Project, ProjectAoi
@@ -76,7 +80,7 @@ def _serialize_project(db: Session, proj: Project) -> ProjectResponse:
 
 
 def get_owned_project_or_404(db: Session, project_id: str, user: User) -> Project:
-    """Fetch an active project owned by user (or the Sample Study / ADMIN), else raise 404."""
+    """Fetch an active project readable by user (owner, shared Sample Study, or ADMIN)."""
     proj = db.execute(
         select(Project).where(Project.id == project_id, Project.deleted_at.is_(None))
     ).scalar_one_or_none()
@@ -85,6 +89,14 @@ def get_owned_project_or_404(db: Session, project_id: str, user: User) -> Projec
         raise ProjectNotFoundError(project_id)
     if proj.id != DEMO_PROJECT_ID and proj.owner_id != user.id and user.role != "ADMIN":
         raise ProjectNotFoundError(project_id)
+    return proj
+
+
+def get_writable_project_or_404(db: Session, project_id: str, user: User) -> Project:
+    """Fetch an active project writable by user; reject non-owners on shared demo with 403."""
+    proj = get_owned_project_or_404(db, project_id, user)
+    if proj.owner_id != user.id and user.role != "ADMIN":
+        raise ForbiddenProjectModificationError(project_id)
     return proj
 
 
@@ -158,7 +170,7 @@ def update_project_with_optimistic_lock(
     payload: ProjectUpdateRequest,
 ) -> ProjectResponse:
     """Update project fields after verifying optimistic concurrency version."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     if proj.version != payload.version:
         raise VersionConflictError(
             expected_version=payload.version, current_version=proj.version
@@ -230,9 +242,7 @@ def update_project_with_optimistic_lock(
 
 def soft_delete_project(db: Session, project_id: str, user: User) -> None:
     """Soft-delete a user-owned project by setting deleted_at."""
-    proj = get_owned_project_or_404(db, project_id, user)
-    if proj.owner_id != user.id and user.role != "ADMIN":
-        raise ProjectNotFoundError(project_id)
+    proj = get_writable_project_or_404(db, project_id, user)
     now = datetime.now(UTC)
     proj.deleted_at = now
     db.add(

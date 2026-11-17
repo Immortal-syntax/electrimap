@@ -44,6 +44,7 @@ from app.domain.engineering.demand import (
     compute_project_demand_summary,
     get_assumptions_for_load_tier,
 )
+from app.domain.gis.crs import is_within_india_bounds
 from app.domain.gis.gap_analysis import (
     ClusterGapInput,
     InfraAssetInput,
@@ -64,7 +65,7 @@ from app.schemas.infrastructure import (
     ProjectSettingsPatchRequest,
 )
 from app.services.concurrency import acquire_pg_xact_lock, project_lock
-from app.services.project_service import get_owned_project_or_404
+from app.services.project_service import get_owned_project_or_404, get_writable_project_or_404
 from app.services.settlement_service import execute_settlement_clustering_pipeline
 
 
@@ -232,7 +233,7 @@ def update_project_settings_state(
     user: User,
 ) -> ProjectSettingsListResponse:
     """Update one or more engineering assumptions and tag them `USER_ENTERED`."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     rows = ensure_project_settings_seeded(db, proj.id)
     by_key = {r.key: r for r in rows}
 
@@ -303,7 +304,7 @@ def reset_project_settings_state(
     user: User,
 ) -> ProjectSettingsListResponse:
     """Reset all project assumptions to their normative REC/CEA defaults."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     rows = ensure_project_settings_seeded(db, proj.id, load_tier=proj.load_tier)
     tier_defaults = get_assumptions_for_load_tier(proj.load_tier)
     for r in rows:
@@ -392,10 +393,13 @@ def create_infrastructure_asset(
     user: User,
 ) -> InfrastructureAssetResponse:
     """Create a planner-placed tie-in point, DT, or line asset."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
 
     if req.geojson_geometry is not None:
-        geom_obj = shape(req.geojson_geometry)
+        try:
+            geom_obj = shape(req.geojson_geometry)
+        except Exception as exc:
+            raise UploadValidationError(f"Malformed asset geometry: {exc}") from exc
     elif req.lon is not None and req.lat is not None:
         geom_obj = Point(float(req.lon), float(req.lat))
     else:
@@ -403,6 +407,10 @@ def create_infrastructure_asset(
             code="INFRA_GEOMETRY_REQUIRED",
             message="Provide either (lon, lat) coordinates or geojson_geometry.",
             status_code=422,
+        )
+    if geom_obj.is_empty or not geom_obj.is_valid or not is_within_india_bounds(geom_obj):
+        raise UploadValidationError(
+            "Infrastructure asset geometry must be valid and within India bounds (WGS 84)."
         )
 
     q_tag = _provenance_to_quality_tag(req.provenance)
@@ -461,7 +469,7 @@ def update_infrastructure_asset(
     user: User,
 ) -> InfrastructureAssetResponse:
     """Update or relocate an existing infrastructure asset."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     asset = db.execute(
         select(InfrastructureAsset).where(
             InfrastructureAsset.id == asset_id,
@@ -487,9 +495,22 @@ def update_infrastructure_asset(
     if req.source_note is not None:
         asset.source_note = req.source_note.strip()
     if req.geojson_geometry is not None:
-        asset.geom = shape(req.geojson_geometry)
+        try:
+            new_geom = shape(req.geojson_geometry)
+        except Exception as exc:
+            raise UploadValidationError(f"Malformed asset geometry: {exc}") from exc
+        if new_geom.is_empty or not new_geom.is_valid or not is_within_india_bounds(new_geom):
+            raise UploadValidationError(
+                "Infrastructure asset geometry must be valid and within India bounds (WGS 84)."
+            )
+        asset.geom = new_geom
     elif req.lon is not None and req.lat is not None:
-        asset.geom = Point(float(req.lon), float(req.lat))
+        new_geom = Point(float(req.lon), float(req.lat))
+        if not is_within_india_bounds(new_geom):
+            raise UploadValidationError(
+                "Infrastructure asset coordinates must be within India bounds (WGS 84)."
+            )
+        asset.geom = new_geom
 
     asset.updated_at = datetime.now(UTC)
     db.commit()
@@ -517,7 +538,7 @@ def delete_infrastructure_asset(
     user: User,
 ) -> None:
     """Delete an infrastructure asset and recompute gap analysis."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     asset = db.execute(
         select(InfrastructureAsset).where(
             InfrastructureAsset.id == asset_id,
@@ -555,7 +576,7 @@ def upload_infrastructure_geojson(
     user: User,
 ) -> InfrastructureListResponse:
     """Ingest a GeoJSON FeatureCollection of utility lines, DTs, or tie-in points."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     if len(raw_bytes) > 10 * 1024 * 1024:
         raise UploadValidationError("Infrastructure GeoJSON exceeds 10 MB limit.")
 
@@ -578,7 +599,20 @@ def upload_infrastructure_geojson(
     q_tag = _provenance_to_quality_tag(eff_prov)
 
     for idx, feat in enumerate(features):
-        geom_obj = shape(feat["geometry"])
+        if not isinstance(feat, dict) or not feat.get("geometry"):
+            raise UploadValidationError(
+                f"Feature #{idx + 1} is missing a valid GeoJSON geometry object."
+            )
+        try:
+            geom_obj = shape(feat["geometry"])
+        except Exception as exc:
+            raise UploadValidationError(
+                f"Feature #{idx + 1} has malformed geometry: {exc}"
+            ) from exc
+        if geom_obj.is_empty or not geom_obj.is_valid or not is_within_india_bounds(geom_obj):
+            raise UploadValidationError(
+                f"Feature #{idx + 1} has invalid/empty geometry or lies outside India bounds."
+            )
         props = feat.get("properties") or {}
         raw_type = str(
             props.get("asset_type")

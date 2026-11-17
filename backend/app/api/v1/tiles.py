@@ -78,16 +78,22 @@ def get_vector_tile(
 
     dialect_name = db.bind.dialect.name if db.bind is not None else "sqlite"
     if dialect_name == "postgresql":
-        table_map = {
-            "buildings": "buildings",
-            "osm_features": "osm_features",
-            "clusters": "clusters",
-        }
-        table_name = table_map[layer]
+        if layer == "buildings":
+            select_cols = "id, area_m2, size_class, is_excluded, cluster_id,"
+            table_name = "buildings"
+        elif layer == "osm_features":
+            select_cols = "id, category, name,"
+            table_name = "osm_features"
+        else:
+            select_cols = (
+                "id, label, name, proxy_class, verification_state, "
+                "verified_class, est_households, is_isolated_group,"
+            )
+            table_name = "clusters"
         sql = text(
             f"""
             WITH mvtgeom AS (
-                SELECT id,
+                SELECT {select_cols}
                        ST_AsMVTGeom(
                            ST_Transform(geom, 3857),
                            ST_TileEnvelope(:z, :x, :y),

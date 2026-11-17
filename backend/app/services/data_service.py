@@ -37,6 +37,7 @@ from app.db.models.reference import Dataset
 from app.db.models.spatial import Building, OsmFeature, SolarResource
 from app.domain.gis.crs import (
     compute_metric_area_m2,
+    is_within_india_bounds,
     select_metric_epsg_for_geometry,
 )
 from app.domain.gis.layer_processing import (
@@ -48,12 +49,13 @@ from app.schemas.data_layer import (
     DatasetProvenanceResponse,
     ProjectLayerResponse,
 )
+from app.services.concurrency import project_lock
 from app.services.job_service import (
     enqueue_job,
     execute_job_synchronously,
     update_job_progress,
 )
-from app.services.project_service import get_owned_project_or_404
+from app.services.project_service import get_owned_project_or_404, get_writable_project_or_404
 from app.worker import register_job_handler
 
 OPEN_DATASETS_CATALOG: list[dict[str, Any]] = [
@@ -678,6 +680,17 @@ def run_project_data_acquisition_pipeline(
     job: Job | None = None,
 ) -> dict[str, Any]:
     """Execute the 6-layer geospatial ingestion pipeline for a project's AOI."""
+    with project_lock(db, project_id):
+        return _run_project_data_acquisition_pipeline_locked(
+            db, project_id=project_id, job=job
+        )
+
+
+def _run_project_data_acquisition_pipeline_locked(
+    db: Session,
+    project_id: str,
+    job: Job | None = None,
+) -> dict[str, Any]:
     datasets_by_key = ensure_datasets_seeded(db)
 
     aoi_row = db.execute(
@@ -954,7 +967,7 @@ def trigger_project_data_acquisition(
     user: User,
 ) -> Job:
     """Enqueue and execute the 6-layer data acquisition job for a project."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     job = enqueue_job(
         db,
         project_id=proj.id,
@@ -987,21 +1000,10 @@ def list_project_layers_with_provenance(
     user: User,
 ) -> list[ProjectLayerResponse]:
     """List all geospatial layers and their dataset provenance for a project."""
-    proj = get_owned_project_or_404(db, project_id, user)
-    ensure_datasets_seeded(db)
+    with project_lock(db, project_id):
+        proj = get_owned_project_or_404(db, project_id, user)
+        ensure_datasets_seeded(db)
 
-    layers = (
-        db.execute(
-            select(ProjectLayer)
-            .where(ProjectLayer.project_id == proj.id)
-            .order_by(ProjectLayer.layer_key.asc())
-        )
-        .scalars()
-        .all()
-    )
-    # Populate demo project offline on first read if not yet acquired
-    if not layers and proj.id == "00000000-0000-4000-8000-000000000001":
-        run_project_data_acquisition_pipeline(db, proj.id, job=None)
         layers = (
             db.execute(
                 select(ProjectLayer)
@@ -1011,10 +1013,22 @@ def list_project_layers_with_provenance(
             .scalars()
             .all()
         )
+        # Populate demo project offline on first read if not yet acquired
+        if not layers and proj.id == "00000000-0000-4000-8000-000000000001":
+            run_project_data_acquisition_pipeline(db, proj.id, job=None)
+            layers = (
+                db.execute(
+                    select(ProjectLayer)
+                    .where(ProjectLayer.project_id == proj.id)
+                    .order_by(ProjectLayer.layer_key.asc())
+                )
+                .scalars()
+                .all()
+            )
 
-    all_ds = db.execute(select(Dataset)).scalars().all()
-    ds_by_id = {d.id: d for d in all_ds}
-    return [_serialize_project_layer(layer, ds_by_id) for layer in layers]
+        all_ds = db.execute(select(Dataset)).scalars().all()
+        ds_by_id = {d.id: d for d in all_ds}
+        return [_serialize_project_layer(layer, ds_by_id) for layer in layers]
 
 
 _ALLOWED_OSM_CATEGORIES = {"ROAD", "WATER", "AMENITY", "SUBSTATION", "POLE", "BOUNDARY"}
@@ -1096,65 +1110,73 @@ def get_project_vector_layer_geojson(
     user: User,
 ) -> dict[str, Any]:
     """Return GeoJSON FeatureCollection for project `buildings` or `osm_features`."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    with project_lock(db, project_id):
+        proj = get_owned_project_or_404(db, project_id, user)
 
-    if layer_name == "buildings":
-        rows = (
-            db.execute(select(Building).where(Building.project_id == proj.id))
-            .scalars()
-            .all()
-        )
-        if not rows and proj.id == "00000000-0000-4000-8000-000000000001":
-            run_project_data_acquisition_pipeline(db, proj.id, job=None)
+        if layer_name == "buildings":
             rows = (
                 db.execute(select(Building).where(Building.project_id == proj.id))
                 .scalars()
                 .all()
             )
-        features = [
-            {
-                "type": "Feature",
-                "properties": {
-                    "id": r.id,
-                    "source_feature_id": r.source_feature_id,
-                    "area_m2": r.area_m2,
-                    "confidence": r.confidence,
-                    "size_class": r.size_class,
-                    "is_user_added": r.is_user_added,
-                    "is_excluded": r.is_excluded,
-                },
-                "geometry": dict(mapping(r.geom)),
-            }
-            for r in rows
-        ]
-        return {"type": "FeatureCollection", "features": features}
+            if not rows and proj.id == "00000000-0000-4000-8000-000000000001":
+                run_project_data_acquisition_pipeline(db, proj.id, job=None)
+                rows = (
+                    db.execute(select(Building).where(Building.project_id == proj.id))
+                    .scalars()
+                    .all()
+                )
+            features = [
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": r.id,
+                        "source_feature_id": r.source_feature_id,
+                        "area_m2": r.area_m2,
+                        "confidence": r.confidence,
+                        "size_class": r.size_class,
+                        "is_user_added": r.is_user_added,
+                        "is_excluded": r.is_excluded,
+                    },
+                    "geometry": dict(mapping(r.geom)),
+                }
+                for r in rows
+            ]
+            return {"type": "FeatureCollection", "features": features}
 
-    if layer_name == "osm_features":
-        osm_rows = (
-            db.execute(select(OsmFeature).where(OsmFeature.project_id == proj.id))
-            .scalars()
-            .all()
+        if layer_name == "osm_features":
+            osm_rows = (
+                db.execute(select(OsmFeature).where(OsmFeature.project_id == proj.id))
+                .scalars()
+                .all()
+            )
+            if not osm_rows and proj.id == "00000000-0000-4000-8000-000000000001":
+                run_project_data_acquisition_pipeline(db, proj.id, job=None)
+                osm_rows = (
+                    db.execute(select(OsmFeature).where(OsmFeature.project_id == proj.id))
+                    .scalars()
+                    .all()
+                )
+            features = [
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": r.id,
+                        "category": r.category,
+                        "name": r.name,
+                        "tags": r.tags or {},
+                    },
+                    "geometry": dict(mapping(r.geom)),
+                }
+                for r in osm_rows
+            ]
+            return {"type": "FeatureCollection", "features": features}
+
+        raise AppError(
+            code="UNKNOWN_VECTOR_LAYER",
+            message=f"Unsupported vector layer '{layer_name}'.",
+            status_code=404,
         )
-        features = [
-            {
-                "type": "Feature",
-                "properties": {
-                    "id": r.id,
-                    "category": r.category,
-                    "name": r.name,
-                    "tags": r.tags or {},
-                },
-                "geometry": dict(mapping(r.geom)),
-            }
-            for r in osm_rows
-        ]
-        return {"type": "FeatureCollection", "features": features}
-
-    raise AppError(
-        code="UNKNOWN_VECTOR_LAYER",
-        message=f"Unsupported vector layer '{layer_name}'.",
-        status_code=404,
-    )
 
 
 def upload_custom_project_layer(
@@ -1166,7 +1188,16 @@ def upload_custom_project_layer(
     user: User,
 ) -> ProjectLayerResponse:
     """Ingest a user-uploaded GeoJSON FeatureCollection into `buildings` or `osm_features`."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
+    settings = get_settings()
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    if len(raw_bytes) == 0:
+        raise UploadValidationError("Uploaded layer file is empty.")
+    if len(raw_bytes) > max_bytes:
+        raise UploadValidationError(
+            f"Uploaded layer exceeds maximum limit of {settings.max_upload_mb} MB.",
+            code="FILE_TOO_LARGE",
+        )
     datasets_by_key = ensure_datasets_seeded(db)
     user_ds = datasets_by_key["user_uploaded_gis"]
 
@@ -1214,6 +1245,10 @@ def upload_custom_project_layer(
             if not geom_obj.is_valid or geom_obj.is_empty:
                 raise UploadValidationError(
                     f"Feature index {idx} has an invalid or empty geometry."
+                )
+            if not is_within_india_bounds(geom_obj):
+                raise UploadValidationError(
+                    f"Feature index {idx} lies outside India geographic bounds (WGS 84)."
                 )
             if not isinstance(geom_obj, Polygon):
                 raise UploadValidationError(
@@ -1271,6 +1306,10 @@ def upload_custom_project_layer(
             if not geom_obj.is_valid or geom_obj.is_empty:
                 raise UploadValidationError(
                     f"Feature index {idx} has an invalid or empty geometry."
+                )
+            if not is_within_india_bounds(geom_obj):
+                raise UploadValidationError(
+                    f"Feature index {idx} lies outside India geographic bounds (WGS 84)."
                 )
             props = feat.get("properties") or {}
             raw_cat = str(props.get("category", "AMENITY")).strip().upper()

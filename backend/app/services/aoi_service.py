@@ -46,7 +46,7 @@ from app.schemas.admin_unit import (
     CensusInfoResponse,
 )
 from app.schemas.aoi import ProjectAoiResponse, SetAoiRequest
-from app.services.project_service import get_owned_project_or_404
+from app.services.project_service import get_owned_project_or_404, get_writable_project_or_404
 from app.services.seed_service import ensure_seed_data
 
 MAX_ZIP_ENTRIES = 32
@@ -184,7 +184,7 @@ def _upsert_project_aoi(
     original_crs: str | None,
     warnings: list[str],
 ) -> ProjectAoiResponse:
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     aoi_row = db.execute(
         select(ProjectAoi).where(ProjectAoi.project_id == proj.id)
     ).scalar_one_or_none()
@@ -374,8 +374,17 @@ def _parse_kml_bytes(raw_bytes: bytes) -> Polygon:
     for token in (coord_nodes[0].text or "").strip().split():
         parts = token.split(",")
         if len(parts) >= 2:
-            lon = float(parts[0])
-            lat = float(parts[1])
+            try:
+                lon = float(parts[0])
+                lat = float(parts[1])
+            except ValueError as exc:
+                raise UploadValidationError(
+                    f"Malformed coordinate tuple '{token}' in KML upload."
+                ) from exc
+            if not (-180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0):
+                raise UploadValidationError(
+                    f"KML coordinate ({lon}, {lat}) is outside valid WGS 84 bounds."
+                )
             points.append((lon, lat))
 
     if len(points) < 3:

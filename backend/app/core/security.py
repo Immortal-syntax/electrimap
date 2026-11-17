@@ -60,28 +60,77 @@ def verify_token_hash(raw_token: str, expected_hash: str) -> bool:
     return hmac.compare_digest(computed, expected_hash)
 
 
-class LoginRateLimiter:
-    """Sliding-window rate limiter keyed by (ip_address, email) to prevent brute-force logins."""
+def derive_session_csrf_token(session_token_hash: str, session_secret: str) -> str:
+    """Derive a deterministic CSRF token bound to a session digest and server secret."""
+    return hmac.new(
+        session_secret.encode("utf-8"),
+        f"electrimap-csrf-v1:{session_token_hash}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
 
-    def __init__(self, max_attempts: int = 8, window_seconds: int = 60) -> None:
+
+class LoginRateLimiter:
+    """Sliding-window rate limiter enforcing both per-(ip, email) and per-IP caps."""
+
+    def __init__(
+        self,
+        max_attempts: int = 8,
+        window_seconds: int = 60,
+        max_ip_attempts: int = 24,
+        max_tracked_keys: int = 2048,
+    ) -> None:
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
+        self.max_ip_attempts = max_ip_attempts
+        self.max_tracked_keys = max_tracked_keys
         self._attempts: dict[str, list[float]] = defaultdict(list)
 
-    def check_and_record(self, key: str) -> None:
-        """Raise RateLimitExceededError if key exceeds max_attempts within window_seconds."""
-        now = time.monotonic()
-        cutoff = now - self.window_seconds
+    def _evict_expired(self, cutoff: float) -> None:
+        if len(self._attempts) < self.max_tracked_keys:
+            return
+        stale_keys = [
+            key
+            for key, timestamps in self._attempts.items()
+            if not any(ts > cutoff for ts in timestamps)
+        ]
+        for key in stale_keys:
+            del self._attempts[key]
+
+    def _record_key(self, key: str, limit: int, now: float, cutoff: float) -> None:
         recent = [ts for ts in self._attempts[key] if ts > cutoff]
-        if len(recent) >= self.max_attempts:
+        if len(recent) >= limit:
             self._attempts[key] = recent
             raise RateLimitExceededError(retry_after_seconds=self.window_seconds)
         recent.append(now)
         self._attempts[key] = recent
 
+    def check_and_record(self, key: str) -> None:
+        """Raise RateLimitExceededError if key exceeds max_attempts within window_seconds."""
+        now = time.monotonic()
+        cutoff = now - self.window_seconds
+        self._evict_expired(cutoff)
+        self._record_key(key, self.max_attempts, now, cutoff)
+
+    def check_login_attempt(self, ip_address: str, email: str) -> None:
+        """Check and record both per-(ip, email) and aggregate per-IP attempt limits."""
+        now = time.monotonic()
+        cutoff = now - self.window_seconds
+        self._evict_expired(cutoff)
+        ip_key = f"ip:{ip_address}"
+        account_key = f"{ip_address}:{email}"
+        self._record_key(ip_key, self.max_ip_attempts, now, cutoff)
+        self._record_key(account_key, self.max_attempts, now, cutoff)
+
     def reset(self, key: str) -> None:
         """Clear recorded attempts for a key after a successful authentication."""
         self._attempts.pop(key, None)
+
+    def reset_login_attempt(self, ip_address: str, email: str) -> None:
+        """Clear failed attempts for (ip, email) and refund one IP attempt on valid sign-in."""
+        self._attempts.pop(f"{ip_address}:{email}", None)
+        ip_events = self._attempts.get(f"ip:{ip_address}")
+        if ip_events:
+            ip_events.pop()
 
 
 login_rate_limiter = LoginRateLimiter()

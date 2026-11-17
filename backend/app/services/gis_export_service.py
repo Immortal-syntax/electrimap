@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.auth import User
 from app.db.models.project import ProjectAoi
-from app.domain.reporting.preflight import compute_file_sha256, compute_snapshot_sha256
+from app.domain.reporting.preflight import compute_file_sha256
 from app.services.costing_service import get_project_scenario_comparison
 from app.services.data_service import list_project_layers_with_provenance
 from app.services.infrastructure_service import list_project_infrastructure
@@ -45,11 +45,20 @@ from app.services.project_service import get_owned_project_or_404
 from app.services.settlement_service import get_project_settlement_state
 
 
+def _safe_csv_cell(value: object) -> object:
+    if not isinstance(value, str):
+        return value
+    if value and value[0] in {"=", "+", "-", "@", "\t", "\r"}:
+        return "'" + value
+    return value
+
+
 def generate_project_gis_package_zip(
     db: Session,
     *,
     project_id: str,
     user: User,
+    snapshot_hash: str | None = None,
 ) -> bytes:
     """Generate a cleaned GIS vector package (.zip) with GeoJSON layers, CSV, and manifest."""
     proj = get_owned_project_or_404(db, project_id, user)
@@ -200,9 +209,9 @@ def generate_project_gis_package_zip(
         h_comp = hab_comp_map.get(cl_lay.cluster_id)
         writer.writerow(
             [
-                cl_lay.cluster_id,
-                cl_lay.cluster_label,
-                cl_lay.cluster_name,
+                _safe_csv_cell(cl_lay.cluster_id),
+                _safe_csv_cell(cl_lay.cluster_label),
+                _safe_csv_cell(cl_lay.cluster_name),
                 c_meta.n_detected if c_meta else 0,
                 cl_lay.est_households,
                 c_meta.proxy_class if c_meta else "UNKNOWN",
@@ -230,15 +239,10 @@ def generate_project_gis_package_zip(
     schedule_csv_bytes = csv_buf.getvalue().encode("utf-8")
 
     # 6. provenance_manifest.json
-    snapshot_hash = compute_snapshot_sha256(
-        {
-            "project_id": proj.id,
-            "project_version": proj.version,
-            "scenario_key": active_scenario.scenario_key,
-            "clusters_count": len(settlements.items),
-            "total_capex_inr": round(comparison.active_scenario_boq.total_capex_inr, 2),
-        }
-    )
+    if snapshot_hash is None:
+        from app.services.report_service import get_project_preflight_report
+
+        snapshot_hash = get_project_preflight_report(db, project_id, user).snapshot_hash
     manifest_payload = {
         "package_format": "ElectriMap DPR Cleaned GIS Vector & Schedule Package v1.0",
         "generated_at_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),

@@ -14,16 +14,21 @@
 
 """Idempotent seeding for default accounts, Koraput admin units, and demo project."""
 
+import logging
+
 from shapely.geometry import MultiPolygon, Polygon
-from sqlalchemy import delete, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.security import hash_password
-from app.db.models.auth import User, UserSession
+from app.db.models.auth import User
 from app.db.models.project import Project, ProjectAoi
 from app.db.models.reference import AdminUnit, CensusVillage, EngineeringConstant
 from app.domain.engineering.constants import STANDARD_ENGINEERING_CONSTANTS
 from app.domain.gis.crs import compute_metric_area_km2
+
+_seed_logger = logging.getLogger(__name__)
 
 DEMO_PROJECT_ID = "00000000-0000-4000-8000-000000000001"
 SWAYAM_USER_ID = "00000000-0000-4000-8000-000000000010"
@@ -59,68 +64,87 @@ def _make_rect_multipolygon(
 
 
 def ensure_seed_data(db: Session) -> None:
-    """Seed users, Odisha/Koraput administrative units, Census 2011 records, and demo project."""
-    existing_swayam = db.execute(
-        select(User).where(or_(User.email == SWAYAM_EMAIL, User.id == SWAYAM_USER_ID))
-    ).scalar_one_or_none()
+    """Seed dev accounts (non-prod), Koraput admin units, Census 2011, and demo project."""
+    settings = get_settings()
+    demo_owner: User | None = None
 
-    if existing_swayam is None:
-        planner = User(
-            id=SWAYAM_USER_ID,
-            email=SWAYAM_EMAIL,
-            password_hash=hash_password(SWAYAM_PASSWORD),
-            display_name=SWAYAM_DISPLAY_NAME,
-            role="PLANNER",
-            is_active=True,
-        )
-        db.add(planner)
-        db.flush()
+    if settings.app_env == "production":
+        admin_email = (settings.production_admin_email or "").strip().lower()
+        admin_password = settings.production_admin_password or ""
+        if admin_email and len(admin_password) >= 12:
+            existing_prod_admin = db.execute(
+                select(User).where(User.email == admin_email)
+            ).scalar_one_or_none()
+            if existing_prod_admin is None:
+                demo_owner = User(
+                    email=admin_email,
+                    password_hash=hash_password(admin_password),
+                    display_name=settings.production_admin_display_name,
+                    role="ADMIN",
+                    is_active=True,
+                )
+                db.add(demo_owner)
+                db.flush()
+            else:
+                demo_owner = existing_prod_admin
+        else:
+            if admin_email and admin_password and len(admin_password) < 12:
+                _seed_logger.warning(
+                    "Ignoring PRODUCTION_ADMIN_PASSWORD shorter than 12 characters."
+                )
+            demo_owner = db.execute(select(User).limit(1)).scalar_one_or_none()
     else:
-        planner = existing_swayam
-        if planner.email != SWAYAM_EMAIL or planner.display_name != SWAYAM_DISPLAY_NAME:
-            planner.email = SWAYAM_EMAIL
-            planner.display_name = SWAYAM_DISPLAY_NAME
-            planner.password_hash = hash_password(SWAYAM_PASSWORD)
-            planner.is_active = True
-            db.execute(delete(UserSession).where(UserSession.user_id == planner.id))
-            db.flush()
+        existing_swayam = db.execute(
+            select(User).where(or_(User.email == SWAYAM_EMAIL, User.id == SWAYAM_USER_ID))
+        ).scalar_one_or_none()
 
-    existing_sumit = db.execute(
-        select(User).where(or_(User.email == SUMIT_EMAIL, User.id == SUMIT_USER_ID))
-    ).scalar_one_or_none()
-
-    if existing_sumit is None:
-        db.add(
-            User(
-                id=SUMIT_USER_ID,
-                email=SUMIT_EMAIL,
-                password_hash=hash_password(SUMIT_PASSWORD),
-                display_name=SUMIT_DISPLAY_NAME,
+        if existing_swayam is None:
+            planner = User(
+                id=SWAYAM_USER_ID,
+                email=SWAYAM_EMAIL,
+                password_hash=hash_password(SWAYAM_PASSWORD),
+                display_name=SWAYAM_DISPLAY_NAME,
                 role="PLANNER",
                 is_active=True,
             )
-        )
-        db.flush()
-    elif existing_sumit.display_name != SUMIT_DISPLAY_NAME or not existing_sumit.is_active:
-        existing_sumit.display_name = SUMIT_DISPLAY_NAME
-        existing_sumit.is_active = True
-        db.flush()
+            db.add(planner)
+            db.flush()
+        else:
+            planner = existing_swayam
+        demo_owner = planner
 
-    existing_admin = db.execute(
-        select(User).where(User.email == DEFAULT_ADMIN_EMAIL)
-    ).scalar_one_or_none()
-    if existing_admin is None:
-        db.add(
-            User(
-                id="00000000-0000-4000-8000-000000000011",
-                email=DEFAULT_ADMIN_EMAIL,
-                password_hash=hash_password(DEFAULT_ADMIN_PASSWORD),
-                display_name="System Administrator",
-                role="ADMIN",
-                is_active=True,
+        existing_sumit = db.execute(
+            select(User).where(or_(User.email == SUMIT_EMAIL, User.id == SUMIT_USER_ID))
+        ).scalar_one_or_none()
+
+        if existing_sumit is None:
+            db.add(
+                User(
+                    id=SUMIT_USER_ID,
+                    email=SUMIT_EMAIL,
+                    password_hash=hash_password(SUMIT_PASSWORD),
+                    display_name=SUMIT_DISPLAY_NAME,
+                    role="PLANNER",
+                    is_active=True,
+                )
             )
-        )
-        db.flush()
+            db.flush()
+
+        existing_admin = db.execute(
+            select(User).where(User.email == DEFAULT_ADMIN_EMAIL)
+        ).scalar_one_or_none()
+        if existing_admin is None:
+            db.add(
+                User(
+                    id="00000000-0000-4000-8000-000000000011",
+                    email=DEFAULT_ADMIN_EMAIL,
+                    password_hash=hash_password(DEFAULT_ADMIN_PASSWORD),
+                    display_name="System Administrator",
+                    role="ADMIN",
+                    is_active=True,
+                )
+            )
+            db.flush()
 
     # Seed Admin Units if empty
     has_state = db.execute(
@@ -369,15 +393,15 @@ def ensure_seed_data(db: Session) -> None:
         db.add_all(census_rows)
         db.flush()
 
-    # Seed default demo project if not present
+    # Seed default demo project if not present and an owner user exists
     demo_proj = db.execute(
         select(Project).where(Project.id == DEMO_PROJECT_ID)
     ).scalar_one_or_none()
-    if demo_proj is None:
+    if demo_proj is None and demo_owner is not None:
         area_km2 = round(compute_metric_area_km2(bheja_poly), 4)
         proj = Project(
             id=DEMO_PROJECT_ID,
-            owner_id=planner.id,
+            owner_id=demo_owner.id,
             name="Koraput — Nandapur Block (Village Bheja Pre-Feasibility Demo)",
             description=(
                 "Reference pre-feasibility DPR project for Village Bheja (LGD 398712, "

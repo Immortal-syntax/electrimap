@@ -166,15 +166,30 @@ def compute_voltage_drop_analysis(
         ht_drop_v = 0.0
         ht_drop_pct = 0.0
 
-    # 415 V 3-phase LT radial branch voltage drop (distributed load factor k_dist = 0.65)
+    # 415 V 3-phase trunk + 240 V 1-phase lateral voltage drop (distributed factor 0.65)
     if max_lt_branch_m > 0.0 and peak_kva_horizon > 0.0 and dt_count > 0:
         kva_per_dt = peak_kva_horizon / max(1, dt_count)
         i_lt_a = kva_per_dt / (math.sqrt(3.0) * 0.415)
         l_branch_km = max_lt_branch_m / 1000.0
         k_dist = 0.65
-        z_eff_lt = r_lt * cos_phi + x_lt * sin_phi
-        lt_drop_v = math.sqrt(3.0) * i_lt_a * l_branch_km * k_dist * z_eff_lt
-        lt_drop_pct = (lt_drop_v / 415.0) * 100.0
+        if share_1ph > 0.0:
+            z_eff_3ph = r_lt_3ph * cos_phi + x_lt_3ph * sin_phi
+            z_eff_1ph = r_lt_1ph * cos_phi + x_lt_1ph * sin_phi
+            drop_3ph_pct = (
+                math.sqrt(3.0) * i_lt_a * (l_branch_km * (1.0 - share_1ph)) * k_dist * z_eff_3ph
+                / 415.0
+            ) * 100.0
+            i_1ph_a = (kva_per_dt * share_1ph) / 0.240
+            drop_1ph_pct = (
+                2.0 * i_1ph_a * (l_branch_km * share_1ph) * k_dist * z_eff_1ph
+                / 240.0
+            ) * 100.0
+            lt_drop_pct = drop_3ph_pct + drop_1ph_pct
+            lt_drop_v = 415.0 * (lt_drop_pct / 100.0)
+        else:
+            z_eff_lt = r_lt * cos_phi + x_lt * sin_phi
+            lt_drop_v = math.sqrt(3.0) * i_lt_a * l_branch_km * k_dist * z_eff_lt
+            lt_drop_pct = (lt_drop_v / 415.0) * 100.0
     else:
         i_lt_a = 0.0
         lt_drop_v = 0.0
@@ -207,6 +222,7 @@ def compute_annual_technical_losses(
     constants: dict[str, float] | None = None,
     lt_3ph_length_m: float = 0.0,
     lt_1ph_length_m: float = 0.0,
+    lt_feeder_count: int | None = None,
 ) -> TechnicalLossesResult:
     """Compute annual HT/LT I²R conductor losses and IS 1180 DT iron/copper losses."""
     consts = {**get_default_constants_map(), **(constants or {})}
@@ -241,15 +257,15 @@ def compute_annual_technical_losses(
     else:
         ht_loss_kwh_yr = 0.0
 
-    # 3-phase LT I²R loss across DT sub-zones (distributed factor 0.50 for I²R along branch)
-    if max_lt_branch_m > 0.0 and placed_dts:
-        n_dts = len(placed_dts)
-        kva_per_dt = peak_kva_horizon / n_dts
+    # 3-phase LT I²R loss across DT/PCU feeder sub-zones (distributed factor 0.50 along branch)
+    n_lt_zones = len(placed_dts) if placed_dts else max(0, lt_feeder_count or 0)
+    if max_lt_branch_m > 0.0 and n_lt_zones > 0:
+        kva_per_dt = peak_kva_horizon / n_lt_zones
         i_lt_a = kva_per_dt / (math.sqrt(3.0) * 0.415)
         p_lt_loss_per_dt_kw = (
             3.0 * (i_lt_a**2) * r_lt * (max_lt_branch_m / 1000.0) * 0.50
         ) / 1000.0
-        lt_loss_kwh_yr = n_dts * p_lt_loss_per_dt_kw * llf * 8760.0
+        lt_loss_kwh_yr = n_lt_zones * p_lt_loss_per_dt_kw * llf * 8760.0
     else:
         lt_loss_kwh_yr = 0.0
 
@@ -481,7 +497,7 @@ def evaluate_cluster_engineering_layout(
             peak_kva_horizon=peak_kva_horizon,
             ht_length_m=0.0,
             max_lt_branch_m=lt_mst.max_lt_branch_m,
-            dt_count=max(1, len(placed_dts)),
+            dt_count=1,
             power_factor_cos_phi=power_factor_cos_phi,
             constants=consts,
             lt_3ph_length_m=lt_mst.lt_3ph_length_m,
@@ -498,6 +514,7 @@ def evaluate_cluster_engineering_layout(
             constants=consts,
             lt_3ph_length_m=lt_mst.lt_3ph_length_m,
             lt_1ph_length_m=lt_mst.lt_1ph_length_m,
+            lt_feeder_count=1,
         )
         notes.append(
             f"Solar PV + LiFePO4 Mini-Grid sized for worst-month GHI "

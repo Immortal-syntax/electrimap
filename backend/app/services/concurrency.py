@@ -84,6 +84,8 @@ def project_lock(db: Session, project_id: str) -> Iterator[None]:
     with keyed_lock(lock_key) as is_outermost:
         if is_outermost:
             if not db.new and not db.dirty and not db.deleted:
+                if db.in_transaction():
+                    db.rollback()
                 db.expire_all()
             acquire_pg_xact_lock(db, lock_key)
         yield

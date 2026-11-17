@@ -40,7 +40,9 @@ class Settings(BaseSettings):
 
     backend_host: str = "127.0.0.1"
     backend_port: int = 8000
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,https://electrimap-india.vercel.app"
+    )
 
     # Default to local SQLite development file when PostgreSQL daemon is not running
     database_url: str = "sqlite:///./data/electrimap_dev.db"
@@ -51,8 +53,13 @@ class Settings(BaseSettings):
     )
     session_cookie_name: str = "em_session"
     session_cookie_secure: bool | None = None
+    session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     session_ttl_hours: int = 12
     session_absolute_days: int = 7
+
+    production_admin_email: str | None = None
+    production_admin_password: str | None = None
+    production_admin_display_name: str = "System Administrator"
 
     data_dir: Path = _DEFAULT_DATA_DIR
     max_upload_mb: int = 25
@@ -87,11 +94,17 @@ class Settings(BaseSettings):
                     "APP_ENV=production requires a strong custom SESSION_SECRET "
                     "(at least 32 characters, not the default placeholder)."
                 )
+        if self.session_cookie_samesite == "none" and self.session_cookie_secure is False:
+            raise ValueError(
+                "SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true (HTTPS)."
+            )
         return self
 
     @property
     def effective_cookie_secure(self) -> bool:
         """Return True when session cookies must carry the Secure flag (HTTPS)."""
+        if self.session_cookie_samesite == "none":
+            return True
         if self.session_cookie_secure is not None:
             return self.session_cookie_secure
         return self.app_env == "production"
