@@ -32,6 +32,7 @@ import {
   formatRateProvenanceLabel,
   formatScenarioLabel,
 } from '../../lib/beginnerGlossary';
+import { resolveApiUrl } from '../../lib/apiClient';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Callout } from '../ui/Callout';
@@ -429,7 +430,7 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
         aria-label="Cost Estimation BOQ and Scenario Comparison"
         overline="Step 5 · Economic Feasibility & Costs"
         title="Traceable Cost Estimation, BOQ & Scenario Comparison"
-        subtitle="Itemized Bill of Quantities, Odisha Reference Schedule of Rates (SoR), and 4-scenario NPC / LCOE comparison."
+        subtitle="Itemized Bill of Quantities, Reference Schedule of Rates (SoR), and 4-scenario NPC / LCOE comparison."
         icon={IndianRupee}
       >
         <EmptyState
@@ -455,6 +456,11 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
     setStatusBanner(null);
     try {
       await onUpdateRateItem(itemCode, targetVal);
+      setEditingRates((prev) => {
+        const next = { ...prev };
+        delete next[itemCode];
+        return next;
+      });
       setStatusBanner(`Updated unit rate for ${itemCode} to ${formatInr(targetVal)} and recalculated BOQ.`);
     } catch (err) {
       setActionError(
@@ -471,6 +477,11 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
     setStatusBanner(null);
     try {
       await onUpdateRateItem(itemCode, null);
+      setEditingRates((prev) => {
+        const next = { ...prev };
+        delete next[itemCode];
+        return next;
+      });
       setStatusBanner(
         `Marked ${itemCode} as UNSET. DPR export is now blocked until a valid rate is restored.`,
       );
@@ -491,7 +502,7 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
     try {
       await onResetRates();
       setEditingRates({});
-      setStatusBanner('Restored verified Odisha OPTCL / TPSODL & MNRE reference Schedule of Rates.');
+      setStatusBanner('Restored reference Schedule of Rates (OPTCL / TPSODL & MNRE baseline).');
     } catch (err) {
       setActionError(
         err instanceof Error ? err.message : 'Failed to reset Schedule of Rates to defaults.',
@@ -867,11 +878,17 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                     ? 'Pending Step 4'
                     : `₹${boq.economics.npc_lakhs.toFixed(2)} L (${formatInrCompact(boq.economics.npc_inr)})`}
               </div>
-              <div className="text-ink-3">
-                Discount rate: {(boq.discount_rate * 100).toFixed(1)}% · Lifetime cost/home:{' '}
-                {isTotalsWithheld
-                  ? 'Held'
-                  : formatInrCompact(boq.economics.npc_per_household_inr)}
+              <div className="text-ink-3 inline-flex items-center gap-1 flex-wrap">
+                <span>
+                  Discount rate: {(boq.discount_rate * 100).toFixed(1)}%
+                </span>
+                <HelpTooltip glossaryKey="planningHorizonDiscountRate" />
+                <span>
+                  · Lifetime cost/home:{' '}
+                  {isTotalsWithheld
+                    ? 'Held'
+                    : formatInrCompact(boq.economics.npc_per_household_inr)}
+                </span>
               </div>
             </div>
 
@@ -897,10 +914,11 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
             <div className="bg-sheet border border-rule-subtle rounded-xs p-3 space-y-1">
               <div className="text-ink-2 font-medium">Annual OPEX &amp; Replacements</div>
               <div className="font-mono font-bold text-sm text-ink">
-                {formatInrCompact(
-                  boq.economics.annual_om_inr + boq.economics.annual_energy_purchase_inr,
-                )}{' '}
-                / yr
+                {isTotalsWithheld
+                  ? 'Held'
+                  : `${formatInrCompact(
+                      boq.economics.annual_om_inr + boq.economics.annual_energy_purchase_inr,
+                    )} / yr`}
               </div>
               <div className="text-ink-3">
                 O&amp;M: {formatInrCompact(boq.economics.annual_om_inr)}/yr · Power:{' '}
@@ -1472,8 +1490,9 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                             <div className="flex justify-between gap-2">
                               <dt className="text-ink-2">Annual OPEX:</dt>
                               <dd className="font-mono text-ink text-right">
-                                {formatInrCompact(sc.annual_om_inr + sc.annual_energy_purchase_inr)}
-                                /yr
+                                {scWithheld
+                                  ? 'Held'
+                                  : `${formatInrCompact(sc.annual_om_inr + sc.annual_energy_purchase_inr)}/yr`}
                               </dd>
                             </div>
                             <div className="flex justify-between gap-2">
@@ -1587,32 +1606,44 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
                                 <div className="bg-sheet border border-rule-subtle rounded-xs p-2.5">
                                   <div className="font-semibold text-ink">Grid Extension / Aug.</div>
                                   <div className="font-mono text-ink mt-0.5">
-                                    {formatInrCompact(row.grid_npc_inr)} NPC
+                                    {comparison.has_unset_rates
+                                      ? 'Held (Missing Price)'
+                                      : row.grid_requires_tie_in
+                                        ? 'Unset Tie-In'
+                                        : `${formatInrCompact(row.grid_npc_inr)} NPC`}
                                   </div>
                                   <div className="text-[11px] text-ink-2">
-                                    {formatInrCompact(row.grid_capex_inr)} upfront · ₹
-                                    {row.grid_lcoe_inr_kwh.toFixed(2)}/kWh
-                                    {row.grid_requires_tie_in ? ' · Needs Tie-In' : ''}
+                                    {comparison.has_unset_rates
+                                      ? 'Held until missing unit rates are entered'
+                                      : row.grid_requires_tie_in
+                                        ? 'Place a Grid Tie-In point in Step 3 to price extension'
+                                        : `${formatInrCompact(row.grid_capex_inr)} upfront · ₹${row.grid_lcoe_inr_kwh.toFixed(2)}/kWh`}
                                   </div>
                                 </div>
                                 <div className="bg-sheet border border-rule-subtle rounded-xs p-2.5">
                                   <div className="font-semibold text-ink">Solar Mini-Grid</div>
                                   <div className="font-mono text-ink mt-0.5">
-                                    {formatInrCompact(row.minigrid_npc_inr)} NPC
+                                    {comparison.has_unset_rates
+                                      ? 'Held (Missing Price)'
+                                      : `${formatInrCompact(row.minigrid_npc_inr)} NPC`}
                                   </div>
                                   <div className="text-[11px] text-ink-2">
-                                    {formatInrCompact(row.minigrid_capex_inr)} upfront · ₹
-                                    {row.minigrid_lcoe_inr_kwh.toFixed(2)}/kWh
+                                    {comparison.has_unset_rates
+                                      ? 'Held until missing unit rates are entered'
+                                      : `${formatInrCompact(row.minigrid_capex_inr)} upfront · ₹${row.minigrid_lcoe_inr_kwh.toFixed(2)}/kWh`}
                                   </div>
                                 </div>
                                 <div className="bg-sheet border border-rule-subtle rounded-xs p-2.5">
                                   <div className="font-semibold text-ink">Home Solar Systems</div>
                                   <div className="font-mono text-ink mt-0.5">
-                                    {formatInrCompact(row.shs_npc_inr)} NPC
+                                    {comparison.has_unset_rates
+                                      ? 'Held (Missing Price)'
+                                      : `${formatInrCompact(row.shs_npc_inr)} NPC`}
                                   </div>
                                   <div className="text-[11px] text-ink-2">
-                                    {formatInrCompact(row.shs_capex_inr)} upfront · ₹
-                                    {row.shs_lcoe_inr_kwh.toFixed(2)}/kWh
+                                    {comparison.has_unset_rates
+                                      ? 'Held until missing unit rates are entered'
+                                      : `${formatInrCompact(row.shs_capex_inr)} upfront · ₹${row.shs_lcoe_inr_kwh.toFixed(2)}/kWh`}
                                   </div>
                                 </div>
                               </div>
@@ -1651,7 +1682,7 @@ export const CostAndScenarioComparisonPanel: React.FC<CostAndScenarioComparisonP
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <a
-                  href={`/api/v1/projects/${projectId}/rates/export-csv`}
+                  href={resolveApiUrl(`/api/v1/projects/${projectId}/rates/export-csv`)}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-xs border border-rule-strong bg-sheet text-ink hover:bg-subtle transition-colors"

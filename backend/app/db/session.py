@@ -24,20 +24,23 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.config import get_settings
+from app.core.config import get_settings, normalize_database_url
 
 
 def build_engine(database_url: str | None = None) -> Engine:
     """Create a SQLAlchemy engine for PostgreSQL/PostGIS or local SQLite."""
     settings = get_settings()
-    url = database_url or settings.database_url
+    url = normalize_database_url(database_url or settings.database_url)
     connect_args: dict[str, Any] = {}
+    engine_kwargs: dict[str, Any] = {"future": True, "pool_pre_ping": True}
     if url.startswith("sqlite:///"):
         db_file = url.replace("sqlite:///", "", 1)
         if db_file and db_file != ":memory:":
             Path(db_file).parent.mkdir(parents=True, exist_ok=True)
         connect_args["check_same_thread"] = False
-    eng = create_engine(url, connect_args=connect_args, future=True, pool_pre_ping=True)
+    elif url.startswith("postgresql"):
+        engine_kwargs["pool_recycle"] = 300
+    eng = create_engine(url, connect_args=connect_args, **engine_kwargs)
     if url.startswith("sqlite"):
 
         @event.listens_for(eng, "connect")
@@ -47,6 +50,13 @@ def build_engine(database_url: str | None = None) -> Engine:
             cursor.close()
 
     return eng
+
+
+def ensure_postgis_extension(target_engine: Engine) -> None:
+    """Ensure the PostGIS extension is enabled before DDL runs on PostgreSQL."""
+    if target_engine.dialect.name == "postgresql":
+        with target_engine.begin() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
 
 
 engine = build_engine()

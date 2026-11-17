@@ -610,6 +610,14 @@ def parse_and_validate_sor_csv(csv_content: str) -> SorCsvParseResult:
     )
 
 
+def _sanitize_csv_cell(value: object) -> str:
+    """Neutralize spreadsheet formula triggers in exported CSV cells."""
+    text = str(value)
+    if text and text[0] in {"=", "+", "-", "@", "\t", "\r"}:
+        return "'" + text
+    return text
+
+
 def export_sor_to_csv(items: list[RateItemSpec]) -> str:
     """Serialize a list of `RateItemSpec` rows to a canonical Schedule of Rates CSV string."""
     output = io.StringIO()
@@ -629,13 +637,13 @@ def export_sor_to_csv(items: list[RateItemSpec]) -> str:
     for item in items:
         writer.writerow(
             [
-                item.item_code,
-                item.description,
-                item.category,
-                item.unit,
+                _sanitize_csv_cell(item.item_code),
+                _sanitize_csv_cell(item.description),
+                _sanitize_csv_cell(item.category),
+                _sanitize_csv_cell(item.unit),
                 "UNSET" if item.rate_inr is None else f"{item.rate_inr:.2f}",
-                item.source_type,
-                item.citation,
+                _sanitize_csv_cell(item.source_type),
+                _sanitize_csv_cell(item.citation),
                 item.source_year,
             ]
         )

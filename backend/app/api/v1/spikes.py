@@ -647,7 +647,7 @@ def _build_proposed_network_extensions(routes_fc: dict[str, Any]) -> dict[str, A
 def get_spike_summary() -> dict[str, Any]:
     """Return aggregated status and metrics for Technical Risk Spikes S1-S4."""
     settings = get_settings()
-    ref_dir = settings.data_dir / "reference"
+    ref_dir = settings.reference_dir
     cache_dir = settings.data_dir / "cache"
 
     manifest = _read_json_if_exists(ref_dir / "MANIFEST.json")
@@ -687,7 +687,7 @@ def get_spike_summary() -> dict[str, Any]:
 def get_reference_geojson() -> dict[str, Any]:
     """Return reference village boundary, building footprints, S2 routes, and Layers A–F."""
     settings = get_settings()
-    ref_dir = settings.data_dir / "reference"
+    ref_dir = settings.reference_dir
 
     villages = _read_json_if_exists(ref_dir / "koraput_nandapur_villages.geojson") or {
         "type": "FeatureCollection",

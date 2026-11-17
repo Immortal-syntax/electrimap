@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_current_session_and_user, get_current_user
 from app.core.config import get_settings
-from app.core.security import generate_secure_token, hash_token
+from app.core.security import derive_session_csrf_token
 from app.db.models.auth import User, UserSession
 from app.db.session import get_db
 from app.schemas.auth import AuthSessionResponse, LoginRequest, UserResponse
@@ -71,7 +71,7 @@ def login(
         value=raw_session_token,
         httponly=True,
         secure=is_secure,
-        samesite="lax",
+        samesite=settings.session_cookie_samesite,
         max_age=settings.session_absolute_days * 86400,
         path="/",
     )
@@ -99,7 +99,7 @@ def logout(
         path="/",
         httponly=True,
         secure=settings.effective_cookie_secure,
-        samesite="lax",
+        samesite=settings.session_cookie_samesite,
     )
     return {"status": "logged_out"}
 
@@ -109,16 +109,17 @@ def get_me(
     request: Request,
     response: Response,
     pair: tuple[User, UserSession] = Depends(get_current_session_and_user),
-    db: Session = Depends(get_db),
 ) -> AuthSessionResponse:
-    """Return currently authenticated user profile, issuing a fresh CSRF token if requested."""
+    """Return currently authenticated user profile and deterministic session-bound CSRF token."""
     user, session_row = pair
+    settings = get_settings()
     response.headers["Cache-Control"] = "no-store"
     csrf_token: str | None = None
     if request.query_params.get("issue_csrf") == "1":
-        csrf_token = generate_secure_token(32)
-        session_row.csrf_token_hash = hash_token(csrf_token)
-        db.commit()
+        csrf_token = derive_session_csrf_token(
+            session_row.token_hash,
+            settings.session_secret,
+        )
     return AuthSessionResponse(
         user=_to_user_response(user),
         csrf_token=csrf_token,

@@ -27,6 +27,7 @@ from app.domain.costing.rates import RateItemSpec
 from app.domain.engineering.economics import (
     EconomicParameters,
     LifecycleEconomicResult,
+    compute_capital_recovery_factor,
     evaluate_lifecycle_economics,
 )
 
@@ -57,6 +58,8 @@ class ClusterBoqInput:
     shs_kits_count: int
     annual_energy_mwh_horizon: float
     total_loss_mwh_yr: float
+    institutional_packs_count: int = 0
+    worst_ghi_kwh_m2_day: float = 3.82
 
 
 @dataclass(frozen=True)
@@ -393,13 +396,22 @@ def compute_cluster_boq(
         )
 
     # 6. Standalone Solar Home Systems (SHS)
-    if cluster.modality == "STANDALONE_SHS" and cluster.shs_kits_count > 0:
+    inst_packs = max(0, cluster.institutional_packs_count)
+    inst_eq_kits = inst_packs * 5
+    if cluster.modality == "STANDALONE_SHS" and (cluster.shs_kits_count > 0 or inst_eq_kits > 0):
+        total_eq_kits = max(0, cluster.shs_kits_count) + inst_eq_kits
+        shs_basis = (
+            f"{cluster.shs_kits_count} HH kits + {inst_packs} institutional 1 kWp pack(s) "
+            f"(= {total_eq_kits} x 200 Wp + LiFePO4 modular kits)"
+            if inst_packs > 0
+            else f"{cluster.shs_kits_count} households x 1 SHS kit (200 Wp + LiFePO4)"
+        )
         shs_line = _make_boq_line(
             cluster_id=cluster.cluster_id,
             cluster_label=cluster.cluster_label,
             item_code="SHS-KIT-200WP",
-            quantity=float(cluster.shs_kits_count),
-            quantity_basis=f"{cluster.shs_kits_count} households x 1 SHS kit (200 Wp + LiFePO4)",
+            quantity=float(total_eq_kits),
+            quantity_basis=shs_basis,
             rates_map=rates_map,
         )
         lines.append(shs_line)
@@ -407,7 +419,7 @@ def compute_cluster_boq(
         bess_or_shs_battery_capex_inr += round(shs_line.amount_inr * 0.32, 2)
 
     # 7. GI Pipe Earthing Sets (2 per DT + 1 per 3 poles)
-    total_poles = cluster.ht_poles_count + cluster.lt_poles_count
+    total_poles = cluster.ht_poles_count + lt_poles_eff
     dt_earthing = 2 * len(cluster.dt_ratings_kva)
     pole_earthing = math.ceil(total_poles / 3.0) if total_poles > 0 else 0
     earthing_sets = dt_earthing + pole_earthing + (2 if cluster.modality == "SOLAR_MINIGRID" else 0)
@@ -492,13 +504,14 @@ def compute_cluster_boq(
 
         shs_delivered_mwh = cluster.annual_energy_mwh_horizon
         if cluster.modality == "STANDALONE_SHS":
-            # Physical daily yield of 200 Wp SHS kits (or solar_pv_kwp with institutional pack)
+            # Physical daily yield aligned to billed PV capacity & worst-month GHI
             effective_pv_kwp = (
                 cluster.solar_pv_kwp
                 if cluster.solar_pv_kwp > 0.0
-                else (max(1, cluster.shs_kits_count) * 0.200)
+                else (max(1, cluster.shs_kits_count + inst_eq_kits) * 0.200)
             )
-            shs_max_mwh = round((effective_pv_kwp * 3.5 * 0.75 * 365.0) / 1000.0, 3)
+            eff_ghi = max(2.2, cluster.worst_ghi_kwh_m2_day)
+            shs_max_mwh = round((effective_pv_kwp * eff_ghi * 0.75 * 365.0) / 1000.0, 3)
             shs_delivered_mwh = min(cluster.annual_energy_mwh_horizon, shs_max_mwh)
 
         econ_result = evaluate_lifecycle_economics(
@@ -591,9 +604,15 @@ def compute_scenario_boq(
     )
 
     total_hh = sum(cb.est_households for cb in cluster_breakdowns)
-    total_energy_mwh = sum(c.annual_energy_mwh_horizon for c in clusters)
+    total_energy_mwh = sum(
+        cb.economics.annual_delivered_energy_kwh / 1000.0 for cb in cluster_breakdowns
+    )
     total_loss_mwh = sum(c.total_loss_mwh_yr for c in clusters)
     total_bess_capex = sum(cb.bess_or_shs_battery_capex_inr for cb in cluster_breakdowns)
+    pv_delivered_kwh_total = round(
+        sum(cb.economics.pv_delivered_energy_kwh for cb in cluster_breakdowns), 1
+    )
+    crf = compute_capital_recovery_factor(econ_params.discount_rate, econ_params.horizon_years)
 
     if has_unset:
         base_equipment_inr = 0.0
@@ -695,14 +714,10 @@ def compute_scenario_boq(
             pv_battery_replacement_inr=pv_rep_total,
             npc_inr=npc_total,
             npc_lakhs=round(npc_total / 100000.0, 2),
-            annual_delivered_energy_kwh=base_econ.annual_delivered_energy_kwh,
-            pv_delivered_energy_kwh=base_econ.pv_delivered_energy_kwh,
-            lcoe_inr_kwh=round(npc_total / max(1.0, base_econ.pv_delivered_energy_kwh), 2),
-            annualized_cost_inr_yr=round(
-                npc_total
-                * (base_econ.annualized_cost_inr_yr / max(1.0, base_econ.npc_inr)),
-                2,
-            ),
+            annual_delivered_energy_kwh=round(total_energy_mwh * 1000.0, 1),
+            pv_delivered_energy_kwh=pv_delivered_kwh_total,
+            lcoe_inr_kwh=round(npc_total / max(1.0, pv_delivered_kwh_total), 2),
+            annualized_cost_inr_yr=round(npc_total * crf, 2),
             cost_per_household_inr=round(total_capex_inr / max(1, total_hh), 2),
             npc_per_household_inr=round(npc_total / max(1, total_hh), 2),
             avoided_co2_tonnes_yr=avoided_co2_total,

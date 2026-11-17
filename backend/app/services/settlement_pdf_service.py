@@ -40,6 +40,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Image,
+    KeepTogether,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -82,6 +83,7 @@ from app.services.planning_service import (
     list_engineering_constants,
 )
 from app.services.project_service import get_owned_project_or_404
+from app.services.seed_service import DEMO_PROJECT_ID
 from app.services.settlement_service import (
     get_project_settlement_state,
     get_project_verification_ledger,
@@ -726,6 +728,103 @@ def generate_preliminary_settlement_pdf(
         .all()
     )
 
+    infra = None
+    gap = None
+    settings_state = None
+    demand = None
+    scenarios_state = None
+    active_scenario = None
+    rates_state = None
+    comparison = None
+    eng_constants = None
+    preflight = None
+
+    if not skeleton_only:
+        infra = list_project_infrastructure(db, project_id=proj.id, user=user)
+        gap = compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
+        settings_state = get_project_settings_state(db, project_id=proj.id, user=user)
+        demand = compute_and_persist_project_demand(db, project_id=proj.id, user=user)
+        scenarios_state = get_project_scenarios(db, project_id=proj.id, user=user)
+        active_scenario = scenarios_state.active_scenario
+        rates_state = list_project_rates(db, project_id, user)
+        comparison = get_project_scenario_comparison(db, project_id, user)
+        eng_constants = list_engineering_constants(db)
+
+        grid_missing_tie_in = [
+            cl.cluster_label
+            for cl in active_scenario.clusters
+            if cl.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"} and cl.requires_tie_in
+        ]
+        synthetic_fallback_layers = (
+            []
+            if proj.id == DEMO_PROJECT_ID
+            else [
+                lyr.layer_key
+                for lyr in layers
+                if lyr.layer_key != "nightlights"
+                and (
+                    (lyr.summary_metrics or {}).get("is_synthetic_fallback") is True
+                    or (lyr.dataset is not None and lyr.dataset.key == "synthetic_fallback")
+                )
+            ]
+        )
+
+        preflight = evaluate_dpr_preflight(
+            project_id=proj.id,
+            project_version=proj.version,
+            scenario_key=active_scenario.scenario_key,
+            clusters_count=len(settlements.items),
+            unset_rate_codes=comparison.unset_item_codes,
+            grid_clusters_missing_tie_in=grid_missing_tie_in,
+            vdrop_compliance_ok=active_scenario.vdrop_compliance_ok,
+            max_ht_vdrop_pct=active_scenario.max_ht_vdrop_pct,
+            max_lt_vdrop_pct=active_scenario.max_lt_vdrop_pct,
+            verification_coverage_pct=settlements.verification_coverage_pct,
+            verified_records_count=len(ledger.records),
+            has_existing_infra=infra.has_existing_infra,
+            boundary_source=aoi_row.boundary_source if aoi_row else "UNSET",
+            census_delta_pct=settlements.census_reconciliation.delta_pct,
+            total_capex_inr=comparison.active_scenario_boq.total_capex_inr,
+            npc_inr=comparison.active_scenario_boq.economics.npc_inr,
+            lcoe_inr_kwh=comparison.active_scenario_boq.economics.lcoe_inr_kwh,
+            synthetic_fallback_layers=synthetic_fallback_layers,
+        )
+
+        if synthetic_fallback_layers:
+            raise AppError(
+                code="SYNTHETIC_FALLBACK_BLOCK_EXPORT",
+                message=(
+                    "DPR export is blocked because synthetic fallback placeholder layers are "
+                    f"active ({', '.join(synthetic_fallback_layers)}). Replace them with "
+                    "uploaded GeoJSON/GeoTIFF files or validated regional extracts."
+                ),
+                status_code=422,
+                details={"synthetic_fallback_layers": synthetic_fallback_layers},
+            )
+
+        if comparison.has_unset_rates:
+            raise AppError(
+                code="UNSET_RATES_BLOCK_EXPORT",
+                message=(
+                    comparison.export_blocked_reason
+                    or "DPR export is blocked because one or more required unit rates are UNSET."
+                ),
+                status_code=422,
+                details={"unset_item_codes": comparison.unset_item_codes},
+            )
+
+        if grid_missing_tie_in:
+            raise AppError(
+                code="GRID_TIE_IN_MISSING_BLOCK_EXPORT",
+                message=(
+                    f"DPR export is blocked because grid-selected clusters "
+                    f"({', '.join(grid_missing_tie_in)}) have no 11 kV tie-in point "
+                    f"(d_infra_m = UNSET)."
+                ),
+                status_code=422,
+                details={"grid_clusters_missing_tie_in": grid_missing_tie_in},
+            )
+
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         "DprTitle",
@@ -758,10 +857,9 @@ def generate_preliminary_settlement_pdf(
         "DprCell",
         parent=styles["BodyText"],
         fontName="Helvetica",
-        fontSize=6.1,
-        leading=7.6,
+        fontSize=6.0,
+        leading=7.5,
         textColor=colors.HexColor("#1E293B"),
-        wordWrap="CJK",
     )
     cell_bold_style = ParagraphStyle(
         "DprCellBold",
@@ -792,17 +890,18 @@ def generate_preliminary_settlement_pdf(
     )
 
     story: list[Any] = []
+    safe_proj_name = html.escape(proj.name)
     report_heading = (
-        f"STAGE 2 PRELIMINARY SETTLEMENT SKELETON (SECTIONS 1-5): {proj.name.upper()}"
+        f"STAGE 2 PRELIMINARY SETTLEMENT SKELETON (SECTIONS 1-5): {safe_proj_name.upper()}"
         if skeleton_only
-        else f"COMPLETE 24-SECTION PRELIMINARY DETAILED PROJECT REPORT: {proj.name.upper()}"
+        else f"COMPLETE 24-SECTION PRELIMINARY DETAILED PROJECT REPORT: {safe_proj_name.upper()}"
     )
     story.append(Paragraph(report_heading, title_style))
     story.append(
         Paragraph(
-            f"<b>State:</b> {proj.target_state or 'UNSET'} &nbsp;|&nbsp; "
-            f"<b>District:</b> {proj.target_district or 'UNSET'} &nbsp;|&nbsp; "
-            f"<b>Block:</b> {proj.target_block or 'UNSET'} &nbsp;|&nbsp; "
+            f"<b>State:</b> {html.escape(proj.target_state or 'UNSET')} &nbsp;|&nbsp; "
+            f"<b>District:</b> {html.escape(proj.target_district or 'UNSET')} &nbsp;|&nbsp; "
+            f"<b>Block:</b> {html.escape(proj.target_block or 'UNSET')} &nbsp;|&nbsp; "
             f"<b>Metric CRS:</b> EPSG:{proj.metric_epsg} &nbsp;|&nbsp; "
             f"<b>Planning Horizon:</b> {proj.base_year} (+{proj.horizon_years} yrs)",
             body_style,
@@ -811,13 +910,13 @@ def generate_preliminary_settlement_pdf(
     story.append(Spacer(1, 3 * mm))
 
     # Section 1: Executive Summary
-    story.append(Paragraph("1. EXECUTIVE SUMMARY & EPISTEMIC HONESTY MANDATE", sec_style))
+    story.append(Paragraph("1. EXECUTIVE SUMMARY &amp; EPISTEMIC HONESTY MANDATE", sec_style))
     rec = settlements.census_reconciliation
     story.append(
         Paragraph(
             f"This preliminary engineering report documents satellite-detected footprints, "
             f"metric DBSCAN habitation clusters, and two-axis electrification classifications for "
-            f"<b>{proj.name}</b>. Total clusters identified: <b>{len(settlements.items)}</b> "
+            f"<b>{safe_proj_name}</b>. Total clusters identified: <b>{len(settlements.items)}</b> "
             f"comprising <b>{rec.satellite_detected_buildings}</b> detected footprints and "
             f"<b>{rec.satellite_estimated_households}</b> estimated households. Current "
             f"verification coverage is <b>{settlements.verification_coverage_pct:.1f}%</b>. "
@@ -828,7 +927,7 @@ def generate_preliminary_settlement_pdf(
     )
 
     # Section 2: Administrative & Geographic Profile
-    story.append(Paragraph("2. ADMINISTRATIVE & GEOGRAPHIC PROFILE", sec_style))
+    story.append(Paragraph("2. ADMINISTRATIVE &amp; GEOGRAPHIC PROFILE", sec_style))
     area_km2 = round(aoi_row.area_km2, 3) if aoi_row else 0.0
     lgd_code = aoi_row.lgd_code if aoi_row and aoi_row.lgd_code else "UNSET"
     proj_base_hh = str(rec.projected_base_year_households or "N/A")
@@ -840,28 +939,28 @@ def generate_preliminary_settlement_pdf(
     )
     sec2_data = [
         [
-            "Project Code / Version",
-            f"{proj.id[:8]} (v{proj.version})",
-            "LGD Village Code",
-            lgd_code,
+            _p("Project Code / Version", bold=True),
+            _p(f"{proj.id[:8]} (v{proj.version})"),
+            _p("LGD Village Code", bold=True),
+            _p(lgd_code),
         ],
         [
-            "AOI Area (sq. km)",
-            f"{area_km2:.2f} km²",
-            "Census 2011 Code",
-            rec.census2011_code or "UNSET",
+            _p("AOI Area (sq. km)", bold=True),
+            _p(f"{area_km2:.2f} km²"),
+            _p("Census 2011 Code", bold=True),
+            _p(rec.census2011_code or "UNSET"),
         ],
         [
-            "Census 2011 Households",
-            census_2011_hh,
-            "Projected Base HH",
-            proj_base_hh,
+            _p("Census 2011 Households", bold=True),
+            _p(census_2011_hh),
+            _p("Projected Base HH", bold=True),
+            _p(proj_base_hh),
         ],
         [
-            "Satellite Est. Households",
-            str(rec.satellite_estimated_households),
-            "Census Delta (%)",
-            delta_label,
+            _p("Satellite Est. Households", bold=True),
+            _p(str(rec.satellite_estimated_households)),
+            _p("Census Delta (%)", bold=True),
+            _p(delta_label),
         ],
     ]
     t2 = Table(sec2_data, colWidths=[38 * mm, 48 * mm, 40 * mm, 50 * mm])
@@ -1078,17 +1177,22 @@ def generate_preliminary_settlement_pdf(
         )
         return buf.getvalue()
 
-    infra = list_project_infrastructure(db, project_id=proj.id, user=user)
-    gap = compute_and_persist_gap_analysis(db, project_id=proj.id, user=user)
-    settings_state = get_project_settings_state(db, project_id=proj.id, user=user)
-    demand = compute_and_persist_project_demand(db, project_id=proj.id, user=user)
-    scenarios_state = get_project_scenarios(db, project_id=proj.id, user=user)
-    active_scenario = scenarios_state.active_scenario
+    assert (
+        infra is not None
+        and gap is not None
+        and settings_state is not None
+        and demand is not None
+        and active_scenario is not None
+        and rates_state is not None
+        and comparison is not None
+        and eng_constants is not None
+        and preflight is not None
+    )
 
     # Section 6: Existing Electrical Infrastructure Register
     story.append(
         Paragraph(
-            "6. EXISTING ELECTRICAL INFRASTRUCTURE & TIE-IN PROVENANCE",
+            "6. EXISTING ELECTRICAL INFRASTRUCTURE &amp; TIE-IN PROVENANCE",
             sec_style,
         )
     )
@@ -1285,8 +1389,8 @@ def generate_preliminary_settlement_pdf(
     story.append(PageBreak())
     story.append(
         Paragraph(
-            f"10. ELECTRIFICATION MODALITY SELECTION & SCENARIO SUMMARY "
-            f"({active_scenario.scenario_key})",
+            f"10. ELECTRIFICATION MODALITY SELECTION &amp; SCENARIO SUMMARY "
+            f"({html.escape(active_scenario.scenario_key)})",
             sec_style,
         )
     )
@@ -1357,7 +1461,7 @@ def generate_preliminary_settlement_pdf(
     # Section 11: 11 kV HT Feeder Routing Schedule
     story.append(
         Paragraph(
-            "11. 11 KV 3-PHASE HT FEEDER LEAST-COST ROUTING & POLE SCHEDULE",
+            "11. 11 KV 3-PHASE HT FEEDER LEAST-COST ROUTING &amp; POLE SCHEDULE",
             sec_style,
         )
     )
@@ -1373,37 +1477,43 @@ def generate_preliminary_settlement_pdf(
     # Section 12: 415 V LT Radial MST Network, Voltage Drop & Technical Losses
     story.append(
         Paragraph(
-            "12. 415 V LT RADIAL MST NETWORK SCHEDULE, VOLTAGE DROP & TECHNICAL LOSSES",
+            "12. 415 V LT RADIAL MST NETWORK SCHEDULE, VOLTAGE DROP &amp; TECHNICAL LOSSES",
             sec_style,
         )
     )
     net_rows = [
         [
-            "Cluster",
-            "Modality",
-            "DTs (kVA)",
-            "11kV HT (m / poles)",
-            "415V LT (m / poles)",
-            "VDrop (HT / LT)",
-            "Loss (MWh/yr)",
+            _p("Cluster", header=True),
+            _p("Modality", header=True),
+            _p("DTs (kVA)", header=True),
+            _p("11kV HT (m / poles)", header=True),
+            _p("415V LT (m / poles)", header=True),
+            _p("VDrop (HT / LT)", header=True),
+            _p("Loss (MWh/yr)", header=True),
         ]
     ]
     for cl_lay in active_scenario.clusters:
         net_rows.append(
             [
-                cl_lay.cluster_label,
-                cl_lay.modality,
-                f"{cl_lay.dt_count}x ({cl_lay.total_dt_rating_kva:.0f} kVA)"
-                if cl_lay.dt_count > 0
-                else "—",
-                f"{cl_lay.ht_length_m:.0f} m / {cl_lay.ht_poles_count}p"
-                if cl_lay.ht_length_m > 0
-                else ("UNSET TIE-IN" if cl_lay.requires_tie_in else "0 m"),
-                f"{cl_lay.lt_total_length_m:.0f} m / {cl_lay.lt_poles_count}p"
-                if cl_lay.lt_total_length_m > 0
-                else "0 m",
-                f"{cl_lay.ht_drop_pct:.2f}% / {cl_lay.lt_drop_pct:.2f}%",
-                f"{cl_lay.total_loss_mwh_yr:.3f} ({cl_lay.technical_loss_pct:.1f}%)",
+                _p(cl_lay.cluster_label, bold=True),
+                _p(cl_lay.modality),
+                _p(
+                    f"{cl_lay.dt_count}x ({cl_lay.total_dt_rating_kva:.0f} kVA)"
+                    if cl_lay.dt_count > 0
+                    else "—"
+                ),
+                _p(
+                    f"{cl_lay.ht_length_m:.0f} m / {cl_lay.ht_poles_count}p"
+                    if cl_lay.ht_length_m > 0
+                    else ("UNSET TIE-IN" if cl_lay.requires_tie_in else "0 m")
+                ),
+                _p(
+                    f"{cl_lay.lt_total_length_m:.0f} m / {cl_lay.lt_poles_count}p"
+                    if cl_lay.lt_total_length_m > 0
+                    else "0 m"
+                ),
+                _p(f"{cl_lay.ht_drop_pct:.2f}% / {cl_lay.lt_drop_pct:.2f}%"),
+                _p(f"{cl_lay.total_loss_mwh_yr:.3f} ({cl_lay.technical_loss_pct:.1f}%)"),
             ]
         )
     t11 = Table(
@@ -1414,11 +1524,9 @@ def generate_preliminary_settlement_pdf(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
-                ("PADDING", (0, 0), (-1, -1), 2.5),
+                ("PADDING", (0, 0), (-1, -1), 2.3),
             ]
         )
     )
@@ -1427,31 +1535,31 @@ def generate_preliminary_settlement_pdf(
     # Section 13: Off-Grid Solar PV, LiFePO4 BESS & Standalone SHS Sizing Schedule
     story.append(
         Paragraph(
-            "13. OFF-GRID SOLAR PV, LIFEPO4 BESS & STANDALONE SHS SIZING SCHEDULE",
+            "13. OFF-GRID SOLAR PV, LIFEPO4 BESS &amp; STANDALONE SHS SIZING SCHEDULE",
             sec_style,
         )
     )
     solar_rows = [
         [
-            "Cluster",
-            "Modality",
-            "Horizon Energy (kWh/d)",
-            "Solar PV (kWp)",
-            "LiFePO4 BESS (kWh)",
-            "Inverter (kVA)",
-            "SHS Kits",
+            _p("Cluster", header=True),
+            _p("Modality", header=True),
+            _p("Horizon Energy (kWh/d)", header=True),
+            _p("Solar PV (kWp)", header=True),
+            _p("LiFePO4 BESS (kWh)", header=True),
+            _p("Inverter (kVA)", header=True),
+            _p("SHS Kits", header=True),
         ]
     ]
     for cl_lay in active_scenario.clusters:
         solar_rows.append(
             [
-                cl_lay.cluster_label,
-                cl_lay.modality,
-                f"{cl_lay.energy_kwh_day_horizon:.1f} kWh/d",
-                f"{cl_lay.solar_pv_kwp:.2f} kWp" if cl_lay.solar_pv_kwp > 0 else "—",
-                f"{cl_lay.bess_capacity_kwh:.1f} kWh" if cl_lay.bess_capacity_kwh > 0 else "—",
-                f"{cl_lay.inverter_kva:.1f} kVA" if cl_lay.inverter_kva > 0 else "—",
-                str(cl_lay.shs_kits_count) if cl_lay.shs_kits_count > 0 else "—",
+                _p(cl_lay.cluster_label, bold=True),
+                _p(cl_lay.modality),
+                _p(f"{cl_lay.energy_kwh_day_horizon:.1f} kWh/d"),
+                _p(f"{cl_lay.solar_pv_kwp:.2f} kWp" if cl_lay.solar_pv_kwp > 0 else "—"),
+                _p(f"{cl_lay.bess_capacity_kwh:.1f} kWh" if cl_lay.bess_capacity_kwh > 0 else "—"),
+                _p(f"{cl_lay.inverter_kva:.1f} kVA" if cl_lay.inverter_kva > 0 else "—"),
+                _p(str(cl_lay.shs_kits_count) if cl_lay.shs_kits_count > 0 else "—"),
             ]
         )
     t13 = Table(
@@ -1462,11 +1570,9 @@ def generate_preliminary_settlement_pdf(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
-                ("PADDING", (0, 0), (-1, -1), 2.5),
+                ("PADDING", (0, 0), (-1, -1), 2.3),
             ]
         )
     )
@@ -1494,100 +1600,21 @@ def generate_preliminary_settlement_pdf(
         metric_epsg=proj.metric_epsg,
         scenario_key=active_scenario.scenario_key,
     )
-    story.append(Image(io.BytesIO(plate2_bytes), width=174 * mm, height=116 * mm))
+    story.append(Image(io.BytesIO(plate2_bytes), width=174 * mm, height=106 * mm))
     story.append(Spacer(1, 2 * mm))
 
     # Section 14: Preliminary Single-Line Diagram (SLD) Schematic
-    story.append(
-        Paragraph(
-            "14. PRELIMINARY SINGLE-LINE DIAGRAM (SLD) SCHEMATIC — PRELIMINARY ENGINEERING",
-            sec_style,
-        )
+    sec14_para = Paragraph(
+        "14. PRELIMINARY SINGLE-LINE DIAGRAM (SLD) SCHEMATIC — PRELIMINARY ENGINEERING",
+        sec_style,
     )
     sld_png_bytes, n_sld_rows = _render_single_line_diagram_png(
         project_name=proj.name,
         scenario=active_scenario,
     )
-    sld_height_mm = min(140.0, 44.0 * n_sld_rows + 14.0) * mm
+    sld_height_mm = min(116.0, 38.0 * n_sld_rows + 12.0) * mm
     sld_img = Image(io.BytesIO(sld_png_bytes), width=174 * mm, height=sld_height_mm)
-    story.append(sld_img)
-
-    # Milestone M6 & M7: Pre-flight validation + Sections 15-24
-    rates_state = list_project_rates(db, project_id, user)
-    comparison = get_project_scenario_comparison(db, project_id, user)
-    eng_constants = list_engineering_constants(db)
-
-    grid_missing_tie_in = [
-        cl.cluster_label
-        for cl in active_scenario.clusters
-        if cl.modality in {"GRID_EXTENSION", "GRID_AUGMENTATION"} and cl.requires_tie_in
-    ]
-
-    synthetic_fallback_layers = [
-        lyr.layer_key
-        for lyr in layers
-        if lyr.layer_key != "nightlights"
-        and (
-            (lyr.summary_metrics or {}).get("is_synthetic_fallback") is True
-            or (lyr.dataset is not None and lyr.dataset.key == "synthetic_fallback")
-        )
-    ]
-
-    preflight = evaluate_dpr_preflight(
-        project_id=proj.id,
-        project_version=proj.version,
-        scenario_key=active_scenario.scenario_key,
-        clusters_count=len(settlements.items),
-        unset_rate_codes=comparison.unset_item_codes,
-        grid_clusters_missing_tie_in=grid_missing_tie_in,
-        vdrop_compliance_ok=active_scenario.vdrop_compliance_ok,
-        max_ht_vdrop_pct=active_scenario.max_ht_vdrop_pct,
-        max_lt_vdrop_pct=active_scenario.max_lt_vdrop_pct,
-        verification_coverage_pct=settlements.verification_coverage_pct,
-        verified_records_count=len(ledger.records),
-        has_existing_infra=infra.has_existing_infra,
-        boundary_source=aoi_row.boundary_source if aoi_row else "UNSET",
-        census_delta_pct=settlements.census_reconciliation.delta_pct,
-        total_capex_inr=comparison.active_scenario_boq.total_capex_inr,
-        npc_inr=comparison.active_scenario_boq.economics.npc_inr,
-        lcoe_inr_kwh=comparison.active_scenario_boq.economics.lcoe_inr_kwh,
-        synthetic_fallback_layers=synthetic_fallback_layers,
-    )
-
-    if synthetic_fallback_layers:
-        raise AppError(
-            code="SYNTHETIC_FALLBACK_BLOCK_EXPORT",
-            message=(
-                "DPR export is blocked because synthetic fallback placeholder layers are "
-                f"active ({', '.join(synthetic_fallback_layers)}). Replace them with "
-                "uploaded GeoJSON/GeoTIFF files or validated regional extracts."
-            ),
-            status_code=422,
-            details={"synthetic_fallback_layers": synthetic_fallback_layers},
-        )
-
-    if comparison.has_unset_rates:
-        raise AppError(
-            code="UNSET_RATES_BLOCK_EXPORT",
-            message=(
-                comparison.export_blocked_reason
-                or "DPR export is blocked because one or more required unit rates are UNSET."
-            ),
-            status_code=422,
-            details={"unset_item_codes": comparison.unset_item_codes},
-        )
-
-    if grid_missing_tie_in:
-        raise AppError(
-            code="GRID_TIE_IN_MISSING_BLOCK_EXPORT",
-            message=(
-                f"DPR export is blocked because grid-selected clusters "
-                f"({', '.join(grid_missing_tie_in)}) have no 11 kV tie-in point "
-                f"(d_infra_m = UNSET)."
-            ),
-            status_code=422,
-            details={"grid_clusters_missing_tie_in": grid_missing_tie_in},
-        )
+    story.append(KeepTogether([sec14_para, Spacer(1, 1 * mm), sld_img]))
 
     active_boq = comparison.active_scenario_boq
     story.append(PageBreak())
@@ -1595,7 +1622,8 @@ def generate_preliminary_settlement_pdf(
     # Section 15: Schedule of Rates (SoR) Provenance & Costing Methodology
     story.append(
         Paragraph(
-            f"15. SCHEDULE OF RATES (SOR) PROVENANCE & COSTING BASIS ({rates_state.template_key})",
+            f"15. SCHEDULE OF RATES (SOR) PROVENANCE &amp; COSTING BASIS "
+            f"({html.escape(rates_state.template_key)})",
             sec_style,
         )
     )
@@ -1728,14 +1756,14 @@ def generate_preliminary_settlement_pdf(
                 _p("—"),
                 _p("INR", bold=True),
                 _p("—"),
-                _p("VERIFIED_SUM", bold=True),
+                _p("CALCULATED_SUM", bold=True),
                 _p(f"{active_boq.total_capex_inr:,.2f}", bold=True),
             ],
         ]
     )
     t16 = Table(
         boq_rows,
-        colWidths=[21 * mm, 39 * mm, 24 * mm, 13 * mm, 12 * mm, 17 * mm, 28 * mm, 22 * mm],
+        colWidths=[24 * mm, 32 * mm, 23 * mm, 12 * mm, 11 * mm, 18 * mm, 34 * mm, 22 * mm],
     )
     t16.setStyle(
         TableStyle(
@@ -1744,7 +1772,7 @@ def generate_preliminary_settlement_pdf(
                 ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E2E8F0")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
-                ("PADDING", (0, 0), (-1, -1), 2.0),
+                ("PADDING", (0, 0), (-1, -1), 1.8),
             ]
         )
     )
@@ -1754,50 +1782,67 @@ def generate_preliminary_settlement_pdf(
     story.append(
         Paragraph(
             f"17. MULTI-SCENARIO FINANCIAL COMPARISON, "
-            f"{active_boq.horizon_years}-YR NPC & LCOE ABSTRACT",
+            f"{active_boq.horizon_years}-YR NPC &amp; LCOE ABSTRACT",
             sec_style,
         )
     )
     comp_rows = [
         [
-            "Scenario Key",
-            "Pinned",
-            "CAPEX (INR)",
-            "Net Outlay (INR)",
-            f"{active_boq.horizon_years}-Yr NPC (INR)",
-            "LCOE (INR/kWh)",
-            "Cost / HH (INR)",
+            _p("Scenario Key", header=True),
+            _p("Pinned", header=True),
+            _p("CAPEX (INR)", header=True),
+            _p("Net Outlay (INR)", header=True),
+            _p(f"{active_boq.horizon_years}-Yr NPC (INR)", header=True),
+            _p("LCOE (INR/kWh)", header=True),
+            _p("Cost / HH (INR)", header=True),
         ]
     ]
+    tie_in_incomplete_scenarios: list[str] = []
     for sc in comparison.scenarios:
+        if sc.requires_tie_in_warning:
+            tie_in_incomplete_scenarios.append(sc.scenario_key)
+        key_text = (
+            f"{sc.scenario_key} [Tie-In Unset]"
+            if sc.requires_tie_in_warning
+            else sc.scenario_key
+        )
         comp_rows.append(
             [
-                sc.scenario_key,
-                "BASELINE" if sc.is_active_baseline else "ALT",
-                f"{sc.total_capex_inr:,.2f}",
-                f"{sc.net_utility_capex_inr:,.2f}",
-                f"{sc.npc_inr:,.2f}",
-                f"{sc.lcoe_inr_kwh:.2f} /kWh",
-                f"{sc.cost_per_household_inr:,.0f} /HH",
+                _p(key_text, bold=sc.is_active_baseline),
+                _p("BASELINE" if sc.is_active_baseline else "ALT"),
+                _p("WITHHELD" if sc.totals_withheld else f"{sc.total_capex_inr:,.2f}"),
+                _p("WITHHELD" if sc.totals_withheld else f"{sc.net_utility_capex_inr:,.2f}"),
+                _p("WITHHELD" if sc.totals_withheld else f"{sc.npc_inr:,.2f}"),
+                _p("WITHHELD" if sc.totals_withheld else f"{sc.lcoe_inr_kwh:.2f} /kWh"),
+                _p("WITHHELD" if sc.totals_withheld else f"{sc.cost_per_household_inr:,.0f} /HH"),
             ]
         )
     t17 = Table(
         comp_rows,
-        colWidths=[34 * mm, 16 * mm, 26 * mm, 26 * mm, 26 * mm, 24 * mm, 24 * mm],
+        colWidths=[34 * mm, 18 * mm, 25 * mm, 25 * mm, 25 * mm, 24 * mm, 25 * mm],
     )
     t17.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
-                ("PADDING", (0, 0), (-1, -1), 2.5),
+                ("PADDING", (0, 0), (-1, -1), 2.3),
             ]
         )
     )
     story.append(t17)
+    if tie_in_incomplete_scenarios:
+        story.append(Spacer(1, 1.5 * mm))
+        story.append(
+            Paragraph(
+                f"<b>Tie-In Provenance Disclosure:</b> Scenario(s) "
+                f"<b>{html.escape(', '.join(tie_in_incomplete_scenarios))}</b> include clusters "
+                "without a confirmed or assumed 11 kV tie-in point (HT length = 0 m); grid costs "
+                "for those clusters exclude upstream 11 kV spur until a tie-in point is set.",
+                body_style,
+            )
+        )
     story.append(Spacer(1, 2 * mm))
 
     hab_comp_rows = [
@@ -1846,35 +1891,41 @@ def generate_preliminary_settlement_pdf(
     # Section 18: Implementation Schedule, Phasing & Institutional Mechanism
     story.append(
         Paragraph(
-            f"18. IMPLEMENTATION SCHEDULE, PHASING & INSTITUTIONAL MECHANISM ({proj.scheme})",
+            f"18. IMPLEMENTATION SCHEDULE, PHASING &amp; INSTITUTIONAL MECHANISM "
+            f"({html.escape(proj.scheme)})",
             sec_style,
         )
     )
     phasing_rows = [
-        ["Phase", "Timeline", "Institutional Responsibility", "Deliverables & Milestones"],
         [
-            "Phase I — Joint Field Survey",
-            "Month 1–2",
-            "DISCOM / OREDA + Gram Sabha",
-            "Physical walk-through, pole peg-marking, consumer enumeration & RoW consent.",
+            _p("Phase", header=True),
+            _p("Timeline", header=True),
+            _p("Institutional Responsibility", header=True),
+            _p("Deliverables & Milestones", header=True),
         ],
         [
-            "Phase II — Procurement & BoM",
-            "Month 3–4",
-            "Project Management Cell (PMC)",
-            "Turnkey EPC tendering, BIS/MNRE equipment type-test verification & dispatch.",
+            _p("Phase I — Joint Field Survey", bold=True),
+            _p("Month 1–2"),
+            _p("DISCOM / OREDA + Gram Sabha"),
+            _p("Physical walk-through, pole peg-marking, consumer enumeration & RoW consent."),
         ],
         [
-            "Phase III — Erection & Stringing",
-            "Month 5–9",
-            "Turnkey Contractor / DISCOM",
-            "PSC pole erection, 11 kV/LT stringing or Solar PV + LiFePO4 BESS installation.",
+            _p("Phase II — Procurement & BoM", bold=True),
+            _p("Month 3–4"),
+            _p("Project Management Cell (PMC)"),
+            _p("Turnkey EPC tendering, BIS/MNRE equipment type-test verification & dispatch."),
         ],
         [
-            "Phase IV — Testing & Handover",
-            "Month 10–12",
-            "Electrical Inspector / VEC",
-            "CEA safety inspection, service connection energization & 5-year AMC activation.",
+            _p("Phase III — Erection & Stringing", bold=True),
+            _p("Month 5–9"),
+            _p("Turnkey Contractor / DISCOM"),
+            _p("PSC pole erection, 11 kV/LT stringing or Solar PV + LiFePO4 BESS installation."),
+        ],
+        [
+            _p("Phase IV — Testing & Handover", bold=True),
+            _p("Month 10–12"),
+            _p("Electrical Inspector / VEC"),
+            _p("CEA safety inspection, service connection energization & 5-year AMC activation."),
         ],
     ]
     t18 = Table(phasing_rows, colWidths=[34 * mm, 20 * mm, 42 * mm, 80 * mm])
@@ -1882,9 +1933,7 @@ def generate_preliminary_settlement_pdf(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.2),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                 ("PADDING", (0, 0), (-1, -1), 2.2),
             ]
@@ -1926,7 +1975,7 @@ def generate_preliminary_settlement_pdf(
     # Section 20: Environmental & Forest Clearance Screening (ESA WorldCover & Waterways)
     story.append(
         Paragraph(
-            "20. ENVIRONMENTAL & FOREST CLEARANCE SCREENING (ESA WORLDCOVER & WATERWAYS)",
+            "20. ENVIRONMENTAL &amp; FOREST CLEARANCE SCREENING (ESA WORLDCOVER &amp; WATERWAYS)",
             sec_style,
         )
     )
@@ -1934,7 +1983,7 @@ def generate_preliminary_settlement_pdf(
     total_water_crossings = sum(g.water_crossings_count for g in gap.clusters)
     story.append(
         Paragraph(
-            f"<b>Canopy & Waterway Screening:</b> Maximum cluster tree-canopy cover "
+            f"<b>Canopy &amp; Waterway Screening:</b> Maximum cluster tree-canopy cover "
             f"(ESA WorldCover 10 m) is <b>{max_canopy_pct:.1f}%</b>; total OSM waterway "
             f"corridor crossings: <b>{total_water_crossings}</b>. Under the Forest "
             f"(Conservation) Act 1980 and MoEFCC linear project guidelines, 415 V LT AB-cable "
@@ -1986,7 +2035,7 @@ def generate_preliminary_settlement_pdf(
         )
     t21 = Table(
         assump_rows,
-        colWidths=[34 * mm, 42 * mm, 14 * mm, 16 * mm, 24 * mm, 46 * mm],
+        colWidths=[37 * mm, 38 * mm, 14 * mm, 15 * mm, 27 * mm, 45 * mm],
     )
     t21.setStyle(
         TableStyle(
@@ -2003,18 +2052,18 @@ def generate_preliminary_settlement_pdf(
     # Section 22: Risk Register, Methodological Limitations & Pre-Survey Field Checklist
     story.append(
         Paragraph(
-            "22. RISK REGISTER, METHODOLOGICAL LIMITATIONS & PRE-SURVEY FIELD CHECKLIST",
+            "22. RISK REGISTER, METHODOLOGICAL LIMITATIONS &amp; PRE-SURVEY FIELD CHECKLIST",
             sec_style,
         )
     )
     story.append(
         Paragraph(
-            "<b>Epistemic Limitations (Core Principles #2 & #3):</b> Satellite building "
+            "<b>Epistemic Limitations (Core Principles #2 &amp; #3):</b> Satellite building "
             "footprints (Google-Microsoft-OSM Open Buildings) and VIIRS night-time radiance "
             "(463 m) cannot observe household electricity meters, internal wiring, or voltage "
             "regulation. Mandatory field checklist prior to tendering: (1) Confirm household "
             "count and pucca/kutcha structure class with Gram Sabha; (2) Verify physical "
-            "11 kV tapping pole & feeder capacity with DISCOM Sub-Divisional Officer; "
+            "11 kV tapping pole &amp; feeder capacity with DISCOM Sub-Divisional Officer; "
             "(3) Confirm shadow-free land parcel for Solar PV array.",
             body_style,
         )
@@ -2023,7 +2072,7 @@ def generate_preliminary_settlement_pdf(
     # Section 23: Open Data Licensing, Third-Party Attributions & Regulatory Citations
     story.append(
         Paragraph(
-            "23. OPEN DATA LICENSING, THIRD-PARTY ATTRIBUTIONS & REGULATORY CITATIONS",
+            "23. OPEN DATA LICENSING, THIRD-PARTY ATTRIBUTIONS &amp; REGULATORY CITATIONS",
             sec_style,
         )
     )
@@ -2043,7 +2092,7 @@ def generate_preliminary_settlement_pdf(
     # Section 24: Pre-Flight Integrity Certificate, Cryptographic Snapshot Hash & Sign-Off Block
     story.append(
         Paragraph(
-            "24. PRE-FLIGHT INTEGRITY CERTIFICATE, CRYPTOGRAPHIC SNAPSHOT HASH & SIGN-OFF",
+            "24. PRE-FLIGHT INTEGRITY CERTIFICATE, CRYPTOGRAPHIC SNAPSHOT HASH &amp; SIGN-OFF",
             sec_style,
         )
     )

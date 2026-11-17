@@ -888,7 +888,12 @@ export const InfrastructureAndDemandPanel: React.FC<
                     <th className="py-2 px-2.5">Terrain Factor</th>
                     <th className="py-2 px-2.5">Effective Dist.</th>
                     <th className="py-2 px-2.5">Slope, Trees &amp; Rivers</th>
-                    <th className="py-2 px-2.5">Suggested Supply Option</th>
+                    <th className="py-2 px-2.5">
+                      <span className="inline-flex items-center gap-1">
+                        <span>Suggested Supply Option</span>
+                        <HelpTooltip glossaryKey="distributionModality" />
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-rule-subtle">

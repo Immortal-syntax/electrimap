@@ -26,7 +26,7 @@ from app.core.errors import AppError
 from app.db.models.auth import User
 from app.db.models.ops import Job
 from app.schemas.job import JobResponse
-from app.services.project_service import get_owned_project_or_404
+from app.services.project_service import get_owned_project_or_404, get_writable_project_or_404
 
 
 def serialize_job(job: Job) -> JobResponse:
@@ -214,6 +214,8 @@ def get_job_for_user(db: Session, job_id: str, user: User) -> Job:
 def cancel_job_for_user(db: Session, job_id: str, user: User) -> Job:
     """Cancel a QUEUED or RUNNING job."""
     job = get_job_for_user(db, job_id, user)
+    if job.project_id:
+        get_writable_project_or_404(db, job.project_id, user)
     if job.status in {"QUEUED", "RUNNING"}:
         now = datetime.now(UTC)
         job.status = "CANCELLED"

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.errors import AuthenticationError, CsrfValidationError
 from app.core.security import (
+    derive_session_csrf_token,
     generate_secure_token,
     hash_token,
     login_rate_limiter,
@@ -50,8 +51,8 @@ def authenticate_and_create_session(
     ensure_seed_data(db)
 
     normalized_email = email.strip().lower()
-    rate_key = f"{ip_address or 'local'}:{normalized_email}"
-    login_rate_limiter.check_and_record(rate_key)
+    client_ip = ip_address or "local"
+    login_rate_limiter.check_login_attempt(client_ip, normalized_email)
 
     user = db.execute(
         select(User).where(User.email == normalized_email)
@@ -61,15 +62,16 @@ def authenticate_and_create_session(
     if user is None or not user.is_active or not password_valid:
         raise AuthenticationError("Invalid email or password.")
 
-    login_rate_limiter.reset(rate_key)
+    login_rate_limiter.reset_login_attempt(client_ip, normalized_email)
 
     settings = get_settings()
     now = datetime.now(UTC)
     raw_session_token = generate_secure_token(32)
-    raw_csrf_token = generate_secure_token(32)
+    session_token_hash = hash_token(raw_session_token)
+    raw_csrf_token = derive_session_csrf_token(session_token_hash, settings.session_secret)
 
     session_row = UserSession(
-        token_hash=hash_token(raw_session_token),
+        token_hash=session_token_hash,
         user_id=user.id,
         csrf_token_hash=hash_token(raw_csrf_token),
         expires_at=now + timedelta(hours=settings.session_ttl_hours),
@@ -117,10 +119,12 @@ def validate_session_token(
         raise AuthenticationError("User account is inactive or missing.")
 
     settings = get_settings()
-    sliding_target = min(abs_expires_at, now + timedelta(hours=settings.session_ttl_hours))
-    session_row.last_seen_at = now
-    session_row.expires_at = sliding_target
-    db.commit()
+    last_seen_at = _ensure_aware(session_row.last_seen_at)
+    if (now - last_seen_at) >= timedelta(minutes=5):
+        sliding_target = min(abs_expires_at, now + timedelta(hours=settings.session_ttl_hours))
+        session_row.last_seen_at = now
+        session_row.expires_at = sliding_target
+        db.commit()
     return user, session_row
 
 

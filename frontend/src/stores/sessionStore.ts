@@ -36,40 +36,68 @@ interface SessionState {
   isInitialized: boolean;
   isLoading: boolean;
   error: string | null;
+  connectionWarning: string | null;
   checkSession: () => Promise<void>;
   login: (email: string, password: string) => Promise<UserProfile>;
   logout: () => Promise<void>;
   clearError: () => void;
 }
 
+let inFlightSessionCheck: Promise<void> | null = null;
+
 export const useSessionStore = create<SessionState>((set) => ({
   user: null,
   isInitialized: false,
   isLoading: false,
   error: null,
+  connectionWarning: null,
 
   checkSession: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      const needsCsrf = !getCsrfToken();
-      const endpoint = needsCsrf ? '/api/v1/auth/me?issue_csrf=1' : '/api/v1/auth/me';
-      const data = await apiRequest<AuthSessionPayload>(endpoint);
-      if (data.csrf_token) {
-        setCsrfToken(data.csrf_token);
-      }
-      set({ user: data.user, isInitialized: true, isLoading: false, error: null });
-    } catch (err) {
-      if (err instanceof ApiClientError && (err.status === 401 || err.status === 403)) {
-        setCsrfToken(null);
-        set({ user: null, isInitialized: true, isLoading: false, error: null });
-      } else {
-        const msg =
-          err instanceof Error
-            ? err.message
-            : 'Unable to reach server to verify planner session.';
-        set({ user: null, isInitialized: true, isLoading: false, error: msg });
-      }
+    if (inFlightSessionCheck) {
+      return inFlightSessionCheck;
     }
+    set({ isLoading: true, connectionWarning: null });
+    inFlightSessionCheck = (async () => {
+      try {
+        const needsCsrf = !getCsrfToken();
+        const endpoint = needsCsrf ? '/api/v1/auth/me?issue_csrf=1' : '/api/v1/auth/me';
+        const data = await apiRequest<AuthSessionPayload>(endpoint);
+        if (data?.csrf_token) {
+          setCsrfToken(data.csrf_token);
+        }
+        set({
+          user: data?.user ?? null,
+          isInitialized: true,
+          isLoading: false,
+          connectionWarning: null,
+        });
+      } catch (err) {
+        if (err instanceof ApiClientError && (err.status === 401 || err.status === 403)) {
+          setCsrfToken(null);
+          set({
+            user: null,
+            isInitialized: true,
+            isLoading: false,
+            error: null,
+            connectionWarning: null,
+          });
+        } else {
+          const msg =
+            err instanceof Error
+              ? err.message
+              : 'Unable to reach server to verify planner session.';
+          set({
+            user: null,
+            isInitialized: true,
+            isLoading: false,
+            connectionWarning: msg,
+          });
+        }
+      } finally {
+        inFlightSessionCheck = null;
+      }
+    })();
+    return inFlightSessionCheck;
   },
 
   login: async (email: string, password: string) => {
@@ -80,10 +108,16 @@ export const useSessionStore = create<SessionState>((set) => ({
         body: JSON.stringify({ email, password }),
       });
       useActiveProjectStore.getState().resetUserProjects();
-      if (data.csrf_token) {
+      if (data?.csrf_token) {
         setCsrfToken(data.csrf_token);
       }
-      set({ user: data.user, isInitialized: true, isLoading: false, error: null });
+      set({
+        user: data.user,
+        isInitialized: true,
+        isLoading: false,
+        error: null,
+        connectionWarning: null,
+      });
       return data.user;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Authentication failed.';

@@ -32,7 +32,6 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.db.models.auth import User
-from app.domain.reporting.preflight import compute_snapshot_sha256
 from app.services.costing_service import (
     get_project_scenario_comparison,
     list_project_rates,
@@ -43,11 +42,21 @@ from app.services.project_service import get_owned_project_or_404
 from app.services.settlement_service import get_project_settlement_state
 
 
+def _safe_xlsx_cell(value: object) -> object:
+    """Neutralize formula triggers on text cells without altering numbers or formulas."""
+    if not isinstance(value, str):
+        return value
+    if value and value[0] in {"=", "+", "-", "@", "\t", "\r"}:
+        return "'" + value
+    return value
+
+
 def generate_project_boq_xlsx(
     db: Session,
     *,
     project_id: str,
     user: User,
+    snapshot_hash: str | None = None,
 ) -> bytes:
     """Generate a formula-driven 5-sheet Excel BOQ workbook for the active scenario."""
     proj = get_owned_project_or_404(db, project_id, user)
@@ -86,15 +95,10 @@ def generate_project_boq_xlsx(
         )
 
     active_boq = comparison.active_scenario_boq
-    snapshot_hash = compute_snapshot_sha256(
-        {
-            "project_id": proj.id,
-            "project_version": proj.version,
-            "scenario_key": active_boq.scenario_key,
-            "total_capex_inr": round(active_boq.total_capex_inr, 2),
-            "npc_inr": round(active_boq.economics.npc_inr, 2),
-        }
-    )
+    if snapshot_hash is None:
+        from app.services.report_service import get_project_preflight_report
+
+        snapshot_hash = get_project_preflight_report(db, project_id, user).snapshot_hash
 
     wb = Workbook()
     header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
@@ -121,16 +125,16 @@ def generate_project_boq_xlsx(
         ["Watermark Notice", "PRELIMINARY ENGINEERING — NOT FIELD VERIFIED"],
         ["Generated Timestamp (UTC)", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")],
         ["Project ID", proj.id],
-        ["Project Name", proj.name],
+        ["Project Name", _safe_xlsx_cell(proj.name)],
         [
             "Target State / District / Block",
-            f"{proj.target_state} / {proj.target_district} / {proj.target_block}",
+            _safe_xlsx_cell(f"{proj.target_state} / {proj.target_district} / {proj.target_block}"),
         ],
-        ["Target Scheme", proj.scheme],
+        ["Target Scheme", _safe_xlsx_cell(proj.scheme)],
         ["Metric Computation CRS", f"EPSG:{proj.metric_epsg}"],
         ["Planning Horizon (Years)", proj.horizon_years],
         ["Pinned / Active Scenario", active_boq.scenario_key],
-        ["Schedule of Rates Template", rates_state.template_name],
+        ["Schedule of Rates Template", _safe_xlsx_cell(rates_state.template_name)],
         ["Habitation Clusters Count", len(settlements.items)],
         [
             "Satellite Estimated Households",
@@ -192,8 +196,8 @@ def generate_project_boq_xlsx(
     for cl in settlements.items:
         ws_dem.append(
             [
-                cl.label,
-                cl.name,
+                _safe_xlsx_cell(cl.label),
+                _safe_xlsx_cell(cl.name),
                 cl.n_detected,
                 cl.est_households,
                 cl.proxy_class,
@@ -327,8 +331,8 @@ def generate_project_boq_xlsx(
     for cl_lay in active_scenario.clusters:
         ws_eng.append(
             [
-                cl_lay.cluster_label,
-                cl_lay.cluster_name,
+                _safe_xlsx_cell(cl_lay.cluster_label),
+                _safe_xlsx_cell(cl_lay.cluster_name),
                 cl_lay.modality,
                 cl_lay.dt_count,
                 round(cl_lay.total_dt_rating_kva, 1),
@@ -349,7 +353,7 @@ def generate_project_boq_xlsx(
     ws_eng.append(
         [
             "TOTAL",
-            active_scenario.name,
+            _safe_xlsx_cell(active_scenario.name),
             active_scenario.scenario_key,
             f"=SUM(D2:D{eng_end})" if has_eng else 0,
             f"=SUM(E2:E{eng_end})" if has_eng else 0,
@@ -379,7 +383,7 @@ def generate_project_boq_xlsx(
             "Unit",
             "Unit Rate (INR)",
             "Formula Amount (INR)",
-            "Verified Amount (INR)",
+            "Calculated Amount (INR)",
             "Rate Source Type",
             "Schedule of Rates Citation",
         ]
@@ -394,16 +398,16 @@ def generate_project_boq_xlsx(
         row_num = line_start_row + idx
         ws_boq.append(
             [
-                ln.item_code,
-                ln.description,
-                ln.category,
+                _safe_xlsx_cell(ln.item_code),
+                _safe_xlsx_cell(ln.description),
+                _safe_xlsx_cell(ln.category),
                 round(ln.quantity, 4),
-                ln.unit,
+                _safe_xlsx_cell(ln.unit),
                 "UNSET" if ln.rate_inr is None else round(ln.rate_inr, 2),
                 "UNSET" if ln.is_unset else f"=ROUND(D{row_num}*F{row_num},2)",
                 "UNSET" if ln.is_unset else round(ln.amount_inr, 2),
-                ln.rate_source_type,
-                ln.citation,
+                _safe_xlsx_cell(ln.rate_source_type),
+                _safe_xlsx_cell(ln.citation),
             ]
         )
 
@@ -492,7 +496,7 @@ def generate_project_boq_xlsx(
             round(active_boq.total_capex_inr, 2),
             f"=ROUND(SUM(G{sub_a_row}:G{sub_d_row}),2)",
             round(active_boq.total_capex_inr, 2),
-            "VERIFIED_RECONCILED_TOTAL",
+            "RECONCILED_TOTAL",
             f"Matches API & 24-Section PDF DPR Total (INR {active_boq.total_capex_inr:,.2f})",
         ]
     )
@@ -529,18 +533,19 @@ def generate_project_boq_xlsx(
         c.font = header_font
 
     for sc in comparison.scenarios:
+        scen_label = sc.scenario_name + (" (Tie-In Unset)" if sc.requires_tie_in_warning else "")
         ws_comp.append(
             [
                 sc.scenario_key,
-                sc.scenario_name,
+                _safe_xlsx_cell(scen_label),
                 "YES" if sc.is_active_baseline else "NO",
-                round(sc.total_capex_inr, 2),
-                round(sc.total_capex_lakhs, 2),
-                round(sc.capital_subsidy_inr, 2),
-                round(sc.net_utility_capex_inr, 2),
-                round(sc.npc_inr, 2),
-                round(sc.lcoe_inr_kwh, 2),
-                round(sc.cost_per_household_inr, 2),
+                "WITHHELD (UNSET)" if sc.totals_withheld else round(sc.total_capex_inr, 2),
+                "WITHHELD (UNSET)" if sc.totals_withheld else round(sc.total_capex_lakhs, 2),
+                "WITHHELD (UNSET)" if sc.totals_withheld else round(sc.capital_subsidy_inr, 2),
+                "WITHHELD (UNSET)" if sc.totals_withheld else round(sc.net_utility_capex_inr, 2),
+                "WITHHELD (UNSET)" if sc.totals_withheld else round(sc.npc_inr, 2),
+                "WITHHELD (UNSET)" if sc.totals_withheld else round(sc.lcoe_inr_kwh, 2),
+                "WITHHELD (UNSET)" if sc.totals_withheld else round(sc.cost_per_household_inr, 2),
                 round(sc.avoided_co2_tonnes_yr, 2),
             ]
         )
@@ -570,12 +575,12 @@ def generate_project_boq_xlsx(
     for h in comparison.habitation_comparisons:
         ws_comp.append(
             [
-                h.cluster_label,
-                h.cluster_name,
+                _safe_xlsx_cell(h.cluster_label),
+                _safe_xlsx_cell(h.cluster_name),
                 h.est_households,
                 h.active_modality,
-                round(h.grid_capex_inr, 2),
-                round(h.grid_npc_inr, 2),
+                "UNSET TIE-IN" if h.grid_requires_tie_in else round(h.grid_capex_inr, 2),
+                "UNSET TIE-IN" if h.grid_requires_tie_in else round(h.grid_npc_inr, 2),
                 round(h.minigrid_capex_inr, 2),
                 round(h.minigrid_npc_inr, 2),
                 round(h.shs_capex_inr, 2),

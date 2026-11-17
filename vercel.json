@@ -1,11 +1,59 @@
 {
-  "installCommand": "cd frontend && npm install --include=dev",
-  "buildCommand": "cd frontend && npm run build",
-  "outputDirectory": "frontend/dist",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "frontend": {
+      "root": "frontend",
+      "framework": "vite",
+      "installCommand": "if [ -n \"$npm_config_cache_dir\" ]; then export npm_config_cache=\"$npm_config_cache_dir\"; unset npm_config_cache_dir; fi; if [ -n \"$NPM_CONFIG_CACHE_DIR\" ]; then export NPM_CONFIG_CACHE=\"$NPM_CONFIG_CACHE_DIR\"; unset NPM_CONFIG_CACHE_DIR; fi; npm install --include=dev",
+      "buildCommand": "if [ -n \"$npm_config_cache_dir\" ]; then export npm_config_cache=\"$npm_config_cache_dir\"; unset npm_config_cache_dir; fi; if [ -n \"$NPM_CONFIG_CACHE_DIR\" ]; then export NPM_CONFIG_CACHE=\"$NPM_CONFIG_CACHE_DIR\"; unset NPM_CONFIG_CACHE_DIR; fi; npm run build",
+      "outputDirectory": "dist",
+      "rewrites": [
+        {
+          "source": "/((?!_vercel/).*)",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    "backend": {
+      "root": "backend",
+      "entrypoint": "app/main.py",
+      "functions": {
+        "app/main.py": {
+          "excludeFiles": "{tests/**,**/test_*.py,__pycache__/**,.pytest_cache/**,.mypy_cache/**,.ruff_cache/**,data/**}"
+        }
+      }
+    }
+  },
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/docs",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/redoc",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/openapi.json",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": {
+        "service": "frontend"
+      }
     }
   ]
 }

@@ -37,6 +37,7 @@ import {
   MapSpikePreview,
   type ReferenceGeoJsonBundle,
 } from '../components/map/MapSpikePreview';
+import { apiRequest } from '../lib/apiClient';
 import {
   DEFAULT_SETTLEMENTS_FC,
   DEFAULT_VILLAGE_ELECTRIFICATION_FC,
@@ -192,20 +193,18 @@ export const LandingPage: React.FC = () => {
     async function loadReference() {
       try {
         const [geoRes, sumRes] = await Promise.allSettled([
-          fetch('/api/v1/spikes/reference-geojson'),
-          fetch('/api/v1/spikes/summary'),
+          apiRequest<ExtendedReferenceGeoJsonBundle>('/api/v1/spikes/reference-geojson'),
+          apiRequest<SpikeSummaryPayload>('/api/v1/spikes/summary'),
         ]);
         if (!active) return;
         let failed = false;
-        if (geoRes.status === 'fulfilled' && geoRes.value.ok) {
-          setReferenceGeoJson(
-            (await geoRes.value.json()) as ExtendedReferenceGeoJsonBundle,
-          );
+        if (geoRes.status === 'fulfilled') {
+          setReferenceGeoJson(geoRes.value);
         } else {
           failed = true;
         }
-        if (sumRes.status === 'fulfilled' && sumRes.value.ok) {
-          setSpikeSummary((await sumRes.value.json()) as SpikeSummaryPayload);
+        if (sumRes.status === 'fulfilled') {
+          setSpikeSummary(sumRes.value);
         }
         setReferenceNotice(
           failed
@@ -403,14 +402,14 @@ export const LandingPage: React.FC = () => {
   ];
 
   return (
-    <div className="max-w-[1460px] mx-auto px-5 sm:px-8 lg:px-10 py-7 lg:py-9 space-y-10">
+    <div className="w-full min-w-0 max-w-[1460px] mx-auto px-4 sm:px-8 lg:px-10 py-6 lg:py-9 space-y-10 overflow-x-hidden">
       {/* BAND 1: Map-Centered Geospatial Intelligence Hero */}
       <section
         aria-label="Geospatial Study Overview and Interactive Map"
-        className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start"
+        className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start min-w-0"
       >
         {/* Left 5 Cols: Editorial Identity, Key Indicators & Collapsible Epistemic Rules */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className="lg:col-span-5 min-w-0 space-y-6">
           <div className="space-y-3.5">
             <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
               <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
@@ -494,7 +493,7 @@ export const LandingPage: React.FC = () => {
               </div>
             </div>
             <p className="text-[11px] text-ink-3">
-              Creating your own village study or opening saved workspaces will ask you to sign in (a 1-click demo planner account is available on the sign-in screen).
+              Creating your own village study or opening saved workspaces will ask you to sign in.
             </p>
             {referenceNotice && (
               <p role="status" className="text-xs text-warn bg-warn-bg/60 border border-warn-border rounded px-3 py-1.5">
@@ -652,7 +651,7 @@ export const LandingPage: React.FC = () => {
         </div>
 
         {/* Right 7 Cols: Live Interactive MapLibre GIS Showcase Centerpiece */}
-        <div className="lg:col-span-7 space-y-2.5">
+        <div className="lg:col-span-7 min-w-0 space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2 px-1">
             <div className="flex items-center gap-2 text-xs text-ink-2">
               <Icon icon={Compass} size="sm" className="text-accent" />
@@ -673,7 +672,7 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* BAND 2: Connected 6-Stage Pre-Feasibility Pipeline Rail */}
-      <section aria-label="6-Stage Engineering Planning Sequence" className="space-y-3">
+      <section aria-label="6-Stage Engineering Planning Sequence" className="space-y-3 min-w-0">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="heading-lg">Six-Stage Pre-Feasibility Pipeline</h2>
           <p className="text-xs text-ink-3">
@@ -717,10 +716,10 @@ export const LandingPage: React.FC = () => {
       {/* BAND 3: Clean Solar Resource Visualization & Revenue Village Context */}
       <section
         aria-label="Solar Climatology and Revenue Village Summary"
-        className="grid grid-cols-1 lg:grid-cols-12 gap-7"
+        className="grid grid-cols-1 lg:grid-cols-12 gap-7 min-w-0"
       >
         {/* Left 6 Cols: NASA POWER 12-Month Solar GHI */}
-        <div className="lg:col-span-6 bg-sheet border border-rule/80 rounded-lg shadow-card p-6 flex flex-col justify-between gap-5">
+        <div className="lg:col-span-6 min-w-0 bg-sheet border border-rule/80 rounded-lg shadow-card p-5 sm:p-6 flex flex-col justify-between gap-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-ink">
@@ -737,7 +736,7 @@ export const LandingPage: React.FC = () => {
           <div
             role="img"
             aria-label="NASA POWER 12-month solar GHI bar chart for Koraput reference study"
-            className="grid grid-cols-12 gap-2 items-end h-44 pt-4 pb-1 border-b border-rule-subtle"
+            className="grid grid-cols-12 gap-1 sm:gap-2 items-end h-44 pt-4 pb-1 border-b border-rule-subtle min-w-0"
           >
             {MONTHS_ORDER.map((m) => {
               const val = solarData.monthlyGhi[m] ?? 0;
@@ -747,10 +746,10 @@ export const LandingPage: React.FC = () => {
               return (
                 <div
                   key={m}
-                  className="flex flex-col items-center justify-end h-full gap-1.5"
+                  className="flex flex-col items-center justify-end h-full gap-1.5 min-w-0"
                   title={`${m}: ${val.toFixed(2)} kWh/m²/day · ${temp.toFixed(1)}°C`}
                 >
-                  <span className="text-xs tabular-nums text-ink-2">
+                  <span className="text-[10px] sm:text-xs tabular-nums text-ink-2">
                     {val.toFixed(1)}
                   </span>
                   <div className="w-full flex-1 flex items-end justify-center">
@@ -764,7 +763,7 @@ export const LandingPage: React.FC = () => {
                     />
                   </div>
                   <span
-                    className={`text-xs ${
+                    className={`text-[10px] sm:text-xs ${
                       isWorst ? 'font-semibold text-warn' : 'text-ink-3'
                     }`}
                   >
@@ -799,7 +798,7 @@ export const LandingPage: React.FC = () => {
         </div>
 
         {/* Right 6 Cols: Revenue Village Baseline */}
-        <div className="lg:col-span-6 bg-sheet border border-rule/80 rounded-lg shadow-card p-6 flex flex-col justify-between gap-4">
+        <div className="lg:col-span-6 min-w-0 bg-sheet border border-rule/80 rounded-lg shadow-card p-5 sm:p-6 flex flex-col justify-between gap-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-ink">
@@ -865,7 +864,7 @@ export const LandingPage: React.FC = () => {
       {/* BAND 4: Preliminary Habitation Cluster Schedule */}
       <section
         aria-labelledby="cluster-schedule-heading"
-        className="bg-sheet border border-rule/80 rounded-lg shadow-card overflow-hidden"
+        className="bg-sheet border border-rule/80 rounded-lg shadow-card overflow-hidden min-w-0"
       >
         <div className="px-6 py-4 border-b border-rule-subtle flex flex-wrap items-center justify-between gap-3">
           <div>

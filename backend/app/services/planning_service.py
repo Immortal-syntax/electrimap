@@ -60,7 +60,7 @@ from app.services.infrastructure_service import (
     compute_and_persist_project_demand,
     ensure_project_settings_seeded,
 )
-from app.services.project_service import get_owned_project_or_404
+from app.services.project_service import get_owned_project_or_404, get_writable_project_or_404
 
 SCENARIO_LABELS: dict[str, str] = {
     "HYBRID_OPTIMAL": "Hybrid Least-Cost Optimal (Grid + Solar Mini-Grid + SHS)",
@@ -409,6 +409,7 @@ def generate_or_update_scenario(
     user: User,
     scenario_key: str = "HYBRID_OPTIMAL",
     preserve_manual_overrides: bool = False,
+    allow_shared_read_backfill: bool = False,
 ) -> PlanningScenarioResponse:
     """Generate or recalculate a planning scenario and persist all cluster engineering layouts."""
     with project_lock(db, project_id):
@@ -419,6 +420,7 @@ def generate_or_update_scenario(
             user=user,
             scenario_key=scenario_key,
             preserve_manual_overrides=preserve_manual_overrides,
+            allow_shared_read_backfill=allow_shared_read_backfill,
         )
 
 
@@ -429,8 +431,13 @@ def _generate_or_update_scenario_locked(
     user: User,
     scenario_key: str = "HYBRID_OPTIMAL",
     preserve_manual_overrides: bool = False,
+    allow_shared_read_backfill: bool = False,
 ) -> PlanningScenarioResponse:
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = (
+        get_owned_project_or_404(db, project_id, user)
+        if allow_shared_read_backfill
+        else get_writable_project_or_404(db, project_id, user)
+    )
     settings_rows = ensure_project_settings_seeded(db, proj.id)
     settings_map = {r.key: r.value for r in settings_rows}
 
@@ -640,6 +647,7 @@ def _recompute_scenario_clusters(
     total_pv_kwp = 0.0
     total_bess_kwh = 0.0
     total_shs_kits = 0
+    modality_counts: dict[str, int] = {}
 
     aoi_row = db.execute(
         select(ProjectAoi).where(ProjectAoi.project_id == scenario.project_id)
@@ -771,6 +779,11 @@ def _recompute_scenario_clusters(
         )
 
         details_dict: dict[str, Any] = {
+            "institutional_packs_count": (
+                eval_res.standalone_shs.institutional_packs_count
+                if eval_res.standalone_shs
+                else 0
+            ),
             "placed_dts": [
                 {
                     "subzone_index": dt.subzone_index,
@@ -869,7 +882,9 @@ def _recompute_scenario_clusters(
         total_pv_kwp += pv_kwp
         total_bess_kwh += bess_kwh
         total_shs_kits += shs_kits
+        modality_counts[eval_res.modality] = modality_counts.get(eval_res.modality, 0) + 1
 
+    scenario.summary_payload = {"modality_counts": modality_counts}
     scenario.requires_tie_in_warning = requires_tie_in_any
     scenario.total_ht_length_m = round(total_ht_m, 1)
     scenario.total_lt_length_m = round(total_lt_m, 1)
@@ -922,6 +937,7 @@ def get_project_scenarios(
                     user=user,
                     scenario_key="HYBRID_OPTIMAL",
                     preserve_manual_overrides=False,
+                    allow_shared_read_backfill=True,
                 )
                 scenarios = (
                     db.execute(
@@ -953,7 +969,7 @@ def override_cluster_modality(
     user: User,
 ) -> PlanningScenarioResponse:
     """Override a cluster's electrification modality and synchronously recalculate the scenario."""
-    proj = get_owned_project_or_404(db, project_id, user)
+    proj = get_writable_project_or_404(db, project_id, user)
     scenario = db.execute(
         select(PlanningScenario).where(
             PlanningScenario.id == scenario_id,

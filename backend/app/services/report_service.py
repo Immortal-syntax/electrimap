@@ -37,6 +37,7 @@ from app.services.gis_export_service import generate_project_gis_package_zip
 from app.services.infrastructure_service import list_project_infrastructure
 from app.services.planning_service import get_project_scenarios
 from app.services.project_service import get_owned_project_or_404
+from app.services.seed_service import DEMO_PROJECT_ID
 from app.services.settlement_pdf_service import generate_preliminary_settlement_pdf
 from app.services.settlement_service import (
     get_project_settlement_state,
@@ -63,27 +64,24 @@ def get_project_preflight_report(
     ).scalar_one_or_none()
 
     layer_rows = (
-        db.execute(select(ProjectLayer).where(ProjectLayer.project_id == proj.id))
-        .scalars()
-        .all()
+        db.execute(select(ProjectLayer).where(ProjectLayer.project_id == proj.id)).scalars().all()
     )
     ds_ids = {layer.dataset_id for layer in layer_rows if layer.dataset_id}
     ds_by_id: dict[str, Dataset] = (
-        {
-            d.id: d
-            for d in db.execute(select(Dataset).where(Dataset.id.in_(ds_ids))).scalars().all()
-        }
+        {d.id: d for d in db.execute(select(Dataset).where(Dataset.id.in_(ds_ids))).scalars().all()}
         if ds_ids
         else {}
     )
     synthetic_fallback_layers: list[str] = []
-    for layer_row in layer_rows:
-        if layer_row.layer_key == "nightlights":
-            continue
-        ds_row = ds_by_id.get(layer_row.dataset_id) if layer_row.dataset_id else None
-        is_fallback_flag = (layer_row.summary_metrics or {}).get("is_synthetic_fallback") is True
-        if is_fallback_flag or (ds_row is not None and ds_row.key == "synthetic_fallback"):
-            synthetic_fallback_layers.append(layer_row.layer_key)
+    if proj.id != DEMO_PROJECT_ID:
+        for layer_row in layer_rows:
+            if layer_row.layer_key == "nightlights":
+                continue
+            ds_row = ds_by_id.get(layer_row.dataset_id) if layer_row.dataset_id else None
+            metrics = layer_row.summary_metrics or {}
+            is_fallback_flag = metrics.get("is_synthetic_fallback") is True
+            if is_fallback_flag or (ds_row is not None and ds_row.key == "synthetic_fallback"):
+                synthetic_fallback_layers.append(layer_row.layer_key)
 
     grid_missing_tie_in = [
         cl.cluster_label
@@ -247,9 +245,7 @@ def list_project_export_records(
 def _assert_preflight_export_allowed(preflight: PreFlightReportResponse, format_label: str) -> None:
     if preflight.can_export:
         return
-    failed = [
-        c for c in preflight.checks if c.category == "HARD_BLOCKER" and c.status == "FAIL"
-    ]
+    failed = [c for c in preflight.checks if c.category == "HARD_BLOCKER" and c.status == "FAIL"]
     reasons = "; ".join(f"{c.check_code}: {c.detail}" for c in failed)
     raise AppError(
         code=failed[0].check_code if failed else "PREFLIGHT_EXPORT_BLOCKED",
@@ -299,7 +295,12 @@ def export_and_log_boq_xlsx(
     _assert_preflight_export_allowed(preflight, "Excel BOQ (.xlsx)")
     scenarios_state = get_project_scenarios(db, project_id=project_id, user=user)
     active_scen = scenarios_state.active_scenario
-    xlsx_bytes = generate_project_boq_xlsx(db, project_id=project_id, user=user)
+    xlsx_bytes = generate_project_boq_xlsx(
+        db,
+        project_id=project_id,
+        user=user,
+        snapshot_hash=preflight.snapshot_hash,
+    )
     filename = f"electrimap_boq_{project_id[:8]}_{active_scen.scenario_key.lower()}.xlsx"
     rec = _record_export_artifact(
         db,
@@ -329,7 +330,12 @@ def export_and_log_gis_package(
     _assert_preflight_export_allowed(preflight, "GIS Package (.zip)")
     scenarios_state = get_project_scenarios(db, project_id=project_id, user=user)
     active_scen = scenarios_state.active_scenario
-    zip_bytes = generate_project_gis_package_zip(db, project_id=project_id, user=user)
+    zip_bytes = generate_project_gis_package_zip(
+        db,
+        project_id=project_id,
+        user=user,
+        snapshot_hash=preflight.snapshot_hash,
+    )
     filename = f"electrimap_gis_package_{project_id[:8]}_{active_scen.scenario_key.lower()}.zip"
     rec = _record_export_artifact(
         db,

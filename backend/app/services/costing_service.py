@@ -78,7 +78,7 @@ from app.services.planning_service import (
     generate_or_update_scenario,
     get_project_scenarios,
 )
-from app.services.project_service import get_owned_project_or_404
+from app.services.project_service import get_owned_project_or_404, get_writable_project_or_404
 
 
 def ensure_project_rates_seeded(db: Session, project_id: str) -> list[ProjectRateItem]:
@@ -188,7 +188,7 @@ def update_project_rate_item(
     user: User,
 ) -> ProjectRateListResponse:
     """Update a single Schedule of Rates unit price (or set to UNSET) and recompute BOQs."""
-    get_owned_project_or_404(db, project_id, user)
+    get_writable_project_or_404(db, project_id, user)
     ensure_project_rates_seeded(db, project_id)
 
     code_upper = item_code.strip().upper()
@@ -238,7 +238,7 @@ def update_project_rate_item(
 
 def reset_project_rates(db: Session, project_id: str, user: User) -> ProjectRateListResponse:
     """Reset all project Schedule of Rates items back to the verified public reference template."""
-    get_owned_project_or_404(db, project_id, user)
+    get_writable_project_or_404(db, project_id, user)
     db.execute(delete(ProjectRateItem).where(ProjectRateItem.project_id == project_id))
     from app.services.invalidation import invalidate_downstream_from_stage
 
@@ -261,7 +261,7 @@ def import_project_rates_csv(
     user: User,
 ) -> SorCsvImportResponse:
     """Validate and apply a custom Schedule of Rates CSV to a project."""
-    get_owned_project_or_404(db, project_id, user)
+    get_writable_project_or_404(db, project_id, user)
     parsed = parse_and_validate_sor_csv(csv_content)
     if not parsed.is_valid:
         return SorCsvImportResponse(
@@ -425,6 +425,10 @@ def _build_cluster_boq_inputs_for_scenario(
         .all()
     )
     gap_by_cid = {g.cluster_id: g for g in gap_rows}
+    solar_row = db.execute(
+        select(SolarResource).where(SolarResource.project_id == project_id)
+    ).scalar_one_or_none()
+    worst_ghi = float(solar_row.worst_ghi_kwh_m2_day) if solar_row is not None else 3.82
 
     inputs: list[ClusterBoqInput] = []
     for row in layout_rows:
@@ -455,6 +459,10 @@ def _build_cluster_boq_inputs_for_scenario(
                 avg_kva = max(16, int(round(row.total_dt_rating_kva / max(1, row.dt_count))))
                 dt_ratings = [avg_kva] * row.dt_count
 
+        inst_packs = int(details.get("institutional_packs_count", 0))
+        if inst_packs == 0 and row.modality == "STANDALONE_SHS" and cl_obj is not None:
+            inst_packs = max(0, min(5, cl_obj.n_non_residential))
+
         inputs.append(
             ClusterBoqInput(
                 cluster_id=row.cluster_id,
@@ -477,6 +485,8 @@ def _build_cluster_boq_inputs_for_scenario(
                 shs_kits_count=row.shs_kits_count,
                 annual_energy_mwh_horizon=row.annual_energy_mwh_horizon,
                 total_loss_mwh_yr=row.total_loss_mwh_yr,
+                institutional_packs_count=inst_packs,
+                worst_ghi_kwh_m2_day=worst_ghi,
             )
         )
     return inputs
@@ -726,6 +736,7 @@ def _get_project_scenario_comparison_locked(
                 user=user,
                 scenario_key=key,
                 preserve_manual_overrides=True,
+                allow_shared_read_backfill=True,
             )
         scenarios = list(
             db.execute(
@@ -762,7 +773,10 @@ def _get_project_scenario_comparison_locked(
         _persist_scenario_boq_lines(db, project_id, scen.id, summary)
         summaries_by_key[scen.scenario_key] = (scen, summary)
 
-        mod_counts = (scen.summary_payload or {}).get("modality_counts", {})
+        mod_counts = (scen.summary_payload or {}).get("modality_counts") or {}
+        if not mod_counts:
+            for c_in in cl_inputs:
+                mod_counts[c_in.modality] = mod_counts.get(c_in.modality, 0) + 1
         total_hh = sum(c.est_households for c in cl_inputs)
         total_energy_mwh = round(sum(c.annual_energy_mwh_horizon for c in cl_inputs), 3)
 
@@ -922,6 +936,7 @@ def _get_project_scenario_comparison_locked(
                 constants=consts_map,
                 lt_3ph_length_m=lt_3ph,
                 lt_1ph_length_m=lt_1ph,
+                lt_feeder_count=1,
             )
             opt_in = ClusterBoqInput(
                 cluster_id=cluster_id,
@@ -944,6 +959,7 @@ def _get_project_scenario_comparison_locked(
                 shs_kits_count=0,
                 annual_energy_mwh_horizon=annual_mwh_hor,
                 total_loss_mwh_yr=losses.total_loss_mwh_yr,
+                worst_ghi_kwh_m2_day=worst_ghi,
             )
             return compute_cluster_boq(opt_in, rates_map, econ_params)
 
@@ -974,6 +990,8 @@ def _get_project_scenario_comparison_locked(
             shs_kits_count=shs.shs_kits_count,
             annual_energy_mwh_horizon=annual_mwh_hor,
             total_loss_mwh_yr=0.0,
+            institutional_packs_count=shs.institutional_packs_count,
+            worst_ghi_kwh_m2_day=worst_ghi,
         )
         return compute_cluster_boq(opt_in, rates_map, econ_params)
 
@@ -1141,7 +1159,7 @@ def pin_project_scenario(
     user: User,
 ) -> ProjectScenarioComparisonResponse:
     """Pin the selected scenario as the active DPR baseline (`is_active = True`)."""
-    get_owned_project_or_404(db, project_id, user)
+    get_writable_project_or_404(db, project_id, user)
     scenarios = list(
         db.execute(
             select(PlanningScenario).where(PlanningScenario.project_id == project_id)

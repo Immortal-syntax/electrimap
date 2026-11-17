@@ -17,6 +17,8 @@
 from typing import Any
 
 from geoalchemy2 import Geometry as PostGISGeometry
+from geoalchemy2.elements import WKBElement
+from geoalchemy2.shape import to_shape
 from shapely import wkb, wkt
 from shapely.geometry.base import BaseGeometry
 from sqlalchemy import Text
@@ -60,6 +62,10 @@ class SpatialGeometry(TypeDecorator[Any]):
         if value is None:
             return None
         if dialect.name == "postgresql":
+            if isinstance(value, WKBElement):
+                return to_shape(value)
+            if isinstance(value, str):
+                return wkb.loads(bytes.fromhex(value))
             return value
         if isinstance(value, str):
             return wkb.loads(bytes.fromhex(value))
