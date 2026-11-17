@@ -15,6 +15,7 @@
 """Unit tests for terrain slope, hillshade, cost surface, and MCP_Geometric routing."""
 
 import numpy as np
+import pytest
 
 from app.domain.gis.cost_surface import (
     WORLDCOVER_CROPLAND,
@@ -59,4 +60,36 @@ def test_least_cost_feeder_avoids_impassable_water_obstacle() -> None:
     assert route.crossed_water_cells == 0
     assert route.length_m > 20 * 30.0
     assert any(r >= 25 for r, _c in route.grid_indices)
+
+
+def test_load_mcp_geometric_survives_stripped_pyi_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify routing loads MCP_Geometric even when lazy_loader.attach_stub sees missing .pyi."""
+    import sys
+
+    import lazy_loader
+
+    from app.domain.gis.routing import _load_mcp_geometric
+
+    saved_modules = {
+        k: v
+        for k, v in sys.modules.items()
+        if k == "skimage" or k.startswith("skimage.")
+    }
+    for key in saved_modules:
+        sys.modules.pop(key, None)
+
+    def _missing_stub(_package_name: str, filename: str) -> object:
+        raise ValueError(f"Cannot load imports from non-existent stub '{filename}i'")
+
+    monkeypatch.setattr(lazy_loader, "attach_stub", _missing_stub)
+    try:
+        cls = _load_mcp_geometric()
+        assert cls.__name__ == "MCP_Geometric"
+    finally:
+        for key in list(sys.modules):
+            if key == "skimage" or key.startswith("skimage."):
+                sys.modules.pop(key, None)
+        sys.modules.update(saved_modules)
 
